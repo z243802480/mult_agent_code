@@ -182,7 +182,15 @@ export function Thread({
   const failedTurnNumbers = useMemo(() => {
     const nums: number[] = [];
     turns.forEach((turnSteps, i) => {
-      if (turnSteps.some((s) => s.kind === "error" || s.status === "failed")) nums.push(i + 1);
+      const hasFailure = turnSteps.some((s) => s.kind === "error" || s.status === "failed");
+      if (!hasFailure) return;
+      // A turn that hit a transient failure but RECOVERED and reached a successful conclusion is not an
+      // open problem — the model retried and moved on (e.g. "shell tool unavailable" → switched to
+      // run_tests → verified pass). Its failed steps stay visible inline, but the issue-nav and the red
+      // turn marker must point only at GENUINELY unresolved failures: turns that ended in error / gave
+      // up without a final answer. Presence of a `final` step means the model concluded the turn.
+      const concluded = turnSteps.some((s) => s.kind === "final");
+      if (!concluded) nums.push(i + 1);
     });
     return nums;
   }, [turns]);

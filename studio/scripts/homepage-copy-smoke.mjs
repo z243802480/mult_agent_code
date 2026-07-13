@@ -45,7 +45,11 @@ try {
   ];
   for (const rel of sources) {
     const source = await fs.readFile(path.join(studioDir, rel), "utf8");
-    let cleaned = source;
+    // This check is about USER-FACING copy, not source internals. Code COMMENTS legitimately mention
+    // mechanism words ("@token" mention parsing, route/command notes) that are never rendered — strip
+    // them first so a comment can't false-positive. Identifiers (e.g. CommandPalette) are neutralized
+    // per-file below; they aren't comments so they survive this strip.
+    let cleaned = stripCodeComments(source);
     if (rel.endsWith("Thread.tsx")) {
       cleaned = cleaned
         .replace(/function LiveStream[\s\S]*?function useSmoothText/, "function useSmoothText")
@@ -69,19 +73,35 @@ try {
     if (rel.endsWith("App.tsx")) {
       cleaned = cleaned
         .replace(/import[\s\S]*?Inspector[\s\S]*?;\r?\n/, "")
-        .replace(/<(?:Inspector|SidePanel)[\s\S]*?\/>\s*/g, "");
+        .replace(/<(?:Inspector|SidePanel)[\s\S]*?\/>\s*/g, "")
+        // The CommandPalette (⌘K action palette) is a legit UI affordance, not backend "command"
+        // vocabulary leaking into homepage copy. These are code IDENTIFIERS (import/type/prop/var),
+        // never user-facing text — neutralize the family precisely so the forbidden `command` token
+        // doesn't false-positive, WITHOUT blanket-stripping "command" (which would mask a real leak).
+        .replace(/CommandPalette/g, "ActionPalette")
+        .replace(/paletteCommands/g, "paletteActions")
+        .replace(/\bCommand\[\]/g, "Action[]")
+        .replace(/\btype Command\b/g, "type Action")
+        .replace(/\bcommands=\{/g, "actions={");
     }
     assert(
       !forbidden.test(cleaned),
       `${rel} leaked homepage/backend wording: ${cleaned.match(forbidden)?.[0]}`,
     );
   }
-  assert(
-    (await fs.readFile(path.join(studioDir, "src", "components", "Composer.tsx"), "utf8")).includes(
-      "composerModeDetails",
-    ),
-    "mode controls should be hidden behind details",
-  );
+  {
+    // Mode/permission controls must stay compact, not sprawl across the input bar. The mature composer
+    // collapses them into a `composerModeGroup` of <select>s (was an older "composerModeDetails"
+    // disclosure) — assert the current compact grouping so the input bar reads clean.
+    const composer = await fs.readFile(
+      path.join(studioDir, "src", "components", "Composer.tsx"),
+      "utf8",
+    );
+    assert(
+      composer.includes("composerModeGroup") && /<select/.test(composer),
+      "mode controls should be compact (collapsed into a select group), not a sprawled picker",
+    );
+  }
   console.log("Studio homepage copy smoke passed");
 } finally {
   server.kill("SIGTERM");
@@ -91,6 +111,13 @@ try {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+// Remove JS/TS comments so the copy check only sees code + user-facing strings, never comment prose.
+// Block comments are removed wholesale; line comments are removed to end-of-line but only when the
+// "//" is NOT preceded by ":" so protocol-relative URLs / "https://" inside strings are left intact.
+function stripCodeComments(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 }
 
 async function waitForHealth() {
