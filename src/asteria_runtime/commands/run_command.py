@@ -39,6 +39,7 @@ from asteria_runtime.core.real_provider_matrix import (
 from asteria_runtime.core.runtime_progress import build_runtime_progress
 from asteria_runtime.core.todo_view import build_todo_view, todo_view_text_lines
 from asteria_runtime.models.base import ModelClient
+from asteria_runtime.storage import audit_chain
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
@@ -176,6 +177,9 @@ class RunCommand:
     def run(self) -> RunResult:
         if not (self.root / ".asteria").exists():
             InitCommand(self.root).run()
+        # Audit tamper-evidence (S77 P1): set the process-wide chain toggle from policy before any
+        # audit JSONL is written. Off by default → byte-identical behavior.
+        audit_chain.configure_from_policy(self._policy())
         if self.goal and self.run_id and not self.continue_session:
             raise ValueError("Pass either a new goal or an existing session id, not both.")
         if self.continue_session and self.goal:

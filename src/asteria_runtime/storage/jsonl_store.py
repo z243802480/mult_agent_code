@@ -5,6 +5,12 @@ from threading import RLock
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.storage.audit_chain import (
+    append_chain_entry,
+    audit_chain_enabled,
+    is_audit_file,
+    rechain_file,
+)
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
@@ -19,9 +25,14 @@ class JsonlStore:
         if schema_name and self.validator:
             self.validator.validate(schema_name, data)
         path.parent.mkdir(parents=True, exist_ok=True)
+        record_line = json.dumps(data, ensure_ascii=False)
         with _JSONL_APPEND_LOCK:
             with path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(data, ensure_ascii=False) + "\n")
+                handle.write(record_line + "\n")
+            # Tamper-evidence (S77 P1, opt-in): bind this record into the append-only hash chain at
+            # the single write chokepoint — the exact bytes just written. Off by default = no-op.
+            if audit_chain_enabled() and is_audit_file(path):
+                append_chain_entry(path, record_line)
 
     def rewrite_all(
         self, path: Path, rows: list[dict[str, Any]], schema_name: str | None = None
@@ -37,11 +48,16 @@ class JsonlStore:
             for row in rows:
                 self.validator.validate(schema_name, row)
         path.parent.mkdir(parents=True, exist_ok=True)
-        payload = "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows)
+        record_lines = [json.dumps(row, ensure_ascii=False) for row in rows]
+        payload = "".join(line + "\n" for line in record_lines)
         with _JSONL_APPEND_LOCK:
             tmp_path = path.with_name(f"{path.name}.tmp")
             tmp_path.write_text(payload, encoding="utf-8")
             tmp_path.replace(path)
+            # A legitimate atomic rewrite (status transition / redaction) re-seals the chain over the
+            # new rows; a raw edit that skips rewrite_all is caught by verify (chain diverges).
+            if audit_chain_enabled() and is_audit_file(path):
+                rechain_file(path, record_lines)
 
     def read_all(self, path: Path, schema_name: str | None = None) -> list[dict[str, Any]]:
         if not path.exists():

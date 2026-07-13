@@ -16,6 +16,17 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 @pytest.fixture(autouse=True)
+def reset_audit_chain_toggle() -> object:
+    # Audit tamper-evidence is a process-global toggle (set from policy at run/execute start). Reset
+    # it around every test so a run that enabled it cannot bleed the flag into later tests.
+    from asteria_runtime.storage import audit_chain
+
+    audit_chain.configure_audit_chain(False)
+    yield
+    audit_chain.configure_audit_chain(False)
+
+
+@pytest.fixture(autouse=True)
 def isolate_model_route_environment(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,

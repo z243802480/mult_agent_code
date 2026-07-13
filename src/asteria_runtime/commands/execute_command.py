@@ -53,6 +53,7 @@ from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
 from asteria_runtime.core.run_state_finalizer import RunStateFinalizer
 from asteria_runtime.core.permission_policy import autonomy_rings_default_on
 from asteria_runtime.core.run_config import effective_policy_for_run
+from asteria_runtime.storage import audit_chain
 from asteria_runtime.core.runtime_profile_builder import RuntimeProfileBuilder
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.runtime_hooks import RuntimeHookDecision, RuntimeHookManager
@@ -277,6 +278,9 @@ class ExecuteCommand:
             run_dir=run_dir,
             validator=self.validator,
         )
+        # Audit tamper-evidence (S77 P1): set the process-wide chain toggle from policy before any
+        # audit JSONL is written this run. Off by default → JsonlStore behaves byte-identically.
+        audit_chain.configure_from_policy(policy)
         self.hook_manager.configure(policy)
         project_config = self.store.read(agent_dir / "project.json", "project_config")
         goal_spec = self.store.read(run_dir / "goal_spec.json", "goal_spec")

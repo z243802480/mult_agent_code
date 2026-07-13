@@ -592,6 +592,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Independently re-execute the recorded verification commands (fresh exit codes)",
     )
 
+    # Maintainer: verify the audit-log hash chain of a run (S77 P1 tamper-evidence). Hidden.
+    audit_verify_parser = subcommands.add_parser(
+        "audit-verify",
+        aliases=["/audit-verify"],
+        help=argparse.SUPPRESS,
+    )
+    audit_verify_parser.add_argument("--root", default=".", help="Workspace root path")
+    audit_verify_parser.add_argument(
+        "--run-id", dest="run_id", default=None, help="Run/session id; defaults to the latest run"
+    )
+    audit_verify_parser.add_argument("--json", action="store_true", help="Emit JSON")
+
     package_check_parser = subcommands.add_parser(
         "package-check",
         aliases=["/package-check"],
@@ -1843,6 +1855,31 @@ def _run_cli() -> None:
             print(json.dumps(correctness_result.to_dict(), ensure_ascii=False, indent=2))
         else:
             print(correctness_result.to_text())
+        return
+
+    if command == "audit-verify":
+        from asteria_runtime.storage import audit_chain
+        from asteria_runtime.storage.run_store import RunStore
+        from asteria_runtime.storage.schema_validator import SchemaValidator
+
+        agent_dir = Path(args.root) / ".asteria"
+        run_store = RunStore(agent_dir, SchemaValidator())
+        run_id = args.run_id or run_store.current_session_id()
+        if not run_id:
+            print("No run found. Run `asteria run \"goal\"` first.")
+            raise SystemExit(1)
+        audit_result = audit_chain.verify_run(run_store.run_dir(run_id))
+        if args.json:
+            print(json.dumps(audit_result, ensure_ascii=False, indent=2))
+        else:
+            status = "OK · 审计链完整" if audit_result["ok"] else "TAMPERED · 审计链被篡改"
+            print(f"Audit chain {run_id}: {status} ({audit_result['chained_files']} chained files)")
+            for check in audit_result["checks"]:
+                if not check["ok"]:
+                    print(f"  ✗ {check['file']}: {check.get('reason')}"
+                          + (f" @seq {check['break_seq']}" if check.get("break_seq") else ""))
+        if not audit_result["ok"]:
+            raise SystemExit(1)
         return
 
     if command == "package-check":
