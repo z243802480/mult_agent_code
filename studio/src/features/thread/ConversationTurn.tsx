@@ -14,7 +14,7 @@ import {
   latestCorrectnessVerdict,
   turnCorrectnessVerdict,
 } from "./runtimeNarrative";
-import { cleanReasoning } from "../../narrative";
+import { cleanReasoning, THINKING_PLACEHOLDERS } from "../../narrative";
 import { SuggestedActions } from "./SuggestedActions";
 import { TurnRewindButton } from "./TurnRewindButton";
 import {
@@ -313,21 +313,6 @@ function thinkingTokens(steps: NarrativeStepType[]): number {
 // answer lands" behavior: after completion the reasoning collapses into a re-openable chip instead
 // of vanishing into the process badge. Renders nothing when there is no real reasoning text (no
 // empty chip). Default-collapsed while completed; auto-open while still streaming.
-// Harness-authored placeholder lines the model_start/model_end events carry when the real reasoning
-// stream is kept in the Inspector (not surfaced to the thread). They are machine status text, not the
-// model thinking — strip them so we never render an empty/English "思考过程" chip (ADR-0021).
-const THINKING_PLACEHOLDERS = new Set([
-  "Asteria is preparing the next step.",
-  "Asteria is preparing the next step",
-  "Asteria finished drafting this step.",
-  "Asteria finished drafting this step",
-  "Asteria is drafting a response.",
-  "Asteria is drafting a response",
-  "Draft complete",
-  "Drafting",
-  "Thinking",
-]);
-
 function ThinkingBlock({ steps, live = false }: { steps: NarrativeStepType[]; live?: boolean }) {
   // Filter per EVENT before joining: within a step the harness "preparing"/"drafting" placeholders
   // concatenate with no separator, so a line-based filter would miss the merged string. Drop each

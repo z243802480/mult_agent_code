@@ -55,8 +55,9 @@ export const INTERNAL_TITLE_PROJECTION: Record<string, string> = {
   "Final report written": "已写出最终报告",
 };
 
-export function projectTitle(title: string): string {
-  return INTERNAL_TITLE_PROJECTION[title] ?? title;
+export function projectTitle(title: string | null | undefined): string {
+  const value = String(title ?? "");
+  return INTERNAL_TITLE_PROJECTION[value] ?? value;
 }
 
 // Dynamic summary literals the runtime emits in English (they carry ids/counts, so a static map can't
@@ -94,8 +95,8 @@ const SUMMARY_PROJECTIONS: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [/^Running (.+)$/, (m) => `正在运行 ${m[1]}`],
 ];
 
-export function projectSummary(summary: string): string {
-  const trimmed = summary.trim();
+export function projectSummary(summary: string | null | undefined): string {
+  const trimmed = String(summary ?? "").trim();
   for (const [pattern, render] of SUMMARY_PROJECTIONS) {
     const match = trimmed.match(pattern);
     if (match) return render(match);

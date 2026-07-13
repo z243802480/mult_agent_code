@@ -7,7 +7,7 @@ import { FileChangeChips } from "../../components/FileChangeChips";
 import { PermissionCard } from "../../components/PermissionCard";
 import { ClampedOutput } from "../../components/ClampedOutput";
 import { ToolCallCard } from "./ToolCallCard";
-import { cleanReasoning } from "../../narrative";
+import { cleanReasoning, THINKING_PLACEHOLDERS } from "../../narrative";
 import type { StudioViewMode } from "../../hooks/useViewMode";
 
 // Main-thread, user-facing phase copy. Keys are step kinds; unknown kinds fall back
@@ -54,13 +54,15 @@ export function LiveStream({
         (step) => step.kind === "thinking" || step.kind === "plan" || step.kind === "verification",
       )
       .map((step) => {
-        const event = step.events[0];
-        // Render the real streamed model delta for every phase. The delta is already accumulated
-        // (phase-agnostic) in narrative.toNarrativeEvents; masking non-chat phases with a "Putting
-        // together a plan…" placeholder discarded live data the UI already had.
-        return event?.content_delta || step.summary || "";
+        // Render the real streamed model delta for every phase. Join ALL of the step's events (the
+        // delta is accumulated phase-agnostically in narrative.toNarrativeEvents) rather than only the
+        // first, then fall back to the step summary when there is no streamed prose.
+        const joined = cleanReasoning(step.events.map((e) => e.content_delta || "").join(""));
+        return (joined || step.summary || "").trim();
       })
-      .filter(Boolean)
+      // Drop harness placeholders ("Asteria is preparing the next step.") so the live stream shows the
+      // model's real words or nothing — never machine status text impersonating reasoning (ADR-0021).
+      .filter((text) => text && !THINKING_PLACEHOLDERS.has(text))
       .join("\n\n"),
   );
   const toolSteps = steps.filter(

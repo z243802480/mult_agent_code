@@ -477,6 +477,28 @@ export function cleanReasoning(text: string): string {
   return stripSerializedPayloads(withoutTags).trim();
 }
 
+// Harness-authored placeholder lines the model_start/model_end events carry when the real reasoning
+// stream is kept in the Inspector. They are machine status text ("Asteria is preparing the next
+// step."), NOT the model thinking — so they must never surface as the model's live/streamed prose on
+// the main thread. Shared by the completed-turn ThinkingBlock and the live LiveStream (ADR-0021).
+export const THINKING_PLACEHOLDERS = new Set([
+  "Asteria is preparing the next step.",
+  "Asteria is preparing the next step",
+  "Asteria finished drafting this step.",
+  "Asteria finished drafting this step",
+  "Asteria is drafting a response.",
+  "Asteria is drafting a response",
+  "Draft complete",
+  "Drafting",
+  "Thinking",
+]);
+
+// True when the cleaned text is nothing but a harness placeholder (see THINKING_PLACEHOLDERS) — the
+// caller should drop it rather than render an empty/status-only "thinking" line.
+export function isThinkingPlaceholder(text: string): boolean {
+  return THINKING_PLACEHOLDERS.has(cleanReasoning(text).trim());
+}
+
 export function firstText(...items: unknown[]): string {
   for (const item of items) {
     const text = String(item ?? "").trim();
