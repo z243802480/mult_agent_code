@@ -29,10 +29,12 @@
 - Studio 侧把「标记完成」摆成持久"下一步"诱导多点一下(`RuntimeSnapshot.tsx:311-330`),而改动早落盘(`:261-265`)。
 - **修向**:`auto`/`reviewed_auto` 下 review 干净即**自动 accept**;Studio「完成」变被动状态不是必点按钮。
 
-### #3 命令审批:前端文案说"哪档都暂停"vs 后端 auto 只挡硬门【中杠杆·需 1 文件核实·前端文案+可能后端 allowlist】
-- 后端:`auto`=autopilot within hard guards;普通命令(pytest/npm test)非硬门→auto 档应自动跑(本会话真栈 smoke 里 run_command 确实没弹审批)。硬门=destructive/network/secret/protected/deploy/push(`permission_policy.py:81-92`·ShellGuard 强制)。
-- 前端:`permissionTiers.ts:38-42` + `SettingsPanel.tsx:153-156` 明写"命令…无论哪档都为你暂停"。
-- **矛盾**:要么前端文案过保守(改文案:普通命令 auto 档不暂停·只硬门暂停),要么 Studio 交互路径(server.mjs `--permission-level` 映射)真的一刀切暂停所有命令(那要给 CC 式 allowlist/"信任命令"口让 auto 真 auto)。**先核实 `lib/permission-level.mjs` + server 审批路径**再定是改文案还是加 allowlist。
+### #3 命令审批 → 核实后=非负担缺口(2026-07-13)【已核实·结论翻转】
+**核实结论**:逐命令暂停是 **denylist 驱动、与权限档无关**——`runtime_policy.create_policy_decision_if_needed:105` 只在 `shell_denial` 命中(破坏性/联网/密钥/发布)时暂停,普通命令(pytest/git status/echo)`shell_denial=None`→continue→**任何档都不暂停**(真栈 smoke 实证)。
+- **无缺 allowlist**:后端**已是 CC 模型**(denylist deny 危险·allow 其余);ADR-0025 已修管道一刀切误挡。
+- **BFF 只 `ask_everything` 前置弹**(`legacyPermission`:reviewed_auto/auto→"allow"→`server.mjs:487` 不弹)。
+- **唯一真问题=一行前端文案 overclaim**:`permissionTiers.ts` reviewed_auto 文案"命令…仍会为你暂停"暗示所有命令暂停(实际只危险命令暂停·同其它档);`auto` 档文案已准确。**属前端会话地盘·勿撞**——留给前端会话做一行诚实化,后端无需动。
+- **不做**:后端命令 allowlist(无 friction 证据·危险命令本就该暂停·加=违收敛)。
 
 ### #4 内部质量门 block run【中低杠杆·后端】
 - delegation-brief 门(`execute_command.py:604`)——**委派模式误挡本会话已修**(§16 v1.2.26);中/高危 runtime request 仍 block(`runtime_policy.py:348-379`),中危偏 friction。
