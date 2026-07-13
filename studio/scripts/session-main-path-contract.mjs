@@ -19,6 +19,11 @@ const runtimeNarrative = readFileSync(
   path.join(studioDir, "src/features/thread/runtimeNarrative.ts"),
   "utf8",
 );
+const conversationTurn = readFileSync(
+  path.join(studioDir, "src/features/thread/ConversationTurn.tsx"),
+  "utf8",
+);
+const narrative = readFileSync(path.join(studioDir, "src/narrative.ts"), "utf8");
 
 assert.ok(
   !thread.includes("WorkflowMonitorCompact"),
@@ -29,7 +34,7 @@ assert.ok(
   "permission requests must render once in the session timeline",
 );
 assert.ok(
-  runtimeSnapshot.includes("Review changes"),
+  runtimeSnapshot.includes("查看改动") && runtimeSnapshot.includes("onOpenReview"),
   "accept-ready state must expose a read-only review action",
 );
 assert.ok(
@@ -81,6 +86,57 @@ assert.ok(
 assert.ok(
   /correctness_status/.test(runtimeNarrative),
   "verdict detection must key off telemetry.correctness_status, not transcript_kind alone",
+);
+
+// Honesty gate for the green "验证通过" badge: it must be bound to THIS turn's own verification, not
+// just the run-global latest verdict. Otherwise a turn that did no verification of its own (e.g. a
+// resumed/replayed turn whose stated goal differs from the verified work) inherits an earlier pass
+// and falsely claims the new request "verified" — the goal-swallowing dishonesty. Lock both halves:
+// the turn-scoped verdict exists and reads this turn's step events keyed off correctness_status, and
+// the badge condition requires it to agree with the run-level pass.
+assert.ok(
+  /export function turnCorrectnessVerdict\([\s\S]*?steps\.flatMap\([\s\S]*?correctness_status/.test(
+    runtimeNarrative,
+  ),
+  "turnCorrectnessVerdict must scan this turn's own step events, keyed off correctness_status",
+);
+assert.ok(
+  /verifiedPass[\s\S]*?latestCorrectnessVerdict[\s\S]*?turnCorrectnessVerdict\(steps\) === "pass"/.test(
+    conversationTurn,
+  ),
+  "the verified-pass badge must require the passing verdict to belong to this turn, not run-global only",
+);
+
+// Main-thread scaffolding cut: the loop's own bookkeeping steps (turn/iteration markers, context
+// mounts, recorded-decision observations) are DROPPED from the thread entirely, not merely un-styled.
+// buildRunNarrative must skip a set of machinery kinds so neither the live nor the completed view can
+// resurface "执行迭代 N" / "上下文关联" / "已选择权限模式". Lock the drop-set and the drop itself.
+assert.ok(
+  /MACHINERY_KINDS[\s\S]*?"turn"[\s\S]*?"context"[\s\S]*?"observation"/.test(narrative),
+  "narrative must define a machinery drop-set covering turn/context/observation",
+);
+assert.ok(
+  /if \(MACHINERY_KINDS\.has\(kind\)\) continue;/.test(narrative),
+  "buildRunNarrative must drop machinery-kind steps from the thread",
+);
+// Ceremony/notice events are filtered by STABLE STRUCTURAL MARKERS, never by localized title text:
+// the goal-accept ritual ("理解目标", phase=understand), context mounts (transcript_kind=context_status),
+// and auto-replan control-flow notices ("自动重规划已创建修复任务", transcript_kind=repair while NOT
+// failed). A genuine failure (status=failed) must still surface.
+assert.ok(
+  /=== "understand"/.test(narrative) && /=== "context_status"/.test(narrative),
+  "isInternalLoopScaffolding must drop the understand-phase ceremony and context mounts",
+);
+assert.ok(
+  /=== "repair" && event\.status !== "failed"/.test(narrative),
+  "auto-replan repair NOTICES are dropped, but a genuine failure (status=failed) is kept",
+);
+// A recorded permission/capability decision carries a job_id but is NOT a pending ask — it must fold
+// to observation (machinery), not render as a dead tool card. Only a waiting_user job ask is the
+// actionable PermissionCard. Lock the waiting_user gate so the "已选择权限模式" card can't come back.
+assert.ok(
+  /event\.job_id && event\.status === "waiting_user"\) return "tool"/.test(narrative),
+  "only a PENDING (waiting_user) job ask maps to a tool/PermissionCard; recorded decisions fold to observation",
 );
 
 console.log("session-main-path contract passed");

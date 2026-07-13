@@ -9,7 +9,11 @@ import { extractFileChangesFromSteps, aggregateFileChangeStats } from "../../fil
 import { LiveStream } from "./LiveStream";
 import { ToolCallCard } from "./ToolCallCard";
 import { TurnFinal } from "./TurnFinal";
-import { runVerificationHint, latestCorrectnessVerdict } from "./runtimeNarrative";
+import {
+  runVerificationHint,
+  latestCorrectnessVerdict,
+  turnCorrectnessVerdict,
+} from "./runtimeNarrative";
 import { cleanReasoning } from "../../narrative";
 import { SuggestedActions } from "./SuggestedActions";
 import { TurnRewindButton } from "./TurnRewindButton";
@@ -134,10 +138,6 @@ function TurnMiddle({
   // the process cards — this is the LLM's actual output on the panel, not a harness label.
   const narrationSteps = steps.filter((step) => !permIds.has(step.id) && step.kind === "narration");
   const narrationIds = new Set(narrationSteps.map((step) => step.id));
-  // Context/document association (ADR-0021 slice 3): its own visible step above the tool cards, so
-  // "what context did the agent attach" reads as real process — not buried in the folded detail.
-  const contextSteps = steps.filter((step) => !permIds.has(step.id) && step.kind === "context");
-  const contextIds = new Set(contextSteps.map((step) => step.id));
   // A pending decision ("需要你的决定") is a first-class, prominent in-context card — the run paused
   // waiting for the user. Without its own bucket it would fall through every filter and vanish,
   // making a legitimately-paused run look silently stuck. (ADR-0021)
@@ -146,7 +146,6 @@ function TurnMiddle({
   const toolSteps = steps.filter(
     (step) =>
       !permIds.has(step.id) &&
-      !contextIds.has(step.id) &&
       !narrationIds.has(step.id) &&
       (step.kind === "tool" || step.kind === "repair" || step.kind === "subagent"),
   );
@@ -162,7 +161,6 @@ function TurnMiddle({
     (step) =>
       !permIds.has(step.id) &&
       !toolIds.has(step.id) &&
-      !contextIds.has(step.id) &&
       !narrationIds.has(step.id) &&
       DETAIL_KINDS.has(step.kind),
   );
@@ -200,13 +198,6 @@ function TurnMiddle({
       {decisionSteps.length > 0 && (
         <div className="turnDecisionCards">
           {decisionSteps.map((step) => (
-            <NarrativeStep key={step.id} step={step} selected={selected} onSelect={onSelect} />
-          ))}
-        </div>
-      )}
-      {contextSteps.length > 0 && (
-        <div className="turnContextCards">
-          {contextSteps.map((step) => (
             <NarrativeStep key={step.id} step={step} selected={selected} onSelect={onSelect} />
           ))}
         </div>
@@ -517,8 +508,16 @@ export function ConversationTurn({
   // Symmetry: when the /run loop recorded a passing executable verdict, affirm it explicitly. A bare
   // "completed" with the nag merely suppressed leaves the user unsure verification even happened —
   // the positive badge closes the "completed ≠ verified" gap honestly.
+  // Honesty gate: the badge fires only when the passing verdict belongs to THIS turn's own steps, not
+  // just the run-global latest. A turn that did no verification of its own (e.g. a resumed/replayed
+  // turn whose goal differs from the verified work) must never inherit an earlier pass and claim the
+  // new request "verified". Both must agree: run recorded a pass AND it lives in this turn.
   const verifiedPass =
-    responseStep && isLast && !isRunning && latestCorrectnessVerdict(runDetail ?? null) === "pass";
+    responseStep &&
+    isLast &&
+    !isRunning &&
+    latestCorrectnessVerdict(runDetail ?? null) === "pass" &&
+    turnCorrectnessVerdict(steps) === "pass";
 
   return (
     <div

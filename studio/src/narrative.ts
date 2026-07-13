@@ -108,9 +108,6 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   // model speaking to the user — surfaced as prose, never a harness label. Must precede the phase/
   // model fallbacks so it isn't misread as a tool or thinking step.
   if (transcriptKind === "assistant_message") return "narration";
-  // Document/context association (ADR-0021 slice 3): what the loop mounted for this task (project
-  // guidance, goal/task brief, prior evidence). Its own visible process step, not folded as noise.
-  if (transcriptKind === "context_status") return "context";
   if (transcriptKind === "plan" || transcriptKind === "todo_update") return "plan";
   // tool_use/tool_result classify as a tool card only when backed by a real tool event; otherwise
   // they are loop bookkeeping (iteration/progress markers) and fold in as a quiet turn step.
@@ -136,13 +133,13 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
     transcriptKind === "decision_request" ||
     transcriptKind === "ask"
   ) {
-    // A job-based permission_request (has job_id) is handled by PermissionCard (allow/deny). A
-    // waiting_user decision WITHOUT a job_id is the loop pausing for your call (e.g. "approve this
-    // run_command?") — it renders as a prominent, in-context "需要你的决定" card instead of a dead,
-    // unactionable tool card that made a legitimately-paused run look stuck. Resolved via the bottom
-    // next-action bar (RuntimeSnapshot DecisionCard). Only a real ask (waiting_user) is a decision;
-    // an already-recorded/non-waiting one stays quiet bookkeeping.
-    if (event.job_id) return "tool";
+    // Only a PENDING job-based ask (waiting_user + job_id) is the actionable PermissionCard
+    // (allow/deny). A COMPLETED permission/capability decision ALSO carries a job_id but is just a
+    // recorded bookkeeping row ("已选择权限模式", "已记录能力决策") — it must fall through to
+    // observation (machinery, dropped from the thread), not render as a dead "tool" card wedged
+    // between the real tools. A waiting_user decision WITHOUT a job_id is the loop pausing for your
+    // call — a prominent in-context "需要你的决定" card, resolved via the bottom next-action bar.
+    if (event.job_id && event.status === "waiting_user") return "tool";
     if (event.status === "waiting_user") return "decision";
     return "observation";
   }
@@ -183,7 +180,6 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
 
 function narrativeLabel(kind: NarrativeStep["kind"], event: StudioEvent): string {
   if (kind === "narration") return "Asteria";
-  if (kind === "context") return "上下文关联";
   if (kind === "observation") return "观察";
   if (kind === "turn") return "Agent 步骤";
   if (kind === "goal") return "用户消息";
@@ -274,22 +270,41 @@ function countRefs(events: StudioEvent[], key: "evidence_refs" | "artifact_refs"
 }
 
 // The main conversation shows only the user's real input and the agent-loop's real output. The loop
-// also emits internal scaffolding to drive ITSELF — "next step" routing hints (phase "next", e.g.
-// "Review recent failures / Run /debug or repair workflow") and bare final-report pointers with no
-// prose. Those are machinery, not something the agent said to the user, so they never belong in the
-// thread (they remain in the Inspector). Filtered by stable markers, not by matching their text.
+// also emits internal scaffolding to drive ITSELF — routing hints, ceremony rows, control-flow
+// notices. Those are machinery, not something the agent said to the user, so they never belong in the
+// thread (they remain in the Inspector, which reads raw events). Filtered by STABLE STRUCTURAL MARKERS
+// (phase / transcript_kind / status), never by matching localized title text.
 function isInternalLoopScaffolding(event: StudioEvent): boolean {
+  // "next step" routing hints (e.g. "Review recent failures / Run /debug or repair workflow").
   if (String(event.phase ?? "") === "next") return true;
+  // Goal-accept ceremony ("理解目标" — "Runtime accepted the user goal and started a planning run").
+  // Pure ritual: the user's own message already IS the goal. Marker: the plan run's understand phase.
+  if (String(event.phase ?? "") === "understand") return true;
+  const transcriptKind = String(event.transcript_kind ?? "");
+  // Context-mount bookkeeping ("上下文关联" — what the loop attached for the task). Machinery, not
+  // conversation; the raw mount stays in context_mounts.jsonl / the Inspector.
+  if (transcriptKind === "context_status") return true;
+  // Loop control-flow NOTICES ("自动重规划已创建修复任务", "已创建修复任务"): the runtime telling
+  // ITSELF it spun up a repair task. The actual repair surfaces as its tool calls + narration; this
+  // notice is bookkeeping. A GENUINE failure (status="failed") is kept and shown as a real problem.
+  if (transcriptKind === "repair" && event.status !== "failed") return true;
   const eventType = String(event.runtime_event_type ?? "");
   if (eventType === "final_report" && !String(event.content_delta ?? "").trim()) return true;
   return false;
 }
+
+// Step kinds that are pure loop bookkeeping — the agent driving itself, never something it said to the
+// user: turn/iteration markers ("执行迭代 N", "Agent 步骤"), context association, and recorded-decision
+// observations ("已选择权限模式", "已记录能力决策", "观察"). They are dropped from the main thread
+// entirely (both the live and the completed views) and remain only in the Inspector's raw evidence.
+const MACHINERY_KINDS = new Set<NarrativeStep["kind"]>(["turn", "context", "observation"]);
 
 export function buildRunNarrative(events: StudioEvent[]): RunNarrative {
   const steps: NarrativeStep[] = [];
   for (const event of events) {
     if (isInternalLoopScaffolding(event)) continue;
     const kind = narrativeKind(event);
+    if (MACHINERY_KINDS.has(kind)) continue;
     const label = narrativeLabel(kind, event);
     const previous = steps.at(-1);
     if (previous && previous.kind === kind && shouldGroup(previous, event)) {
@@ -409,13 +424,22 @@ function matchBrace(text: string, open: number): number {
   for (let i = open; i < text.length; i += 1) {
     const ch = text[i];
     if (inString) {
-      if (ch === "\\") { i += 1; continue; }
+      if (ch === "\\") {
+        i += 1;
+        continue;
+      }
       if (ch === '"') inString = false;
       continue;
     }
-    if (ch === '"') { inString = true; continue; }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
     if (ch === "{") depth += 1;
-    else if (ch === "}") { depth -= 1; if (depth === 0) return i + 1; }
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return i + 1;
+    }
   }
   return -1;
 }
