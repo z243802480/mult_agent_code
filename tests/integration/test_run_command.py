@@ -1052,6 +1052,9 @@ class FakeQualityRevisionExecuteClient:
 
 
 def test_run_command_executes_then_stops_ready_for_explicit_review(tmp_path: Path) -> None:
+    # ask_everything keeps run/review/accept explicit (auto-finalize off), so the run stops
+    # "ready for explicit review" — auto/reviewed_auto instead auto-finalize a verified run
+    # (see test_run_command_auto_finalizes_verified_run_under_reviewed_auto).
     result = RunCommand(
         tmp_path,
         "create a complete module",
@@ -1059,6 +1062,7 @@ def test_run_command_executes_then_stops_ready_for_explicit_review(tmp_path: Pat
         execute_model_client=FakeExecuteClient(),
         review_model_client=FakeReviewClient(),
         enable_research=False,
+        permission_level="ask_everything",
     ).run()
 
     assert result.status == "completed"
@@ -1083,6 +1087,59 @@ def test_run_command_executes_then_stops_ready_for_explicit_review(tmp_path: Pat
     assert any(artifact["path"] == "complete_module.py" for artifact in artifacts)
     assert "task_execution_evidence.jsonl" in final_report
     assert "Run `asteria /acceptance --suite core` before release." in final_report
+
+
+def test_run_command_auto_finalizes_verified_run_under_reviewed_auto(tmp_path: Path) -> None:
+    # #2 correctness-gated auto-finalize: under reviewed_auto (the run default) a cleanly completed
+    # run whose executable verification passed marks itself ACCEPTED — no separate `asteria accept`.
+    # Crucially it does NOT invoke a model review (no eval_report.json / review_report.md): the
+    # original DecisionPoint's concern (no hardcoded review model call in the run loop) is preserved;
+    # the real test exit codes (ADR-0018) are the quality signal.
+    result = RunCommand(
+        tmp_path,
+        "create a complete module",
+        plan_model_client=FakePlanClient(),
+        execute_model_client=FakeExecuteClient(),
+        review_model_client=FakeReviewClient(),
+        enable_research=False,
+        permission_level="reviewed_auto",
+    ).run()
+
+    assert result.status == "completed"
+    assert result.current_phase == "ACCEPTED"
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
+    assert not (run_dir / "eval_report.json").exists()
+    assert not (run_dir / "review_report.md").exists()
+    model_calls = [
+        json.loads(line)
+        for line in (run_dir / "model_calls.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert not any(call["purpose"] == "review" for call in model_calls)
+    final_report = (run_dir / "final_report.md").read_text(encoding="utf-8")
+    assert "Completion: accepted" in final_report
+
+
+def test_run_command_does_not_auto_finalize_unverified_run(tmp_path: Path) -> None:
+    # Guardrail: a completed-but-UNVERIFIED run (no executable verification ran) is NOT auto-finalized
+    # even under reviewed_auto — correctness is unproven, so it is left for the human, not silently
+    # marked accepted.
+    result = RunCommand(
+        tmp_path,
+        "create a complete module",
+        plan_model_client=FakeResearchPlanClient(),
+        execute_model_client=FakeResearchExecuteClient(),
+        review_model_client=FakeReviewClient(),
+        enable_research=False,
+        permission_level="reviewed_auto",
+    ).run()
+
+    assert result.status == "completed"
+    assert result.current_phase != "ACCEPTED"
+    final_report = (tmp_path / ".asteria" / "runs" / result.run_id / "final_report.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Completion: implemented_needs_review" in final_report
+    assert "Completion: accepted" not in final_report
 
 
 def test_final_report_includes_provider_matrix_guidance(tmp_path: Path) -> None:

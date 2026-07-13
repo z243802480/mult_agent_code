@@ -24,7 +24,7 @@
 - 脊梁**任务内**工具/命令失败仍会作 observation 回灌自纠(`max_rounds+4` 保险丝)——所以自纠得了的失败不 block;但模型放弃/真 blocked 时=环关=停下问人。
 - **修向**:出厂 `reviewed_auto`/`auto` 档**即代表"设一次就自动开发"**——选这两档时三环默认开(预算/recovery-cycle/lineage-cap 保险丝原样保留作兜底)。**这是自主性 DecisionPoint,须用户拍板**(承 `freeze-lifted-autonomous-loop`:环已造好·冻结解除·就差翻默认这一下)。**这一刀直接消掉步 2 的强制 resume,是"设权限→自动进行"真正兑现的关键。**
 
-### #2 accept 收尾仪式【高杠杆·后端+前端协同】
+### #2 accept 收尾仪式【高杠杆·后端·✅ 已修 2026-07-13·§16 v1.2.28·知情推翻 v1.2.15 DecisionPoint】
 - 直接写是默认(`execute_command.py:739`)、晋升默认自动批(`promotion.manual_approval_default:false`)——都已达标;**但 `accept` 是独立强制命令**(`accept_command.py:122-215`:跑 review·结算·翻 completed),不跑 run 停在未 finalize。
 - Studio 侧把「标记完成」摆成持久"下一步"诱导多点一下(`RuntimeSnapshot.tsx:311-330`),而改动早落盘(`:261-265`)。
 - **修向**:`auto`/`reviewed_auto` 下 review 干净即**自动 accept**;Studio「完成」变被动状态不是必点按钮。
@@ -51,7 +51,9 @@
 ## 第一刀 ✅ 已落地(2026-07-13·§16 v1.2.27)
 把权限档与自主环**绑定成预设**:`auto`/`reviewed_auto` → 三环默认开(保险丝原样兜底),消掉强制 `resume`;`ask_everything` 保持现状。逐字节可回退(仍是 flag·只是默认随档走)。用户已拍板「绑定预设」并落地:`permission_policy.autonomy_rings_default_on` + 三处判定随档 + 删模板 `auto_repair:false`;1216 passed·brief `B-autonomy-rings-bind-permission-mode.md`。
 
+## #2 ✅ 已落地(2026-07-13·§16 v1.2.28·正确性门自动收尾)
+知情推翻 2026-07-02 "run 停 ready_for_review·不 auto-accept" DecisionPoint(命名测锁定)。auto/reviewed_auto 下干净 `completed` + 真测试退出码 pass(ADR-0018·**非模型 review**)+ 无 pending 风险 promotion → 自动翻 ACCEPTED,消掉 accept 点击 + 前端 nudge 从源头消失。未验证/失败/blocked/pending 风险留给人。ask_everything 保留显式 run→review→accept。brief `B-correctness-gated-auto-finalize.md`。
+
 ## 下一刀候选(承本图)
-- **#2 auto-accept 收尾**(后端+前端):`auto`/`reviewed_auto` 下 review 干净即自动 accept,Studio「标记完成」变被动状态。
 - **#3 命令审批 allowlist / 文案核实**(需先查 `lib/permission-level.mjs` + server 审批路径):前端说"哪档都暂停"vs 后端 auto 只挡硬门,定改文案还是加 CC 式命令 allowlist。
 - **#5 运行中注意力税**(前端会话地盘·勿撞)。

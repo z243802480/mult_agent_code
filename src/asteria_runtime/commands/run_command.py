@@ -379,6 +379,11 @@ class RunCommand:
             RunStepSummary("compact", "completed", f"Snapshot: {compact.snapshot_path.name}.")
         )
 
+        # #2 set-and-forget: a cleanly verified run finalizes itself (no separate `asteria accept`,
+        # no model review) BEFORE the final report so the report reflects the accepted state. No-op
+        # for blocked/paused/unverified runs, pending promotions, or ask_everything.
+        self._maybe_auto_finalize(run_id, steps)
+
         review_status = self._latest_review_status(run_id)
         final_report_path = self._write_final_report(run_id, review_status, steps)
         run_status = self._run_status(run_id)
@@ -1508,6 +1513,75 @@ class RunCommand:
         return bool(
             agent_loop.get(
                 "auto_replan_goal", autonomy_rings_default_on(self.permission_level)
+            )
+        )
+
+    def _auto_accept_enabled(self) -> bool:
+        # Set-and-forget finalize, bound to the permission mode like the autonomy rings:
+        # auto/reviewed_auto → on, ask_everything → off; explicit agent_loop.auto_accept overrides
+        # (byte-reversible). Reverses the 2026-07-02 "run stops for explicit review" DecisionPoint
+        # (§16 v1.2.15) with the user's informed consent (2026-07-13) — see _maybe_auto_finalize.
+        policy = self._policy()
+        raw_agent_loop = policy.get("agent_loop")
+        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
+        return bool(
+            agent_loop.get("auto_accept", autonomy_rings_default_on(self.permission_level))
+        )
+
+    def _pending_candidate_promotions(self, run_dir: Path) -> list[dict]:
+        # Mirror AcceptCommand._pending_promotions: pending + blocked candidate promotions (only the
+        # opt-in isolated-parallel-write path queues these; direct-write default has none).
+        summary = CandidatePromotionQueue(self.validator).summary(run_dir)
+        return list(summary.get("pending") or []) + list(summary.get("blocked") or [])
+
+    def _maybe_auto_finalize(self, run_id: str, steps: list[RunStepSummary]) -> None:
+        """#2 correctness-gated auto-finalize (set-and-forget). Reverses the 2026-07-02 "run stops
+        ready_for_review, no auto-accept" DecisionPoint (§16 v1.2.15) — user-authorized 2026-07-13.
+
+        Under auto/reviewed_auto, a cleanly completed run whose **real executable verification passed**
+        (run_tests/run_command exit codes via ``CorrectnessEvalCommand.score_signal`` — the ADR-0018
+        quality signal, NOT a model review) and which has no pending candidate promotions marks itself
+        ACCEPTED, so the operator does not have to run a separate ``asteria accept`` (mainstream
+        CC/Codex have no accept step — changes just land). **Deliberately does NOT invoke ReviewCommand**
+        — the original DecisionPoint's real concern (don't hardcode a review model call into the run
+        loop; CC uses hooks) is preserved; only the accept-finalize bookkeeping is automated.
+
+        Left for the human (genuine decision points): blocked/paused runs; unverified runs (no
+        executable verification ran → correctness unproven); failed verification; pending risky
+        promotions. ``ask_everything`` keeps the explicit run→review→accept workflow; an explicit
+        ``agent_loop.auto_accept`` flag overrides. Best-effort — never breaks a completed run.
+        """
+        if self._run_status(run_id) != "completed":
+            return
+        if not self._auto_accept_enabled():
+            return
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        try:
+            from asteria_runtime.commands.correctness_eval_command import CorrectnessEvalCommand
+
+            signal = CorrectnessEvalCommand(self.root).score_signal(run_dir)
+        except Exception:  # noqa: BLE001 - verification read must never abort a run
+            return
+        if not signal or str(signal.get("status")) != "pass":
+            return  # unverified / not a clean pass → leave finalize for the human
+        if self._pending_candidate_promotions(run_dir):
+            return  # risky candidate promotions await human approval
+        try:
+            run_store = RunStore(self.root / ".asteria", self.validator)
+            run = run_store.load_run(run_id)
+            run["status"] = "completed"
+            run["current_phase"] = "ACCEPTED"
+            run["ended_at"] = now_iso()
+            run["summary"] = (
+                "Auto-accepted (set-and-forget): executable verification passed; changes finalized."
+            )
+            run_store.update_run(run)
+        except Exception as exc:  # noqa: BLE001 - finalize must never break a completed run
+            steps.append(RunStepSummary("accept", "skipped", f"Auto-finalize skipped: {exc}"))
+            return
+        steps.append(
+            RunStepSummary(
+                "accept", "completed", "Auto-accepted: executable verification passed; finalized."
             )
         )
 

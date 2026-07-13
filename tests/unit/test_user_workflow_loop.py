@@ -424,6 +424,7 @@ def test_goal_run_result_surfaces_user_workflow_state(tmp_path: Path) -> None:
         run_id=run_id,
         max_iterations=0,
         enable_research=False,
+        permission_level="ask_everything",  # explicit workflow: assert the ready_for_review surface
     ).continue_run(
         run_id,
         steps=[RunStepSummary("plan", "completed", "Existing completed plan.")],
@@ -569,7 +570,12 @@ def test_goal_run_result_surfaces_user_workflow_state(tmp_path: Path) -> None:
     assert "Loop steps:" in text
 
 
-def test_run_does_not_auto_review_or_accept_in_auto_mode(tmp_path: Path) -> None:
+def test_run_auto_finalizes_verified_run_in_auto_mode_without_model_review(tmp_path: Path) -> None:
+    # #2 (2026-07-13, user-authorized reversal of the 2026-07-02 "run stops ready_for_review"
+    # DecisionPoint): under auto/reviewed_auto a cleanly VERIFIED completed run auto-finalizes
+    # (workflow_state=accepted) so the operator does not run a separate `asteria accept`. The original
+    # DecisionPoint's real concern is preserved: NO review model is invoked (correctness-gated via the
+    # already-recorded run_tests/run_command exit codes, not a review model call).
     InitCommand(tmp_path).run()
     run_id = _create_minimal_completed_run(tmp_path)
 
@@ -583,13 +589,16 @@ def test_run_does_not_auto_review_or_accept_in_auto_mode(tmp_path: Path) -> None
     ).continue_run(run_id)
 
     assert result.status == "completed"
-    assert result.workflow_state == "ready_for_review"
-    assert result.current_phase == "DONE"
-    assert result.recommended_next_command == "review"
-    assert not any(step.name in {"goal-policy", "review", "accept"} for step in result.steps)
+    assert result.workflow_state == "accepted"
+    assert result.current_phase == "ACCEPTED"
+    assert any(step.name == "accept" for step in result.steps)
+    # No model review ran — the invariant "run makes no review model call" is preserved.
+    assert not any(step.name in {"goal-policy", "review"} for step in result.steps)
 
 
-def test_run_stops_for_explicit_review_in_balanced_mode(tmp_path: Path) -> None:
+def test_run_stops_for_explicit_review_in_ask_everything_mode(tmp_path: Path) -> None:
+    # The explicit run→review→accept workflow is preserved under ask_everything (auto-finalize off):
+    # the run stops ready_for_review, recommends `review`, and auto-accepts nothing.
     InitCommand(tmp_path).run()
     run_id = _create_minimal_completed_run(tmp_path)
 
@@ -599,7 +608,7 @@ def test_run_stops_for_explicit_review_in_balanced_mode(tmp_path: Path) -> None:
         max_iterations=1,
         enable_research=False,
         review_model_client=EvidenceAwareReviewModel(),
-        permission_level="balanced",
+        permission_level="ask_everything",
     ).continue_run(run_id)
 
     assert result.workflow_state == "ready_for_review"
@@ -618,7 +627,9 @@ def test_run_does_not_invoke_review_model_for_repair_policy(tmp_path: Path) -> N
         max_iterations=1,
         enable_research=False,
         review_model_client=EvidenceAwareReviewModel(status="partial"),
-        permission_level="auto",
+        # ask_everything keeps the explicit run→review workflow (no auto-finalize), so this test's
+        # subject — the run never invokes the review MODEL on its own — is exercised in its stop state.
+        permission_level="ask_everything",
     ).continue_run(run_id)
 
     assert result.status == "completed"
@@ -637,7 +648,7 @@ def test_run_does_not_route_from_review_plan_gap(tmp_path: Path) -> None:
         max_iterations=1,
         enable_research=False,
         review_model_client=ClassifiedReviewModel(kind="plan_gap"),
-        permission_level="auto",
+        permission_level="ask_everything",  # explicit workflow: no auto-finalize (mode-independent subject)
     ).continue_run(run_id)
 
     assert result.recommended_next_command == "review"
@@ -654,7 +665,7 @@ def test_run_does_not_create_decision_from_review_follow_up(tmp_path: Path) -> N
         max_iterations=1,
         enable_research=False,
         review_model_client=ClassifiedReviewModel(kind="decision"),
-        permission_level="auto",
+        permission_level="ask_everything",  # explicit workflow: no auto-finalize (mode-independent subject)
     ).continue_run(run_id)
 
     assert result.recommended_next_command == "review"
@@ -696,6 +707,7 @@ def test_status_and_sessions_context_expose_run_loop_summary(tmp_path: Path) -> 
         run_id=run_id,
         max_iterations=0,
         enable_research=False,
+        permission_level="ask_everything",  # explicit workflow: assert the ready_for_review surface
     ).continue_run(run_id)
     assert result.run_loop_summary_path is not None
 
@@ -761,6 +773,7 @@ def test_chat_safely_summarizes_current_session_without_execution(tmp_path: Path
         run_id=run_id,
         max_iterations=0,
         enable_research=False,
+        permission_level="ask_everything",  # explicit workflow: no auto-finalize before chat summary
     ).continue_run(run_id)
     before = {
         path.relative_to(tmp_path).as_posix(): path.read_text(encoding="utf-8")
@@ -961,6 +974,7 @@ def test_goal_run_result_uses_explicit_session_status_when_not_current(tmp_path:
         run_id=target_run_id,
         max_iterations=0,
         enable_research=False,
+        permission_level="ask_everything",  # explicit workflow: assert the ready_for_review surface
     ).continue_run(
         target_run_id,
         steps=[RunStepSummary("plan", "completed", "Existing completed plan.")],
