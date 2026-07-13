@@ -65,9 +65,20 @@ export function LiveStream({
       .filter((text) => text && !THINKING_PLACEHOLDERS.has(text))
       .join("\n\n"),
   );
+  // A pending job-based permission ask classifies as kind "tool" (it IS actionable), but it renders as
+  // its own PermissionCard (below) — it must NOT also render as a ToolCallCard, which would leak the
+  // raw runtime command it carries ("python -m asteria_runtime run …") into the live stream. Exclude
+  // those steps from the tool cards, mirroring the completed-turn TurnMiddle (permIds) exclusion.
+  const isPendingPermissionStep = (step: NarrativeStepType) =>
+    step.events.some(
+      (event) =>
+        event.type === "permission_request" && event.status === "waiting_user" && event.job_id,
+    );
   const toolSteps = dedupeAdjacentToolSteps(
     steps.filter(
-      (step) => step.kind === "tool" || step.kind === "repair" || step.kind === "subagent",
+      (step) =>
+        !isPendingPermissionStep(step) &&
+        (step.kind === "tool" || step.kind === "repair" || step.kind === "subagent"),
     ),
   );
   const fileChanges = extractFileChangesFromSteps(steps);
