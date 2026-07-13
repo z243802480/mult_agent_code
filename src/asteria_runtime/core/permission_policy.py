@@ -20,6 +20,29 @@ def normalize_permission_mode(permission_level: str) -> str:
         raise ValueError(f"Unknown permission level {permission_level!r}; expected one of {allowed}") from exc
 
 
+def autonomy_rings_default_on(permission_level: str | None) -> bool:
+    """Set-and-forget default: bind the autonomy rings (auto_repair / auto_replan /
+    auto_replan_goal) to the permission mode so "pick a mode and let it develop" is real.
+
+    - ``auto`` / ``reviewed_auto`` → rings default ON: a task failure self-repairs / re-plans
+      within the existing bounded fuses (repair/replan budgets, recovery-cycle limit, lineage cap,
+      budget hard-stop) instead of stopping the run to ask the human to type ``resume``. High-risk
+      shell / deploy / push still pause under the always-on hard guards — the rings govern *failure
+      recovery*, not permission. (User-authorized default flip, 2026-07-13.)
+    - ``ask_everything`` → rings default OFF: keep the explicit step-by-step supervised behaviour.
+    - unknown / missing mode → treat as ``reviewed_auto`` (the run default) → ON.
+
+    An explicit ``agent_loop.<ring>`` flag in policy still overrides this default (byte-reversible).
+    """
+    if permission_level is None:
+        return True
+    try:
+        mode = normalize_permission_mode(str(permission_level))
+    except ValueError:
+        return True
+    return mode != "ask_everything"
+
+
 def decision_granularity_for(permission_level: str) -> str:
     return {
         "ask_everything": "manual",

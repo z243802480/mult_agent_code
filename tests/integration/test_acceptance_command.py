@@ -594,7 +594,9 @@ def test_acceptance_failure_can_be_promoted_and_run_in_current_session(
     assert result.promoted_tasks == [promoted_task["task_id"]]
     assert result.promoted_run_text is not None
     assert "Run:" in result.promoted_run_text
-    assert promoted_task["status"] in {"done", "blocked"}
+    # set-and-forget 默认(2026-07-13):promoted 修复运行走 reviewed_auto 默认→自主环开,blocked 的
+    # 修复任务可能被 goal-replan 环**自动取代**(discarded→合成修复任务续跑),这也是合法终态。
+    assert promoted_task["status"] in {"done", "blocked", "discarded"}
     if promoted_task["status"] == "blocked":
         # 立真身下被晋升的修复任务可能停在**可 resume 的会话边界**(而非 FSM 的人审 decision):两者
         # 都是可续的阻塞态,promoted_run_text 给出下一步。接受任一,证明晋升任务确实在会话内跑过。

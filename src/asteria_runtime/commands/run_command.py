@@ -27,6 +27,7 @@ from asteria_runtime.core.main_path import (
 )
 from asteria_runtime.core.execution_profile import execution_profile_from_run_config
 from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.core.permission_policy import autonomy_rings_default_on
 from asteria_runtime.core.run_config import load_run_config
 from asteria_runtime.core.run_recap import author_run_recap
 from asteria_runtime.models.factory import create_recap_client
@@ -1497,12 +1498,18 @@ class RunCommand:
         return bool(agent_loop.get("task_plan_quality_gate_blocks", False))
 
     def _auto_goal_replan_enabled(self) -> bool:
-        # ADR-0017 third ring: auto-invoke goal-level ReplanCommand at the block boundary. Default
-        # off — byte-identical to today's human-gated `replan` when disabled.
+        # ADR-0017 third ring: auto-invoke goal-level ReplanCommand at the block boundary.
+        # Default bound to the permission mode (set-and-forget): auto/reviewed_auto → on so a
+        # blocked task auto-replans within lineage cap instead of stopping to ask for `resume`;
+        # ask_everything → off. Explicit agent_loop.auto_replan_goal overrides. (Flip 2026-07-13.)
         policy = self._policy()
         raw_agent_loop = policy.get("agent_loop")
         agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
-        return bool(agent_loop.get("auto_replan_goal", False))
+        return bool(
+            agent_loop.get(
+                "auto_replan_goal", autonomy_rings_default_on(self.permission_level)
+            )
+        )
 
     def _auto_goal_replan(
         self,

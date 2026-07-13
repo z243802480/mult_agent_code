@@ -51,6 +51,7 @@ from asteria_runtime.core.plugin_manifest import PluginManifestLoader
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
 from asteria_runtime.core.run_state_finalizer import RunStateFinalizer
+from asteria_runtime.core.permission_policy import autonomy_rings_default_on
 from asteria_runtime.core.run_config import effective_policy_for_run
 from asteria_runtime.core.runtime_profile_builder import RuntimeProfileBuilder
 from asteria_runtime.core.runtime_context import RuntimeContext
@@ -425,9 +426,14 @@ class ExecuteCommand:
         return max(1, min(value, 8))
 
     def _auto_repair_enabled(self, policy: dict) -> bool:
+        # Default bound to the permission mode (set-and-forget): auto/reviewed_auto → on so a
+        # failed task self-repairs within budget instead of stopping to ask; ask_everything → off.
+        # An explicit agent_loop.auto_repair flag still overrides. (User-authorized flip 2026-07-13.)
         raw_agent_loop = policy.get("agent_loop")
         agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
-        return bool(agent_loop.get("auto_repair", False))
+        return bool(
+            agent_loop.get("auto_repair", autonomy_rings_default_on(policy.get("permission_mode")))
+        )
 
     def _max_repair_attempts_per_task(self, policy: dict) -> int:
         budgets = resolve_budget_limits(policy)
@@ -441,9 +447,13 @@ class ExecuteCommand:
         # S79 second ring: close the task-level replan loop (model re-approaches THIS task within
         # the same goal scope). Default off — behaviour is byte-identical to today when disabled.
         # Goal-level replan (ReplanCommand: new-task synthesis / lineage) stays human-gated.
+        # Default bound to the permission mode (set-and-forget): auto/reviewed_auto → on,
+        # ask_everything → off; explicit agent_loop.auto_replan overrides. (Flip 2026-07-13.)
         raw_agent_loop = policy.get("agent_loop")
         agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
-        return bool(agent_loop.get("auto_replan", False))
+        return bool(
+            agent_loop.get("auto_replan", autonomy_rings_default_on(policy.get("permission_mode")))
+        )
 
     def _max_replans_per_task(self, policy: dict) -> int:
         budgets = resolve_budget_limits(policy)

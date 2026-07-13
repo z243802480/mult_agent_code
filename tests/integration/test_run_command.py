@@ -1594,6 +1594,8 @@ def test_run_command_without_goal_continues_current_session(tmp_path: Path) -> N
 
 
 def test_run_command_stops_blocked_without_invoking_debug(tmp_path: Path) -> None:
+    # Opt-out path: ask_everything keeps the autonomy rings OFF (set-and-forget default binds them
+    # ON for reviewed_auto/auto since 2026-07-13), so a blocked task stops for the human here.
     result = RunCommand(
         tmp_path,
         "create a complete module",
@@ -1602,6 +1604,7 @@ def test_run_command_stops_blocked_without_invoking_debug(tmp_path: Path) -> Non
         debug_model_client=FakeDebugClient(),
         review_model_client=FakeReviewClient(),
         enable_research=False,
+        permission_level="ask_everything",
     ).run()
 
     assert result.status == "blocked"
@@ -1627,12 +1630,39 @@ def _patch_policy(tmp_path: Path, mutate) -> None:
     policy_path.write_text(json.dumps(policy), encoding="utf-8")
 
 
-def test_auto_goal_replan_enabled_reads_policy_flag(tmp_path: Path) -> None:
+def test_auto_goal_replan_enabled_binds_to_permission_mode(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
-    command = RunCommand(tmp_path, "create a repairable module")
-    assert command._auto_goal_replan_enabled() is False  # ADR-0017 default off
-    _patch_policy(tmp_path, lambda p: p.setdefault("agent_loop", {}).__setitem__("auto_replan_goal", True))
-    assert command._auto_goal_replan_enabled() is True
+    # Set-and-forget default (2026-07-13): reviewed_auto/auto bind the goal-replan ring ON;
+    # ask_everything keeps it off. Explicit agent_loop.auto_replan_goal still overrides either way.
+    assert RunCommand(tmp_path, "g", permission_level="reviewed_auto")._auto_goal_replan_enabled() is True
+    assert RunCommand(tmp_path, "g", permission_level="auto")._auto_goal_replan_enabled() is True
+    assert RunCommand(tmp_path, "g", permission_level="ask_everything")._auto_goal_replan_enabled() is False
+    # Explicit False overrides the mode-on default (byte-reversible opt-out).
+    _patch_policy(tmp_path, lambda p: p.setdefault("agent_loop", {}).__setitem__("auto_replan_goal", False))
+    assert RunCommand(tmp_path, "g", permission_level="auto")._auto_goal_replan_enabled() is False
+
+
+def test_run_command_auto_replans_blocked_task_by_default_under_reviewed_auto(tmp_path: Path) -> None:
+    # Set-and-forget default: under reviewed_auto (the `run` default) a blocked task auto-replans
+    # within lineage cap instead of stopping the run to ask the human for `resume` — the productivity
+    # unlock. Same broken scenario as test_run_command_does_not_replan_after_blocked_execution, but
+    # with the ring ON by default (no explicit flag, no ask_everything opt-out).
+    result = RunCommand(
+        tmp_path,
+        "create a complete module",
+        max_iterations=3,
+        plan_model_client=FakePlanClient(),
+        execute_model_client=FakeReplanExecuteClient(),
+        debug_model_client=FakeFailingDebugClient(),
+        review_model_client=FakeReviewClient(),
+        enable_research=False,
+        force_harness=True,
+        permission_level="reviewed_auto",
+    ).run()
+
+    # The goal-replan ring fired automatically (no forced human `resume`).
+    final_report = result.final_report_path.read_text(encoding="utf-8")
+    assert "replan: completed" in final_report
 
 
 def test_auto_goal_replan_creates_repair_task_and_continues(tmp_path: Path) -> None:
@@ -1757,6 +1787,9 @@ def test_run_command_does_not_debug_provider_transient_blocker(tmp_path: Path) -
 
 
 def test_run_command_does_not_replan_after_blocked_execution(tmp_path: Path) -> None:
+    # Opt-out path (ask_everything → rings off): the task blocks and the run stops without an
+    # auto goal-replan. Under the default reviewed_auto/auto the ring would instead auto-recover
+    # (covered by test_run_command_auto_replans_blocked_task_by_default_under_reviewed_auto).
     result = RunCommand(
         tmp_path,
         "create a complete module",
@@ -1767,6 +1800,7 @@ def test_run_command_does_not_replan_after_blocked_execution(tmp_path: Path) -> 
         review_model_client=FakeReviewClient(),
         enable_research=False,
         force_harness=True,
+        permission_level="ask_everything",
     ).run()
 
     assert result.status == "blocked"
