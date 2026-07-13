@@ -37,6 +37,7 @@ function TurnMiddle({
   onTurnDiffSelect,
   onAggregateDiffClick,
   compactDiff,
+  showToolOutput = true,
   excludeFilePaths,
 }: {
   steps: NarrativeStepType[];
@@ -52,6 +53,11 @@ function TurnMiddle({
   onTurnDiffSelect?: (turnIndex: number) => void;
   onAggregateDiffClick?: (turnIndex: number) => void;
   compactDiff?: boolean;
+  // Show the tool cards' verbose output. Default true; the thread passes ``isLast`` so completed
+  // HISTORY turns render compact tool cards (action label only) — the running view stays focused on
+  // the current step, old steps don't re-show their output (low-burden loop progress). The full
+  // output is always in the Inspector; the last/active turn keeps it inline.
+  showToolOutput?: boolean;
   excludeFilePaths?: Set<string>;
 }) {
   const hasPendingPermission = steps.some((s) =>
@@ -208,7 +214,7 @@ function TurnMiddle({
       {toolSteps.length > 0 && (
         <div className="turnToolCards">
           {toolSteps.map((step) => (
-            <ToolCallCard key={step.id} step={step} showOutput={!compactDiff} />
+            <ToolCallCard key={step.id} step={step} showOutput={showToolOutput && !compactDiff} />
           ))}
         </div>
       )}
@@ -584,6 +590,7 @@ export function ConversationTurn({
               onTurnDiffSelect={onTurnDiffSelect}
               onAggregateDiffClick={onAggregateDiffClick}
               compactDiff={compactDiff}
+              showToolOutput={isLast}
               excludeFilePaths={excludeFilePaths}
             />
           )}
