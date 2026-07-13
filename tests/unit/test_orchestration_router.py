@@ -6,6 +6,7 @@ from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.core.orchestration_router import resolve_orchestration_route
 from asteria_runtime.core.runtime_orchestration_catalog import (
+    WorkspaceOrchestrationState,
     build_runtime_orchestration_catalog,
     load_workspace_orchestration_state,
 )
@@ -68,6 +69,42 @@ def test_warm_workspace_prefers_session_continue_capability(tmp_path: Path) -> N
     continue_cap = catalog.get("session_continue_execute")
     assert continue_cap is not None
     assert continue_cap.available is True
+
+
+def test_ready_for_review_run_opens_new_cold_goal_not_resume(tmp_path: Path) -> None:
+    # Regression (warm-session goal-swallowing): a run that finished its loop and is waiting for the
+    # human to review must NOT count as in-progress. Otherwise cold_goal_execute is blocked and the
+    # model router's only execution path is resume_run — which folds a brand-new goal into the stale
+    # run and replays its result. A new top-level goal must be able to start fresh.
+    validator = SchemaValidator(SCHEMA_DIR)
+    awaiting_review = WorkspaceOrchestrationState(
+        initialized=True,
+        current_run_id="run-review",
+        run_status="running",
+        current_phase="EXECUTE",
+        workflow_state="ready_for_review",
+        session_continue_eligible=False,
+        can_review=True,
+    )
+    catalog = build_runtime_orchestration_catalog(tmp_path, validator=validator, state=awaiting_review)
+    cold = catalog.get("cold_goal_execute")
+    resume = catalog.get("resume_run")
+    assert cold is not None and cold.available is True
+    assert resume is not None and resume.available is False
+
+    # Boundary: a genuinely running run that is NOT awaiting review is still resumable, not cold.
+    still_running = WorkspaceOrchestrationState(
+        initialized=True,
+        current_run_id="run-live",
+        run_status="running",
+        current_phase="EXECUTE",
+        workflow_state="executing",
+        session_continue_eligible=False,
+        can_review=False,
+    )
+    live_catalog = build_runtime_orchestration_catalog(tmp_path, validator=validator, state=still_running)
+    assert live_catalog.get("cold_goal_execute").available is False
+    assert live_catalog.get("resume_run").available is True
 
 
 class FakeOrchestrationRouterClient:

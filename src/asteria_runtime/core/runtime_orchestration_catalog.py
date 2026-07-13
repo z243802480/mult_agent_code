@@ -213,10 +213,22 @@ def orchestration_catalog_prompt_block(catalog: RuntimeOrchestrationCatalog) -> 
 
 
 def _base_capabilities(state: WorkspaceOrchestrationState) -> list[OrchestrationCapability]:
+    # A run that has finished its execution loop and is waiting for the human to review or accept
+    # (ready_for_review / ready_for_accept) is NOT actively in progress — it is idle-awaiting-human,
+    # semantically like a completed run. Treating it as "in progress" was the goal-swallowing bug:
+    # cold_goal_execute got blocked ("current run exists") so a brand-new user goal had no route
+    # except resume_run, which folded the new goal into the stale run and replayed its result. A new
+    # top-level message must always be able to start a fresh goal (Claude Code / Cursor never block a
+    # new request on a pending review). So exclude awaiting-human runs from `in_progress`: this makes
+    # cold_goal_execute / session_continue_execute available (both start a fresh run) and removes
+    # resume_run (there is nothing to resume — the loop already finished). Genuinely running / blocked
+    # / paused runs (not awaiting review) still count as in_progress and remain resumable.
+    awaiting_human_review = bool(state.can_review or state.can_accept)
     in_progress = bool(
         state.current_run_id
         and state.current_phase not in CONTINUABLE_PHASES
         and (state.run_status or "") in IN_PROGRESS_STATUSES
+        and not awaiting_human_review
     )
     cold_workspace = not state.current_run_id or (
         not in_progress and not state.session_continue_eligible

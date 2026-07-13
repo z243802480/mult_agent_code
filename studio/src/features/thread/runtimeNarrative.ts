@@ -105,6 +105,31 @@ export function latestCorrectnessVerdict(
   return null;
 }
 
+/**
+ * Turn-scoped correctness verdict: same discriminator as {@link latestCorrectnessVerdict}, but read
+ * only from THIS turn's own step events instead of the run-global progress log. This is the honesty
+ * gate behind the green "验证通过" badge — the run-level verdict alone is dishonest when the latest
+ * turn did no verification of its own (e.g. a resumed/replayed turn whose stated goal differs from
+ * the work that was actually verified): it would inherit an earlier turn's pass and claim the new,
+ * unverified request "passed". Requiring the verdict to live in this turn keeps "verified" bound to
+ * work this turn actually produced. Returns null when this turn recorded no graded verdict.
+ */
+export function turnCorrectnessVerdict(
+  steps: { events: StudioEvent[] }[],
+): "pass" | "fail" | "unrun" | null {
+  const events = steps.flatMap((step) => step.events);
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (String(event.transcript_kind ?? "") !== "verification") continue;
+    const status = String(asRecord(event.telemetry).correctness_status ?? "").toLowerCase();
+    if (!status) continue; // generic review step, not the graded verdict — keep scanning
+    if (status === "pass") return "pass";
+    if (status === "fail" || status === "partial") return "fail";
+    return "unrun";
+  }
+  return null;
+}
+
 export function runVerificationHint(runDetail: RunDetailPayload | null): string {
   const finalSummary = asRecord(runDetail?.final_report_summary);
   if (!Object.keys(finalSummary).length) return "";
