@@ -46,7 +46,7 @@ lead 一批发的专家里**含写专家**且 flag 开时：每个写 child 在*
 
 - **不翻 `parallel_writes` 全局默认开**：解冻的是并发专家能力的研发（flag opt-in，B1-a/B1-b 两 flag 均默认关），把出厂默认自主并发行为翻开仍是独立的自主性/安全 DecisionPoint，须用户另行确认。
 - **不恢复 swarm 中央 FSM 编排**（2026-06-28 已删）：并发经模型 tool-call 扇出 + harness 护栏，不是中央调度器。
-- **CloudSessionExecutor 真远程**、高级 scheduler（角色依赖/成本延迟/跨机）、北极星 flesh 仍冻结（B3·须另 DecisionPoint）。
+- **CloudSessionExecutor 真远程**、高级 scheduler（角色依赖/成本延迟/跨机）、北极星 flesh 仍冻结（B3·须另 DecisionPoint）。**实现候选（调研 2026-07-13）**：腾讯云 **CubeSandbox**（RustVMM+KVM MicroVM·**E2B SDK 兼容**·国产化对齐）——真做云执行时优先接 E2B 兼容层而非自造沙箱；但它是 Linux/KVM 云集群，**不适合本地 Windows 缺口**（本地按定位维持轻量硬化）。详见记忆 `cubesandbox-cloud-sandbox-candidate`。
 
 ## 后果
 

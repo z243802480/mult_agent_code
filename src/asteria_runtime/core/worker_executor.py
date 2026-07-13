@@ -107,7 +107,13 @@ class LocalExecutor:
 class CloudSessionExecutor:
     """STUB(北极星 B3):把子代理卸载到隔离的云 session 执行。复用既有 `remote_background_adapter`
     stub —— 记下卸载意图、返回 deferred。接口现在就焊死,真远程运行时是 Part B。默认永不启用
-    (policy 明确选 cloud_session 才走这里),故对本机/离线零影响。"""
+    (policy 明确选 cloud_session 才走这里),故对本机/离线零影响。
+
+    实现候选(调研 2026-07-13·见记忆 `cubesandbox-cloud-sandbox-candidate`):**腾讯云 CubeSandbox**
+    (github.com/TencentCloud/CubeSandbox·Apache 2.0·RustVMM+KVM MicroVM 硬件隔离·**E2B SDK 兼容**·
+    <60ms 冷启动)——国产化对齐(glm/minimax 定位·不接 Anthropic/OpenAI)、真 OS 级隔离。真做云执行
+    时优先接 E2B 兼容层(不锁死 provider)而非自造沙箱。**注**:CubeSandbox 是 Linux/KVM 云集群服务,
+    **不适合本地 Windows 缺口**(那块按定位维持轻量硬化);它对口的正是本 stub 这条云路。"""
 
     backend_kind = "cloud_session"
 
