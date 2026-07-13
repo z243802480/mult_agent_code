@@ -369,14 +369,88 @@ export function buildRunNarrative(events: StudioEvent[]): RunNarrative {
   };
 }
 
+// Internal event/telemetry payload markers. A JSON object carrying any of these quoted keys is a
+// serialized runtime payload (role contract, provider route strategy, model_* telemetry) that a weak
+// provider sometimes echoes verbatim into its streamed completion — it is NOT natural-language
+// reasoning. These keys never appear as JSON keys in a real assistant answer, so matching on the
+// quoted-key form (`"agent_role_contract":`) keeps the filter from touching prose that merely mentions
+// braces. The raw payload stays fully available in the Inspector (event.data / event.telemetry); only
+// the user-facing reasoning view is cleaned.
+const PAYLOAD_KEY = new RegExp(
+  '"(?:' +
+    [
+      "agent_role_contract",
+      "provider_route_strategy",
+      "model_provider",
+      "model_route",
+      "model_tier",
+      "runtime_profile_id",
+      "model_profile_id",
+      "deadline_profile",
+      "provider_call_seconds",
+      "stream_idle_timeout_seconds",
+      "call_chain",
+      "execution_chain",
+      "transcript_kind",
+      "display_level",
+      "ui_intent",
+      "role_purpose",
+      "deadline_remaining_ms",
+    ].join("|") +
+    ')"\\s*:',
+);
+
+// Index just past the '}' that closes the JSON object opened at `open`, honoring string literals so
+// braces inside quoted values do not miscount. Returns -1 when the object is never closed (a stream
+// truncated mid-payload) — the caller drops from the marker to end-of-text in that case.
+function matchBrace(text: string, open: number): number {
+  let depth = 0;
+  let inString = false;
+  for (let i = open; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === "\\") { i += 1; continue; }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if (ch === "{") depth += 1;
+    else if (ch === "}") { depth -= 1; if (depth === 0) return i + 1; }
+  }
+  return -1;
+}
+
+// Remove serialized runtime-payload JSON objects that a provider echoed into the reasoning stream,
+// keeping the surrounding natural-language text. Scans for each '{' and, when the balanced object (or
+// the truncated tail) contains a payload marker key, excises that span. Conservative by construction:
+// non-payload JSON and plain prose pass through untouched.
+function stripSerializedPayloads(text: string): string {
+  let result = "";
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === "{") {
+      const end = matchBrace(text, i);
+      const segment = end === -1 ? text.slice(i) : text.slice(i, end);
+      if (PAYLOAD_KEY.test(segment)) {
+        i = end === -1 ? text.length : end;
+        continue;
+      }
+    }
+    result += text[i];
+    i += 1;
+  }
+  return result;
+}
+
 // Single source of reasoning cleanup (I5): strip stray <think>/<thinking> markers a provider may
-// leave in the stream, keeping the inner text. Applied on EVERY render path (live tail + finalized,
-// chat + run) so raw tags never leak into the main thread. Intentionally conservative — it only
-// removes the tags themselves, never guesses at content, so no real output is dropped.
+// leave in the stream, keeping the inner text, and drop serialized runtime-payload JSON (role
+// contract / provider route strategy / telemetry) that a weak provider sometimes echoes verbatim
+// instead of natural reasoning. Applied on EVERY render path (live tail + finalized, chat + run) so
+// neither raw tags nor raw event JSON leak into the main thread. Intentionally conservative — it only
+// removes the tags themselves and clearly-serialized payload objects, never guessing at prose.
 export function cleanReasoning(text: string): string {
-  return String(text || "")
-    .replace(/<\/?think(?:ing)?>/gi, "")
-    .trim();
+  const withoutTags = String(text || "").replace(/<\/?think(?:ing)?>/gi, "");
+  return stripSerializedPayloads(withoutTags).trim();
 }
 
 export function firstText(...items: unknown[]): string {
