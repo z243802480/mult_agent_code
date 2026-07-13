@@ -151,8 +151,8 @@ function PermissionSection({
       </div>
       {error && <p className="settingsError">{error}</p>}
       <p className="settingsNote muted">
-        在此保存后，将作为新消息的初始设置。命令，以及任何有风险或不可逆的操作，都会为你暂停——
-        无论选择哪一档。
+        在此保存后，将作为新消息的初始设置。有风险或不可逆的操作（破坏性、联网、密钥、发布类命令）
+        会为你暂停——无论选择哪一档；普通命令按所选档运行。
       </p>
     </div>
   );
