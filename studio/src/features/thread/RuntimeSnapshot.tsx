@@ -29,6 +29,13 @@ function noteworthyExitReason(exitReason: unknown): boolean {
   return Boolean(value) && !SUCCESS_EXIT_REASONS.has(value);
 }
 
+// Localize a coarse low/medium/high tier for display (risk / budget). Data values stay English;
+// only the surfaced label reads in Chinese so the card never mixes languages.
+function tierLabel(tier: string): string {
+  const map: Record<string, string> = { low: "低", medium: "中", high: "高" };
+  return map[String(tier).toLowerCase()] ?? String(tier);
+}
+
 function DecisionCard({
   runId,
   decision,
@@ -131,8 +138,8 @@ function DecisionCard({
         {recommended && <span>建议: {recommended.replace(/_/g, " ")}</span>}
         {Object.keys(impact).length > 0 && (
           <span>
-            风险 {textOrFallback(impact.risk, "medium")} / 预算{" "}
-            {textOrFallback(impact.budget, "medium")}
+            风险 {tierLabel(textOrFallback(impact.risk, "medium"))} / 预算{" "}
+            {tierLabel(textOrFallback(impact.budget, "medium"))}
           </span>
         )}
       </div>

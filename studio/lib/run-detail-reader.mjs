@@ -59,36 +59,35 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) {
         kind: "review",
         label: "Review",
         mode: "review",
-        goal: "Review the latest runtime result.",
+        goal: "查看最新的运行结果。",
         command: [python, "-m", moduleName, "review", "--root", getWorkspace()],
         requiresPermission: false,
-        summary: "I will review the latest result and show the outcome.",
+        summary: "我会查看最新结果并展示结论。",
         permissionSummary: "",
       },
       accept: {
         kind: "accept",
         label: "Accept",
         mode: "accept",
-        goal: "Accept the latest reviewed result.",
+        goal: "接受最新已查看的结果。",
         command: [python, "-m", moduleName, "accept", "--root", getWorkspace()],
         requiresPermission: true,
-        summary: "I will accept the verified result after confirmation.",
-        permissionSummary:
-          "接受结果会更新当前 runtime 状态。请确认是否继续。",
+        summary: "确认后我会接受已验证的结果。",
+        permissionSummary: "接受结果会更新当前运行时状态。请确认是否继续。",
         permissionPreview: permissionPreview({
-          action: "Accept the reviewed result",
-          impact: "Finalize the reviewed runtime result.",
-          scope: "Current runtime state",
-          network: "No network access requested.",
+          action: "接受已查看的结果",
+          impact: "最终确定已查看的运行结果。",
+          scope: "当前运行时状态",
+          network: "不需要网络访问。",
           risk: "low",
-          reversible: "Review changes before continuing.",
+          reversible: "继续前可先查看改动。",
         }),
       },
       continue: {
         kind: "continue",
         label: "Continue",
         mode: "resume",
-        goal: "Continue the current runtime goal.",
+        goal: "继续当前的运行时目标。",
         command: [
           python,
           "-m",
@@ -102,63 +101,61 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) {
           "1",
         ],
         requiresPermission: true,
-        summary: "I will continue the current goal after confirmation.",
-        permissionSummary:
-          "继续推进可能会修改文件或运行本地操作。请确认是否继续。",
+        summary: "确认后我会继续当前目标。",
+        permissionSummary: "继续推进可能会修改文件或运行本地操作。请确认是否继续。",
         permissionPreview: permissionPreview({
-          action: "Continue the current goal",
-          impact: "May edit workspace files and run local verification.",
-          scope: "Current workspace",
-          network: "Model provider may be contacted; external tools still require separate approval.",
+          action: "继续当前目标",
+          impact: "可能会修改工作区文件并运行本地验证。",
+          scope: "当前工作区",
+          network: "可能会联系模型服务商；外部工具仍需单独批准。",
           risk: "medium",
-          reversible: "Changes remain reviewable before acceptance.",
+          reversible: "改动在接受前都可查看。",
         }),
       },
       debug: {
         kind: "debug",
         label: "Debug",
         mode: "debug",
-        goal: "Diagnose and repair the latest blocked runtime step.",
+        goal: "诊断并修复最近受阻的运行时步骤。",
         command: [python, "-m", moduleName, "debug", "--root", getWorkspace()],
         requiresPermission: true,
-        summary: "I will diagnose the blocked step and prepare a repair path after confirmation.",
-        permissionSummary:
-          "调试修复可能会读取运行证据并修改文件。请确认是否继续。",
+        summary: "确认后我会诊断受阻的步骤并准备修复路径。",
+        permissionSummary: "调试修复可能会读取运行证据并修改文件。请确认是否继续。",
         permissionPreview: permissionPreview({
-          action: "Diagnose and repair the blocked step",
-          impact: "Read failure evidence and may edit workspace files.",
-          scope: "Current workspace and run evidence",
-          network: "Model provider may be contacted; external tools still require separate approval.",
+          action: "诊断并修复受阻的步骤",
+          impact: "读取失败证据，并可能修改工作区文件。",
+          scope: "当前工作区与运行证据",
+          network: "可能会联系模型服务商；外部工具仍需单独批准。",
           risk: "medium",
-          reversible: "Repairs remain reviewable before acceptance.",
+          reversible: "修复在接受前都可查看。",
         }),
       },
       decide: {
         kind: "decide",
         label: "Decide",
         mode: "decide",
-        goal: "List pending decisions for the current runtime goal.",
+        goal: "列出当前运行时目标的待决事项。",
         command: [python, "-m", moduleName, "decide", "--root", getWorkspace(), "--list-pending"],
         requiresPermission: false,
-        summary: "I will list the decisions that need your input.",
+        summary: "我会列出需要你决定的事项。",
         permissionSummary: "",
       },
       compact: {
         kind: "compact",
         label: "Compact",
         mode: "compact",
-        goal: "Compact session context to free space.",
+        goal: "压缩会话上下文以释放空间。",
         command: [python, "-m", moduleName, "compact", "--root", getWorkspace()],
         requiresPermission: true,
-        summary: "I will compact the current session context after confirmation.",
-        permissionSummary: "Compacting context may summarize older turns. Confirm to continue.",
+        summary: "确认后我会压缩当前会话上下文。",
+        permissionSummary: "压缩上下文会摘要较早的对话轮次。请确认是否继续。",
         permissionPreview: permissionPreview({
-          action: "Compact session context",
-          impact: "Summarize older conversation turns to free context space.",
-          scope: "Current session context",
-          network: "No network access requested.",
+          action: "压缩会话上下文",
+          impact: "摘要较早的对话轮次以释放上下文空间。",
+          scope: "当前会话上下文",
+          network: "不需要网络访问。",
           risk: "low",
-          reversible: "Workspace files are not changed.",
+          reversible: "不会修改工作区文件。",
         }),
       },
     };
@@ -272,7 +269,10 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) {
       "requested_read_scope",
       "paths",
     ]);
-    const writeScope = runtimeRequestDetailValues(requests, ["write_scope", "requested_write_scope"]);
+    const writeScope = runtimeRequestDetailValues(requests, [
+      "write_scope",
+      "requested_write_scope",
+    ]);
     const tools = runtimeRequestDetailValues(requests, [
       "allowed_tools",
       "tools",
@@ -287,36 +287,36 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) {
       requests
         .map((request) => String(request.risk || "medium").toLowerCase())
         .sort((left, right) => (riskRank[right] ?? 1) - (riskRank[left] ?? 1))[0] || "medium";
-    let action = "Review a task boundary change";
-    let impact = "Review the requested task contract change before work continues.";
-    let reversible = "Rejecting keeps the current task boundary unchanged.";
+    let action = "查看任务边界变更";
+    let impact = "在继续之前查看请求的任务契约变更。";
+    let reversible = "拒绝将保持当前任务边界不变。";
     if (writeScope.length) {
-      action = "Allow additional workspace changes";
-      impact = `Allow writing ${scopeValueSummary(writeScope)}.`;
-      reversible = "Changes remain reviewable before acceptance.";
+      action = "允许额外的工作区改动";
+      impact = `允许写入 ${scopeValueSummary(writeScope)}。`;
+      reversible = "改动在接受前都可查看。";
     } else if (readScope.length) {
-      action = "Allow additional project context";
-      impact = `Allow reading ${scopeValueSummary(readScope)}.`;
-      reversible = "Workspace files will not be changed by this approval.";
+      action = "允许额外的项目上下文";
+      impact = `允许读取 ${scopeValueSummary(readScope)}。`;
+      reversible = "本次批准不会修改工作区文件。";
     } else if (tools.length) {
-      action = "Allow an additional tool";
-      impact = `Allow use of ${scopeValueSummary(tools)}.`;
-      reversible = "The tool remains bounded by the current task contract.";
+      action = "允许一个额外的工具";
+      impact = `允许使用 ${scopeValueSummary(tools)}。`;
+      reversible = "该工具仍受当前任务契约约束。";
     }
     const scopeParts = [];
-    if (readScope.length) scopeParts.push(`Read: ${scopeValueSummary(readScope)}`);
-    if (writeScope.length) scopeParts.push(`Write: ${scopeValueSummary(writeScope)}`);
-    if (tools.length) scopeParts.push(`Tools: ${scopeValueSummary(tools)}`);
+    if (readScope.length) scopeParts.push(`读取：${scopeValueSummary(readScope)}`);
+    if (writeScope.length) scopeParts.push(`写入：${scopeValueSummary(writeScope)}`);
+    if (tools.length) scopeParts.push(`工具：${scopeValueSummary(tools)}`);
     const externalTool = tools.some((tool) => /network|web|http|mcp/i.test(tool));
     return permissionPreview({
       action,
       impact,
-      scope: scopeParts.join("; ") || "Current task contract",
+      scope: scopeParts.join("；") || "当前任务契约",
       network: externalTool
-        ? "The requested tool may access an external service."
+        ? "请求的工具可能访问外部服务。"
         : requestTypes.includes("model_upgrade_request")
-          ? "The model provider will be contacted for the requested route."
-          : "No additional network access requested.",
+          ? "将为请求的路由联系模型服务商。"
+          : "不需要额外的网络访问。",
       risk,
       reversible,
       scope_detail: {
@@ -561,7 +561,9 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) {
           // Risk is read ONLY from this same promotion record's own merge_gate (1:1, no cross-record
           // join). risk_level annotates; it never blocks. Empty risky_files => render no risk claim
           // (a hold can also be deletion-driven, a cause not recorded here).
-          risky_files: Array.isArray(item.merge_gate?.risky_files) ? item.merge_gate.risky_files : [],
+          risky_files: Array.isArray(item.merge_gate?.risky_files)
+            ? item.merge_gate.risky_files
+            : [],
           risk_level: String(item.merge_gate?.risk_level || "low"),
         })),
       ],
@@ -829,7 +831,9 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) {
       120,
     );
     payload.orchestration_workflow = redact(buildOrchestrationWorkflowMonitor(workflowStateRows));
-    payload.runtime_progress = redact(enrichRuntimeProgress(payload.runtime_progress || {}, payload));
+    payload.runtime_progress = redact(
+      enrichRuntimeProgress(payload.runtime_progress || {}, payload),
+    );
     // 500 (not 120) to match the thread's own event read (readRuntimeUserProgressEvents). user_progress
     // is ~85% inspector rows, so a 120-physical-line tail kept only ~18 user-facing events and dropped a
     // run's whole opening (goal → plan → first steps) — the "process" the user wants to see. 500 keeps a

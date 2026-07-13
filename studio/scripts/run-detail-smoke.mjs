@@ -370,7 +370,7 @@ try {
   }
   if (
     detail.decision_requests[0]?.metadata?.permission_preview?.scope !==
-    "Read: src/current.py; Write: src/new.py, tests/test_new.py"
+    "读取：src/current.py；写入：src/new.py, tests/test_new.py"
   ) {
     throw new Error(
       "/api/runs/:id did not enrich runtime request decisions with exact permission scope",

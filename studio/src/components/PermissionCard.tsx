@@ -82,7 +82,7 @@ export function PermissionCard({
           )}
           {(preview.risk || preview.reversible) && (
             <PermissionFact
-              label={`风险${preview.risk ? ` · ${preview.risk}` : ""}`}
+              label={`风险${preview.risk ? ` · ${riskLabel(preview.risk)}` : ""}`}
               value={preview.reversible || "继续前请先了解影响"}
               icon={<RotateCcw size={13} />}
             />
@@ -105,6 +105,13 @@ export function PermissionCard({
 function permissionPreview(event: StudioEvent): PermissionPreview | null {
   const value = event.data?.permission_preview;
   return value && typeof value === "object" ? (value as PermissionPreview) : null;
+}
+
+// Localize the coarse risk tier for display. The data value stays low/medium/high (used for ranking);
+// only the surfaced label reads in Chinese so the card never mixes languages.
+function riskLabel(risk: string): string {
+  const map: Record<string, string> = { low: "低", medium: "中", high: "高" };
+  return map[String(risk).toLowerCase()] ?? String(risk);
 }
 
 /**

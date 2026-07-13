@@ -38,10 +38,7 @@ import { createPreviewSubsystem, normalizeProxyTarget } from "./lib/preview-serv
 import { createEventBus } from "./lib/event-bus.mjs";
 import { createJobRegistry } from "./lib/jobs.mjs";
 import { createRunDetailReader } from "./lib/run-detail-reader.mjs";
-import {
-  latestMainFinalEvent,
-  latestDecisions,
-} from "./lib/run-evidence-transforms.mjs";
+import { latestMainFinalEvent, latestDecisions } from "./lib/run-evidence-transforms.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
@@ -491,13 +488,12 @@ async function submitUserGoal(sessionId, body) {
     await appendEvent(activeSessionId, {
       type: "permission_request",
       status: "waiting_user",
-      title: "Approval needed",
-      summary:
-        "This may modify files or run local operations. Confirm to continue; cancel makes no changes.",
+      title: "待批准",
+      summary: "这一步可能会修改文件或运行本地操作。确认后继续；取消则不做任何改动。",
       command,
       data: { permission_preview: preview },
       job_id: pendingJobId,
-      content_delta: "Confirm to start. Cancel and nothing runs.",
+      content_delta: "确认后开始；取消则什么都不会运行。",
     });
     return {
       ok: true,
@@ -546,12 +542,12 @@ async function handleRuntimeAction(sessionId, body) {
     await appendEvent(activeSessionId, {
       type: "permission_request",
       status: "waiting_user",
-      title: "Approval needed",
+      title: "待批准",
       summary: action.permissionSummary,
       command: action.command,
       data: { permission_preview: action.permissionPreview },
       job_id: pendingJobId,
-      content_delta: "Confirm to start. Cancel and nothing runs.",
+      content_delta: "确认后开始；取消则什么都不会运行。",
     });
     return {
       ok: true,
@@ -707,24 +703,22 @@ function permissionPreviewForMode(mode) {
   const normalized = String(mode || "").toLowerCase();
   if (normalized === "review") {
     return permissionPreview({
-      action: "Review the current result",
-      impact: "Read project changes and verification evidence.",
-      scope: "Current workspace, read-only",
-      network: "No network access requested.",
+      action: "查看当前结果",
+      impact: "读取项目改动与验证证据。",
+      scope: "当前工作区（只读）",
+      network: "不需要网络访问。",
       risk: "low",
-      reversible: "No files will be changed.",
+      reversible: "不会修改任何文件。",
     });
   }
   return permissionPreview({
     action:
-      normalized === "resume" || normalized === "continue"
-        ? "Continue the current goal"
-        : "Start working on this goal",
-    impact: "May edit workspace files and run local verification.",
-    scope: "Current workspace",
-    network: "Model provider may be contacted; external tools still require separate approval.",
+      normalized === "resume" || normalized === "continue" ? "继续当前目标" : "开始处理这个目标",
+    impact: "可能会修改工作区文件并运行本地验证。",
+    scope: "当前工作区",
+    network: "可能会联系模型服务商；外部工具仍需单独批准。",
     risk: "medium",
-    reversible: "Changes remain reviewable before acceptance.",
+    reversible: "改动在接受前都可查看。",
   });
 }
 
