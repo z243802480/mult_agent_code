@@ -14,7 +14,7 @@ import {
   latestCorrectnessVerdict,
   turnCorrectnessVerdict,
 } from "./runtimeNarrative";
-import { cleanReasoning, THINKING_PLACEHOLDERS } from "../../narrative";
+import { cleanReasoning, THINKING_PLACEHOLDERS, dedupeAdjacentToolSteps } from "../../narrative";
 import { SuggestedActions } from "./SuggestedActions";
 import { TurnRewindButton } from "./TurnRewindButton";
 import {
@@ -143,11 +143,13 @@ function TurnMiddle({
   // making a legitimately-paused run look silently stuck. (ADR-0021)
   const decisionSteps = steps.filter((step) => !permIds.has(step.id) && step.kind === "decision");
   const decisionIds = new Set(decisionSteps.map((step) => step.id));
-  const toolSteps = steps.filter(
-    (step) =>
-      !permIds.has(step.id) &&
-      !narrationIds.has(step.id) &&
-      (step.kind === "tool" || step.kind === "repair" || step.kind === "subagent"),
+  const toolSteps = dedupeAdjacentToolSteps(
+    steps.filter(
+      (step) =>
+        !permIds.has(step.id) &&
+        !narrationIds.has(step.id) &&
+        (step.kind === "tool" || step.kind === "repair" || step.kind === "subagent"),
+    ),
   );
   const toolIds = new Set(toolSteps.map((step) => step.id));
   // Holistic rule (ADR-0021): the main thread is a conversation, not a machine dashboard. The user

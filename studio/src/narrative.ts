@@ -493,10 +493,36 @@ export const THINKING_PLACEHOLDERS = new Set([
   "Thinking",
 ]);
 
-// True when the cleaned text is nothing but a harness placeholder (see THINKING_PLACEHOLDERS) — the
-// caller should drop it rather than render an empty/status-only "thinking" line.
-export function isThinkingPlaceholder(text: string): boolean {
-  return THINKING_PLACEHOLDERS.has(cleanReasoning(text).trim());
+// A tool step's stable action signature: the command it ran (preferred — a real shell/tool command
+// string), else its projected title, paired with its terminal status. Two tool steps with the same
+// signature ran the SAME command to the SAME outcome.
+function toolActionSignature(step: NarrativeStep): string {
+  let command = "";
+  for (const event of step.events) {
+    const joined = (event.command ?? []).join(" ").trim();
+    if (joined) {
+      command = joined;
+      break;
+    }
+  }
+  return `${command || step.title || step.label || ""}|${step.status ?? ""}`;
+}
+
+// Collapse STRICTLY consecutive tool cards that are identical (same command AND same status) into one.
+// These are display duplicates: the loop re-ran the exact same command to the exact same outcome with
+// only bookkeeping (a non-rendered "tool result" rollup) between them, so the second card teaches the
+// user nothing. Conservative by design — a different command, or the same command with a DIFFERENT
+// status (e.g. a test that failed then passed), keeps both cards so a real retry story is never hidden.
+export function dedupeAdjacentToolSteps(steps: NarrativeStep[]): NarrativeStep[] {
+  const out: NarrativeStep[] = [];
+  let lastSignature = "";
+  for (const step of steps) {
+    const signature = toolActionSignature(step);
+    if (out.length && signature === lastSignature) continue;
+    out.push(step);
+    lastSignature = signature;
+  }
+  return out;
 }
 
 export function firstText(...items: unknown[]): string {

@@ -7,7 +7,7 @@ import { FileChangeChips } from "../../components/FileChangeChips";
 import { PermissionCard } from "../../components/PermissionCard";
 import { ClampedOutput } from "../../components/ClampedOutput";
 import { ToolCallCard } from "./ToolCallCard";
-import { cleanReasoning, THINKING_PLACEHOLDERS } from "../../narrative";
+import { cleanReasoning, THINKING_PLACEHOLDERS, dedupeAdjacentToolSteps } from "../../narrative";
 import type { StudioViewMode } from "../../hooks/useViewMode";
 
 // Main-thread, user-facing phase copy. Keys are step kinds; unknown kinds fall back
@@ -65,8 +65,10 @@ export function LiveStream({
       .filter((text) => text && !THINKING_PLACEHOLDERS.has(text))
       .join("\n\n"),
   );
-  const toolSteps = steps.filter(
-    (step) => step.kind === "tool" || step.kind === "repair" || step.kind === "subagent",
+  const toolSteps = dedupeAdjacentToolSteps(
+    steps.filter(
+      (step) => step.kind === "tool" || step.kind === "repair" || step.kind === "subagent",
+    ),
   );
   const fileChanges = extractFileChangesFromSteps(steps);
   const fileStats = aggregateFileChangeStats(fileChanges);
