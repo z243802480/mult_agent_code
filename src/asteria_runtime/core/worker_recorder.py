@@ -167,6 +167,16 @@ class WorkerExecutionRecorder:
                 "policy": task.get("verification_policy") or {},
                 "completion_contract": task.get("completion_contract") or {},
             },
+            # A model-driven lead that can spawn_subagent may legitimately DELEGATE all its writes to
+            # child experts (each child declares its OWN write_scope at spawn time), so the lead's own
+            # write_scope is empty by design — not a brief defect. Honestly record that here so the
+            # brief-quality gate does not false-block such a delegating lead (ADR-0023 real-stack
+            # finding). The actual write boundary stays at the ToolExecutionGateway per-path scope +
+            # the isolated-write merge gate — this gate only scores brief completeness.
+            "delegates_writes": bool(
+                "spawn_subagent" in (task.get("allowed_tools") or [])
+                and not (task.get("write_scope") or task.get("expected_changed_files"))
+            ),
         }
 
     def brief_quality(self, brief: dict) -> dict:
@@ -179,6 +189,10 @@ class WorkerExecutionRecorder:
             "expected_output",
             "verification_expectation",
         ]
+        # allowed_writes is not required of a delegating lead: its writes flow through spawned children
+        # that declare their own scope (see delegation_brief.delegates_writes).
+        if brief.get("delegates_writes"):
+            required = [key for key in required if key != "allowed_writes"]
         missing = [key for key in required if not brief.get(key)]
         return {
             "status": "pass" if not missing else "warn",

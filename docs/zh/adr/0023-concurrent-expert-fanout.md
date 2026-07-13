@@ -62,7 +62,7 @@ lead 一批发的专家里**含写专家**且 flag 开时：每个写 child 在*
 - **readonly 扇出**：glm(strong) ✅ + minimax(medium) ✅（各 2 dispatch+2 result·concurrent_batch=True·reviewer·2 distinct child·event_id 无撞·合并摘要已写）。
 - **disjoint 写**：glm(strong) ✅（concurrent_batch=True·coder·**merge_gate_runs=1**·**alpha.py+beta.py 均并入共享工作区**=disjoint 全晋升·event_id 无撞）。
 - **结论**：真弱模型（含 minimax）会**自发**在一批发 ≥2 个 spawn_subagent 并发扇出——B1-a/B1-b 在真栈成立，不只是 fake。
-- **张力观察（未改代码）**：FSM 时代 `worker_recorder.delegation_gate`（`execute_command:568`）仍在进脊梁前跑，对"写类任务 brief 缺 `allowed_writes`"整任务 blocked；模型驱动委派模式下 lead 若天真 `write_scope=[]`（写委派给子专家）会被误挡在进脊梁前，声明委派写并集即通过。合法 brief-quality 边界非脊梁 bug，但对委派模式偏严，暂不改（收敛），待真实 friction 再定。brief=`benchmarks/reference_briefs/B1-realstack-concurrent-experts-validation.md`。
+- **张力已修复（2026-07-13）**：真栈发现 FSM 时代 `worker_recorder.delegation_gate`（`execute_command:568`）对模型驱动委派模式误挡——lead 天真 `write_scope=[]`（写委派给子专家各自声明 scope）被判"写类任务 brief 缺 `allowed_writes`"整任务 blocked、根本没进脊梁。**修**：`delegation_brief` 加诚实标记 `delegates_writes`（`spawn_subagent`∈allowed_tools 且自身无 write_scope）→ `brief_quality` 对委派型 lead 免除 `allowed_writes` 要求。**边界不减配**：brief-质量门非安全门（真写边界=gateway 逐路径 scope + merge_gate）；直接写无 scope 任务仍被挡。真栈端到端证：disjoint smoke 恢复自然委派形态后 glm 过 gate→并发扇出 2 coder→merge_gate 晋升进共享工作区。+2 单测·全量绿。brief=`benchmarks/reference_briefs/B1-realstack-concurrent-experts-validation.md`。
 
 ## 回滚或替代条件
 

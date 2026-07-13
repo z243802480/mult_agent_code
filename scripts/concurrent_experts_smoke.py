@@ -123,11 +123,10 @@ def _disjoint_task() -> dict[str, Any]:
         "allowed_tools": ["read_file", "write_file", "run_command", "spawn_subagent"],
         "expected_artifacts": ["src/alpha.py", "src/beta.py"],
         "read_scope": [],
-        # lead 本身不直接写(写委派给两个 coder 子专家),但 delegation-brief 质量 gate 要求写类
-        # 任务声明 allowed_writes,否则误挡在进脊梁前(见 worker_recorder.delegation_gate)。声明委派写
-        # 的并集让任务过 brief gate 到达脊梁;子专家各自的 write_scope 由 spawn 参数单独声明。
-        "write_scope": ["src/alpha.py", "src/beta.py"],
-        "expected_changed_files": ["src/alpha.py", "src/beta.py"],
+        # lead 本身不直接写(写委派给两个 coder 子专家各自声明 write_scope),故自身 write_scope 空。
+        # delegation-brief 质量 gate 曾对此误挡(缺 allowed_writes),已修:委派型 lead(spawn_subagent
+        # 且无自身 write_scope)不再要求 allowed_writes(worker_recorder.delegation_brief.delegates_writes)。
+        "write_scope": [],
     }
 
 

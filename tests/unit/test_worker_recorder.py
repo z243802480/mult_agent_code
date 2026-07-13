@@ -420,3 +420,49 @@ def test_delegation_quality_gate_allows_planned_scope_request() -> None:
     assert gate["status"] == "pass"
     assert gate["risk"] == "scope_request"
     assert gate["brief_quality"]["status"] == "warn"
+
+
+def test_delegation_quality_gate_allows_delegating_lead_with_empty_own_write_scope() -> None:
+    """ADR-0023 real-stack finding: a model-driven lead that can spawn_subagent delegates its writes
+    to child experts (each declares its own write_scope), so the lead's OWN write_scope is empty by
+    design. The brief-quality gate must NOT block it solely for missing allowed_writes — the real
+    write boundary is the gateway per-path scope + isolated-write merge gate, not this brief gate."""
+    recorder = WorkerExecutionRecorder(SchemaValidator(Path.cwd() / "schemas"))
+
+    gate = recorder.delegation_gate(
+        {
+            "task_id": "task-0001",
+            "title": "并行实现两个独立模块",
+            "description": "Delegate writing alpha.py and beta.py to two coder subagents in one batch.",
+            "allowed_tools": ["read_file", "write_file", "run_command", "spawn_subagent"],
+            "expected_artifacts": ["src/alpha.py", "src/beta.py"],
+            "write_scope": [],
+        }
+    )
+
+    assert gate["status"] == "pass"
+    assert gate["risk"] == "write"
+    assert gate["delegation_brief"]["delegates_writes"] is True
+    assert "allowed_writes" not in gate["brief_quality"]["missing_fields"]
+
+
+def test_delegation_quality_gate_still_blocks_direct_writer_without_scope() -> None:
+    """Guardrail: a write-capable task that CANNOT delegate (no spawn_subagent) and declares no
+    write_scope is still blocked — delegates_writes stays False, so allowed_writes is still required."""
+    recorder = WorkerExecutionRecorder(SchemaValidator(Path.cwd() / "schemas"))
+
+    gate = recorder.delegation_gate(
+        {
+            "task_id": "task-0001",
+            "title": "Direct writer without scope",
+            "description": "Write files directly.",
+            "allowed_tools": ["write_file"],
+            "expected_artifacts": ["src/out.py"],
+            "write_scope": [],
+        }
+    )
+
+    assert gate["status"] == "blocked"
+    assert gate["risk"] == "write"
+    assert gate["delegation_brief"]["delegates_writes"] is False
+    assert "allowed_writes" in gate["brief_quality"]["missing_fields"]

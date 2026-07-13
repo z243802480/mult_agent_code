@@ -29,13 +29,23 @@
 
 **真弱模型(含 minimax)会自发在一批里发 ≥2 个 spawn_subagent 并发扇出**——重塑头号新能力在真栈成立。
 
-## 诚实发现(记为观察·未改代码)
+## 诚实发现 → 已修复(2026-07-13 · §16 v1.2.26)
 - **FSM 时代 `worker_recorder.delegation_gate` 仍在进脊梁前跑**(`execute_command:568`)。它对
   "写类任务(risk=write/high)brief 缺 `allowed_writes`"整任务 blocked。**disjoint 首跑被误挡**:
   模型驱动委派模式下 lead 自己不直接写(写委派给 coder 子专家)、天真地 `write_scope=[]` →
-  brief 缺 allowed_writes → blocked,**根本没进脊梁/没到 spawn**。well-formed 任务(lead 声明委派写
-  并集 `write_scope`)即通过。**判定=合法 brief-quality 边界非脊梁 bug**,但对模型驱动委派模式偏严;
-  暂不改(收敛·gate 是合法证据边界),记为张力观察待真实 friction 再定。
+  brief 缺 allowed_writes → blocked,**根本没进脊梁/没到 spawn**。
+- **修**:`delegation_brief` 加诚实标记 `delegates_writes`(`spawn_subagent`∈allowed_tools 且自身
+  无 write_scope/expected_changed_files)→ `brief_quality` 对委派型 lead 免除 `allowed_writes` 要求。
+  **边界不减配**:brief-质量门非安全门(真写边界=gateway 逐路径 scope + merge_gate);直接写(无
+  spawn_subagent)且无 scope 的任务 `delegates_writes=False` **仍被挡**(guardrail 测锁死)。未碰
+  DO_NOT_TOUCH。真栈端到端证:disjoint smoke 恢复自然委派形态(`write_scope=[]`)后 glm 过 gate→
+  并发扇出 2 coder→merge_gate 晋升 alpha+beta 进共享工作区(PASS)。
+
+## ⚠️ 运维陷阱(editable-install 指向主副本)
+- `pip -e` editable 安装指向**主工作副本** `H:\mult_agent_code\src`。worktree 里裸
+  `python scripts/*smoke.py` 的 `import asteria_runtime` 解析到**主副本代码非当前 worktree**——
+  真栈 smoke 会**静默测错代码**(pytest 经 rootdir pythonpath 用 worktree src 故单测正确)。
+  **在 worktree 跑真栈 smoke 必须 `PYTHONPATH=<worktree>/src`**,否则改动没被 smoke 验到。
 
 ## do_not_copy(禁止照搬)
 - 不为让 smoke 过而放宽 delegation_gate 或 merge_gate(安全/证据边界不减配)。
