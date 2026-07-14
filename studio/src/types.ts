@@ -17,6 +17,8 @@ export type StudioSession = {
 export type StudioEvent = {
   event_id: string;
   session_id: string;
+  /** Monotonic per-session cursor used for incremental reconnects. Absent on very old transcripts. */
+  seq?: number;
   type:
     | "user_message"
     | "intent_route"

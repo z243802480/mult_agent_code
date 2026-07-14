@@ -36,6 +36,7 @@ import {
 } from "./lib/workspace-paths.mjs";
 import { createPreviewSubsystem, normalizeProxyTarget } from "./lib/preview-server.mjs";
 import { createEventBus } from "./lib/event-bus.mjs";
+import { eventsAfter, parseSince } from "./lib/event-cursor.mjs";
 import { createJobRegistry } from "./lib/jobs.mjs";
 import { createRunDetailReader } from "./lib/run-detail-reader.mjs";
 import { latestMainFinalEvent, latestDecisions } from "./lib/run-evidence-transforms.mjs";
@@ -189,7 +190,11 @@ async function handleApi(request, response, url) {
   }
   if (request.method === "GET" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/events$/)) {
     const sessionId = decodeURIComponent(url.pathname.split("/").at(-2) || "");
-    sendJson(response, 200, { ok: true, events: await readSessionEvents(sessionId) });
+    const since = parseSince(url.searchParams.get("since"));
+    sendJson(response, 200, {
+      ok: true,
+      events: eventsAfter(await readSessionEvents(sessionId), since),
+    });
     return;
   }
   if (
@@ -208,7 +213,11 @@ async function handleApi(request, response, url) {
       "X-Accel-Buffering": "no",
     });
     response.write(": connected\n\n");
-    const existingEvents = await readSessionEvents(sessionId);
+    // Replay only what the client has not seen. Without this, every reconnect (and a long run can
+    // reconnect many times) re-pushed the ENTIRE transcript, so the cost of dropping a connection grew
+    // with the length of the run — worst exactly when the run is longest.
+    const since = parseSince(url.searchParams.get("since"));
+    const existingEvents = eventsAfter(await readSessionEvents(sessionId), since);
     for (const event of existingEvents) {
       response.write(`data: ${JSON.stringify(event)}\n\n`);
     }
@@ -2811,12 +2820,18 @@ async function readSessionEvents(sessionId) {
   let events = (await fs.readFile(file, "utf8"))
     .split(/\r?\n/)
     .filter(Boolean)
-    .map((line) => {
+    .map((line, index) => {
+      let event;
       try {
-        return redact(JSON.parse(line));
+        event = redact(JSON.parse(line));
       } catch {
-        return { type: "raw", content_delta: redactText(line) };
+        event = { type: "raw", content_delta: redactText(line) };
       }
+      // Events written before `seq` existed (and unparseable lines) fall back to their line index,
+      // which is exactly what the event bus seeds its counter from — so the numbering is continuous
+      // across the upgrade instead of restarting at 0 and replaying the whole transcript.
+      if (typeof event.seq !== "number") event.seq = index;
+      return event;
     });
   // M4: a job-based permission confirm card is a one-shot prompt. Once its job resolved (allow/deny
   // recorded a resolved_job_id marker), drop the original waiting_user permission_request from the

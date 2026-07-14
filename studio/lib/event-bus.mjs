@@ -12,6 +12,37 @@ import { isSafeId } from "./workspace-paths.mjs";
 export function createEventBus({ sessionPath, getWorkspace }) {
   const sseClients = new Map(); // sessionId -> Set<response>
 
+  // Monotonic per-session cursor stamped onto every event, so a reconnecting client can ask for
+  // "everything after N" instead of having the whole transcript re-read and re-pushed at it. Counting
+  // the file on every append would be O(n) per event — quadratic over a long run — so the counter is
+  // seeded once from the existing line count and then kept in memory. A server restart re-seeds it
+  // from the file, which is why `seq` is also PERSISTED: the numbering must survive the process.
+  const seqCounters = new Map(); // sessionId -> next seq
+  const seqSeeding = new Map(); // sessionId -> in-flight seed promise (concurrent appends must not double-seed)
+
+  async function nextSeq(sessionId) {
+    if (!seqCounters.has(sessionId)) {
+      if (!seqSeeding.has(sessionId)) {
+        seqSeeding.set(
+          sessionId,
+          (async () => {
+            const file = sessionPath(sessionId, "events.jsonl");
+            let lines = 0;
+            if (existsSync(file)) {
+              const raw = await fs.readFile(file, "utf8");
+              lines = raw.split(/\r?\n/).filter(Boolean).length;
+            }
+            if (!seqCounters.has(sessionId)) seqCounters.set(sessionId, lines);
+          })(),
+        );
+      }
+      await seqSeeding.get(sessionId);
+    }
+    const seq = seqCounters.get(sessionId);
+    seqCounters.set(sessionId, seq + 1);
+    return seq;
+  }
+
   function notifySSE(sessionId, event) {
     const clients = sseClients.get(sessionId);
     if (!clients?.size) return;
@@ -27,6 +58,7 @@ export function createEventBus({ sessionPath, getWorkspace }) {
 
   async function appendEvent(sessionId, event) {
     if (!isSafeId(sessionId)) return;
+    const seq = await nextSeq(sessionId);
     const full = {
       schema_version: "0.1.0",
       event_id: `evt-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -35,6 +67,7 @@ export function createEventBus({ sessionPath, getWorkspace }) {
       artifact_refs: [],
       evidence_refs: [],
       ...redact(event),
+      seq,
     };
     await fs.mkdir(sessionPath(sessionId), { recursive: true });
     await fs.appendFile(

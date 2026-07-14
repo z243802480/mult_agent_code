@@ -70,9 +70,11 @@ export const api = {
         body: JSON.stringify(body),
       },
     ),
-  events: (id: string) =>
+  // `since` is the client's event-seq cursor; omit it (or pass < 0) to get the full transcript.
+  events: (id: string, since?: number) =>
     requestJson<{ ok: boolean; events: StudioEvent[] }>(
-      `/api/studio/sessions/${encodeURIComponent(id)}/events`,
+      `/api/studio/sessions/${encodeURIComponent(id)}/events` +
+        (typeof since === "number" && since >= 0 ? `?since=${since}` : ""),
     ),
   send: (
     id: string,
@@ -195,6 +197,10 @@ export function subscribeToEvents(
   let reconnectAttempts = 0;
   let lastStatus: ConnectivityStatus | null = null;
   const seen = new Set<string>();
+  // Highest event seq delivered so far. Every reconnect and every fallback poll asks the server for
+  // "only what is newer than this", so a dropped connection costs the events we missed — not the whole
+  // transcript re-read and re-pushed, which got more expensive the longer the run went on.
+  let cursor = -1;
 
   function setStatus(next: ConnectivityStatus) {
     if (stopped || next === lastStatus) return;
@@ -214,6 +220,11 @@ export function subscribeToEvents(
   function addFresh(evts: StudioEvent[]) {
     const fresh = evts.filter((e) => !seen.has(e.event_id));
     for (const e of fresh) seen.add(e.event_id);
+    // Advance the cursor from EVERY event we saw, fresh or duplicate: a duplicate still proves the
+    // server has it, and holding the cursor back would make the next reconnect re-fetch it.
+    for (const e of evts) {
+      if (typeof e.seq === "number" && e.seq > cursor) cursor = e.seq;
+    }
     if (fresh.length) onEvents(fresh);
   }
 
@@ -226,7 +237,7 @@ export function subscribeToEvents(
         return;
       }
       try {
-        const data = await api.events(sessionId);
+        const data = await api.events(sessionId, cursor);
         addFresh(data.events ?? []);
         pollFailures = 0;
         computeStatus();
@@ -239,7 +250,12 @@ export function subscribeToEvents(
 
   function openStream() {
     if (stopped || typeof EventSource === "undefined") return;
-    es = new EventSource(`/api/studio/sessions/${encodeURIComponent(sessionId)}/events/stream`);
+    // Read the cursor at CONNECT time, not at subscribe time: a reconnect after an hour of streaming
+    // must resume from where the stream left off, not from where the page originally loaded.
+    const since = cursor >= 0 ? `?since=${cursor}` : "";
+    es = new EventSource(
+      `/api/studio/sessions/${encodeURIComponent(sessionId)}/events/stream${since}`,
+    );
     es.onopen = () => {
       sseOk = true;
       reconnectAttempts = 0;
