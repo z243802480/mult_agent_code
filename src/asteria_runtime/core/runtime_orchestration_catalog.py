@@ -357,10 +357,13 @@ def _base_capabilities(state: WorkspaceOrchestrationState) -> list[Orchestration
         _cap(
             capability_id="run_dynamic_orchestration",
             layer="L3_orchestrator",
-            title="L3 dynamic workflow orchestration (gray)",
+            title="L3 dynamic workflow orchestration (designed, not yet built)",
             description=(
-                "Run a manifest-driven multi-phase workflow (fanout, verifier, merge checkpoint) "
-                "via the L3 runner. State stays in orchestration_runner_state.jsonl—not main AgentLoop context."
+                "DESIGNED-NOT-BUILT: a manifest-driven multi-phase workflow (fanout, verifier, merge "
+                "checkpoint) via an L3 runner. The runner and its verifier/adversarial/merge-checkpoint "
+                "step-kinds are not implemented (no source); this is a frozen orchestration-band design "
+                "(S61–S73 wave, frozen). Not routable. Real concurrent readonly fanout / disjoint writes "
+                "already ship as AgentLoop subagent decisions—not this L3 manifest band."
             ),
             when_to_use=[
                 "Goal explicitly requires multi-phase orchestration with checkpoints, resume, "
@@ -379,7 +382,8 @@ def _base_capabilities(state: WorkspaceOrchestrationState) -> list[Orchestration
             available=_run_dynamic_orchestration_available(state),
             unavailable_reason=_blocked_reason(
                 _run_dynamic_orchestration_available(state),
-                "L3 dynamic orchestration is maintainer-only until product signoff.",
+                "L3 dynamic orchestration is designed but not yet implemented (frozen band; "
+                "runner + verifier/merge-checkpoint steps have no source).",
             ),
         ),
         _cap(

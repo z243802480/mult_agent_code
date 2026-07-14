@@ -1,7 +1,7 @@
 # ADR-0019：内置精选 MCP 目录（opt-in）+ DebugAgent 维持 deferred 的决定
 
-- 状态：Proposed（2026-07-05）
-- 关联：[研发总计划 §16.1 line 467 生态部分]、[ADR-0016 认知归模型/边界归状态]、[ADR-0014 单会话恢复与显式 review]、[[product-positioning-internal-engine]]、`mcp_command.py`、`templates/mcp_catalog.json`、`agents/debug_agent.py`
+- 状态：Proposed（2026-07-05）；**§2b 部分被 RA7b 收官推翻（2026-07-08 `86e16fe` 删除 `agents/debug_agent.py`）——决定的实质仍成立（不新建独立 DebugAgent），但"占位文件保留不删除"的判断已作废，见 §2b 更新注**
+- 关联：[研发总计划 §16.1 line 467 生态部分]、[ADR-0016 认知归模型/边界归状态]、[ADR-0014 单会话恢复与显式 review]、[[product-positioning-internal-engine]]、`mcp_command.py`、`templates/mcp_catalog.json`、~~`agents/debug_agent.py`~~（已删 `86e16fe`）
 - 授权：2026-07-05 用户指令——调研主流 agent（Claude Code 那类）的默认项，"选择性地带一些，贴合我们使用场景"；DebugAgent 方向由本方据主流自行决定。
 
 ## 1. 背景（Context）
@@ -25,8 +25,9 @@
 ### 2b. DebugAgent：**维持 deferred placeholder，不新建独立 agent**
 
 - 主流一致 + 我们的 ADR-0014（运行时无自动 Gate→Repair DebugAgent，repair/replan 是 CoderAgent 单循环内的显式模型动作）+ ADR-0016（认知归模型）**三者同形**。本会话已落地的 debug 能力恰是主流形态：`skills/bundled/debug/SKILL.md`（过程）+ 已闭合的自主 repair/replan 环（[[freeze-lifted-autonomous-loop]]）。
-- 故 `agents/debug_agent.py` **保持现状**：triage 锁的 KEEP_PLACEHOLDER，不扩回 live 环、不删除。其 docstring 已诚实标注"NOT wired / deferred"——无超卖，无需改动。
-- S69"对抗验证器"作为独立能力**不在本决定内复活**；若未来要做需另立 ADR + DecisionPoint（仍冻结）。
+- ~~故 `agents/debug_agent.py` **保持现状**：triage 锁的 KEEP_PLACEHOLDER，不扩回 live 环、不删除。~~
+  **【2026-07-08 更新·本 ADR 之后 3 天】**：RA7b task7（`86e16fe`「gut CoderAgent + 删 debug_agent」）把 `agents/debug_agent.py` **直接删除**（生产零构造·连占位都不留，比 deferred 更彻底）。本决定的**实质不变且更贯彻**——debug 归模型跟 skill、不存在独立 DebugAgent 状态机 agent；只是当年"保留占位文件"的处置被 FSM 全删收官推翻。残留的只是若干**字符串角色标签**（`agent_role_policy.py` 的 `"role": "DebugAgent"`、`agent_harness.py` 的 docstring）映射 deadline profile，不 import 任何类。被 repair/replan 推荐的 `debug` 命令是真的（`commands/debug_command.py`·语义=CoderAgent 续跑，非独立 agent）。
+- S69"对抗验证器"作为独立能力**不在本决定内复活**；且经核实其 manifest step-kind（`verifier_fanout`/`adversarial_review`/`merge_checkpoint`）**源码从未存在**（仅剩过时 .pyc），是"设计了没造"的冻结 L3 编排带（见 `runtime_orchestration_catalog.py` 的诚实标注）；若未来要做需另立 ADR + DecisionPoint（仍冻结）。
 
 ## 3. ADR-0016 合规映射
 
