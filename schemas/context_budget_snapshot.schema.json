@@ -3,86 +3,218 @@
   "title": "ContextBudgetSnapshot",
   "type": "object",
   "required": [
-    "schema_version",
-    "snapshot_id",
-    "run_id",
-    "task_id",
-    "created_at",
-    "scope",
-    "runtime_profile_id",
+    "compact_boundary",
+    "compaction_threshold",
     "context_mount_id",
-    "worker_kind",
-    "isolation_policy",
-    "parent_worker_invocation_id",
-    "parent_runtime_profile_id",
-    "estimated_tokens",
-    "sections",
+    "context_window_ratio",
+    "context_window_tokens",
+    "created_at",
     "duplicate_content_hashes",
     "duplicate_estimated_tokens",
     "duplicate_ref_count",
-    "context_window_tokens",
-    "context_window_ratio",
-    "pressure_status",
-    "compaction_threshold",
+    "estimated_tokens",
+    "evidence_refs",
     "hard_stop_threshold",
-    "compact_boundary",
-    "evidence_refs"
+    "isolation_policy",
+    "parent_runtime_profile_id",
+    "parent_worker_invocation_id",
+    "pressure_status",
+    "run_id",
+    "runtime_profile_id",
+    "schema_version",
+    "scope",
+    "sections",
+    "snapshot_id",
+    "task_id",
+    "worker_kind"
   ],
   "properties": {
-    "schema_version": { "type": "string" },
-    "snapshot_id": { "type": "string" },
-    "run_id": { "type": ["string", "null"] },
-    "task_id": { "type": "string" },
-    "created_at": { "type": "string" },
-    "scope": { "type": "string", "enum": ["task_context", "subagent_child"] },
-    "runtime_profile_id": { "type": "string" },
-    "context_mount_id": { "type": "string" },
-    "worker_kind": { "type": "string" },
-    "isolation_policy": { "type": "string" },
-    "parent_worker_invocation_id": { "type": ["string", "null"] },
-    "parent_runtime_profile_id": { "type": ["string", "null"] },
-    "estimated_tokens": { "type": "integer" },
+    "schema_version": {
+      "type": "string"
+    },
+    "snapshot_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "task_context",
+        "subagent_child"
+      ]
+    },
+    "runtime_profile_id": {
+      "type": "string"
+    },
+    "context_mount_id": {
+      "type": "string"
+    },
+    "worker_kind": {
+      "type": "string"
+    },
+    "isolation_policy": {
+      "type": "string"
+    },
+    "parent_worker_invocation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "parent_runtime_profile_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "estimated_tokens": {
+      "type": "integer"
+    },
     "sections": {
       "type": "object",
-      "additionalProperties": { "type": "integer" }
+      "additionalProperties": {
+        "type": "integer"
+      }
     },
     "duplicate_content_hashes": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
-    "duplicate_estimated_tokens": { "type": "integer" },
-    "duplicate_ref_count": { "type": "integer" },
-    "context_window_tokens": { "type": "integer" },
-    "context_window_ratio": { "type": "number" },
+    "duplicate_estimated_tokens": {
+      "type": "integer"
+    },
+    "duplicate_ref_count": {
+      "type": "integer"
+    },
+    "context_window_tokens": {
+      "type": "integer"
+    },
+    "context_window_ratio": {
+      "type": "number"
+    },
     "pressure_status": {
       "type": "string",
-      "enum": ["within_budget", "near_limit", "hard_stop", "exceeded"]
+      "enum": [
+        "within_budget",
+        "near_limit",
+        "hard_stop",
+        "exceeded"
+      ]
     },
-    "compaction_threshold": { "type": "number" },
-    "hard_stop_threshold": { "type": "number" },
+    "compaction_threshold": {
+      "type": "number"
+    },
+    "hard_stop_threshold": {
+      "type": "number"
+    },
     "compact_boundary": {
       "type": "object",
       "properties": {
         "status": {
           "type": "string",
-          "enum": ["not_required", "dedupe_recommended", "recommended", "required"]
+          "enum": [
+            "not_required",
+            "dedupe_recommended",
+            "recommended",
+            "required"
+          ]
         },
-        "recommended_action": { "type": "string" },
-        "estimated_tokens_before": { "type": "integer" },
-        "estimated_duplicate_tokens": { "type": "integer" },
+        "recommended_action": {
+          "type": "string"
+        },
+        "estimated_tokens_before": {
+          "type": "integer"
+        },
+        "estimated_duplicate_tokens": {
+          "type": "integer"
+        },
         "preserve_sections": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "droppable_sections": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
+        },
+        "estimated_tokens_after": {
+          "type": "integer"
+        },
+        "estimated_tokens_delta": {
+          "type": "integer"
         }
       }
     },
     "evidence_refs": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
+    },
+    "recovery_summary": {
+      "type": "object",
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    },
+    "noise_attribution": {
+      "type": "object",
+      "properties": {
+        "duplicate_content_hashes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "duplicate_estimated_tokens": {
+          "type": "integer"
+        },
+        "duplicate_ref_count": {
+          "type": "integer"
+        },
+        "largest_sections": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "file_context": {
+          "type": "object"
+        }
+      }
     }
   }
 }

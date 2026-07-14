@@ -3,32 +3,61 @@
   "title": "DailyPlan",
   "type": "object",
   "required": [
-    "schema_version",
-    "date",
-    "cycle_id",
-    "schedule_type",
-    "root",
-    "status",
-    "created_at",
-    "objective",
-    "summary",
+    "actions",
     "budget",
+    "created_at",
+    "cycle_id",
+    "date",
+    "objective",
+    "root",
+    "schedule_type",
+    "schema_version",
     "signals",
-    "actions"
+    "status",
+    "summary"
   ],
   "properties": {
-    "schema_version": { "type": "string" },
-    "date": { "type": "string" },
-    "cycle_id": { "type": "string" },
-    "schedule_type": { "type": "string" },
-    "root": { "type": "string" },
-    "status": { "type": "string" },
-    "created_at": { "type": "string" },
-    "objective": { "type": "string" },
-    "summary": { "type": "string" },
-    "budget": { "type": "object" },
-    "signals": { "type": "object" },
-    "actions": { "type": "array", "items": { "type": "object" } },
-    "automation_manifest": { "type": "object" }
+    "schema_version": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string"
+    },
+    "cycle_id": {
+      "type": "string"
+    },
+    "schedule_type": {
+      "type": "string"
+    },
+    "root": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "objective": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "budget": {
+      "type": "object"
+    },
+    "signals": {
+      "type": "object"
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "automation_manifest": {
+      "type": "object"
+    }
   }
 }

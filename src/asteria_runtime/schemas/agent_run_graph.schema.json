@@ -3,104 +3,238 @@
   "title": "AgentRunGraph",
   "type": "object",
   "required": [
-    "schema_version",
     "agent_run_graph_id",
-    "run_id",
-    "status",
-    "coordination_modes",
-    "max_concurrency_observed",
     "child_worker_plans",
     "collaboration_summary",
+    "coordination_modes",
+    "max_concurrency_observed",
+    "run_id",
+    "schema_version",
+    "status",
     "updated_at"
   ],
   "properties": {
-    "schema_version": { "type": "string" },
-    "agent_run_graph_id": { "type": "string" },
-    "run_id": { "type": "string" },
+    "schema_version": {
+      "type": "string"
+    },
+    "agent_run_graph_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
     "status": {
       "type": "string",
-      "enum": ["empty", "running", "succeeded", "blocked", "partial"]
+      "enum": [
+        "empty",
+        "running",
+        "succeeded",
+        "blocked",
+        "partial"
+      ]
     },
-    "coordination_modes": { "type": "array", "items": { "type": "string" } },
-    "max_concurrency_observed": { "type": "integer" },
+    "coordination_modes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "max_concurrency_observed": {
+      "type": "integer"
+    },
     "child_worker_plans": {
       "type": "array",
       "items": {
         "type": "object",
         "required": [
-          "child_worker_plan_id",
-          "worker_invocation_id",
-          "parent_worker_invocation_id",
-          "worker_kind",
-          "parallel_safety",
-          "child_plan_refs",
-          "task_id",
           "agent_id",
-          "status",
-          "runtime_profile_id",
-          "context_mount_id",
-          "model_profile_id",
-          "tool_permission_profile_id",
-          "model_tier",
           "budget",
-          "read_scope",
-          "write_scope",
-          "depends_on",
-          "coordination_mode",
+          "child_plan_refs",
+          "child_worker_plan_id",
           "collaboration_role",
-          "summary"
+          "context_mount_id",
+          "coordination_mode",
+          "depends_on",
+          "model_profile_id",
+          "model_tier",
+          "parallel_safety",
+          "parent_worker_invocation_id",
+          "read_scope",
+          "runtime_profile_id",
+          "status",
+          "summary",
+          "task_id",
+          "tool_permission_profile_id",
+          "worker_invocation_id",
+          "worker_kind",
+          "write_scope"
         ],
         "properties": {
-          "child_worker_plan_id": { "type": "string" },
-          "worker_invocation_id": { "type": "string" },
-          "worker_result_id": { "type": ["string", "null"] },
-          "parent_worker_invocation_id": { "type": ["string", "null"] },
-          "subagent_child_plan_id": { "type": "string" },
-          "worker_kind": { "type": "string" },
-          "parallel_safety": { "type": "string" },
-          "child_plan_refs": { "type": "array", "items": { "type": "string" } },
-          "decomposition_strategy": { "type": "string" },
-          "scheduling_strategy": { "type": "string" },
-          "planned_child_count": { "type": "integer" },
-          "planned_child_tasks": { "type": "array", "items": { "type": "object" } },
-          "task_id": { "type": "string" },
-          "agent_id": { "type": "string" },
-          "status": { "type": "string" },
-          "result_status": { "type": ["string", "null"] },
-          "runtime_profile_id": { "type": "string" },
-          "candidate_workspace_id": { "type": "string" },
-          "context_mount_id": { "type": "string" },
-          "model_profile_id": { "type": "string" },
-          "tool_permission_profile_id": { "type": "string" },
-          "model_tier": { "type": "string" },
+          "child_worker_plan_id": {
+            "type": "string"
+          },
+          "worker_invocation_id": {
+            "type": "string"
+          },
+          "worker_result_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parent_worker_invocation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subagent_child_plan_id": {
+            "type": "string"
+          },
+          "decomposition_strategy": {
+            "type": "string"
+          },
+          "scheduling_strategy": {
+            "type": "string"
+          },
+          "planned_child_count": {
+            "type": "integer"
+          },
+          "planned_child_tasks": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "result_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runtime_profile_id": {
+            "type": "string"
+          },
+          "candidate_workspace_id": {
+            "type": "string"
+          },
+          "context_mount_id": {
+            "type": "string"
+          },
+          "model_profile_id": {
+            "type": "string"
+          },
+          "tool_permission_profile_id": {
+            "type": "string"
+          },
+          "model_tier": {
+            "type": "string"
+          },
           "budget": {
             "type": "object",
-            "required": ["max_model_calls", "max_tool_calls"],
+            "required": [
+              "max_model_calls",
+              "max_tool_calls"
+            ],
             "properties": {
-              "max_model_calls": { "type": "integer" },
-              "max_tool_calls": { "type": "integer" },
-              "max_runtime_minutes": { "type": "integer" }
+              "max_model_calls": {
+                "type": "integer"
+              },
+              "max_tool_calls": {
+                "type": "integer"
+              },
+              "max_runtime_minutes": {
+                "type": "integer"
+              }
             }
           },
-          "strategy_mode": { "type": "string" },
-          "strategy_max_child_workers": { "type": "integer" },
-          "read_scope": { "type": "array", "items": { "type": "string" } },
-          "write_scope": { "type": "array", "items": { "type": "string" } },
-          "depends_on": { "type": "array", "items": { "type": "string" } },
-          "coordination_mode": { "type": "string" },
-          "collaboration_role": { "type": "string" },
-          "artifact_refs": { "type": "array", "items": { "type": "string" } },
-          "validation_refs": { "type": "array", "items": { "type": "string" } },
-          "failure_evidence_refs": { "type": "array", "items": { "type": "string" } },
+          "strategy_mode": {
+            "type": "string"
+          },
+          "strategy_max_child_workers": {
+            "type": "integer"
+          },
+          "read_scope": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "write_scope": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "coordination_mode": {
+            "type": "string"
+          },
+          "collaboration_role": {
+            "type": "string"
+          },
+          "artifact_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "validation_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "failure_evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "cost": {
             "type": "object",
-            "required": ["model_calls", "tool_calls"],
+            "required": [
+              "model_calls",
+              "tool_calls"
+            ],
             "properties": {
-              "model_calls": { "type": "integer" },
-              "tool_calls": { "type": "integer" }
+              "model_calls": {
+                "type": "integer"
+              },
+              "tool_calls": {
+                "type": "integer"
+              }
             }
           },
-          "summary": { "type": "string" }
+          "summary": {
+            "type": "string"
+          },
+          "worker_kind": {
+            "type": "string"
+          },
+          "parallel_safety": {
+            "type": "string"
+          },
+          "child_plan_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       }
     },
@@ -110,30 +244,88 @@
         "type": "object",
         "required": [
           "candidate_id",
+          "status",
+          "strategy",
           "task_id",
           "workspace",
-          "strategy",
-          "workspace_policy",
-          "status"
+          "workspace_policy"
         ],
         "properties": {
-          "candidate_id": { "type": "string" },
-          "task_id": { "type": "string" },
-          "workspace": { "type": "string" },
-          "strategy": { "type": "string" },
-          "workspace_policy": { "type": "string" },
-          "backend_reason": { "type": "string" },
-          "branch_name": { "type": ["string", "null"] },
-          "status": { "type": "string" },
-          "parent_worker_invocation_id": { "type": ["string", "null"] },
-          "parent_runtime_profile_id": { "type": ["string", "null"] },
-          "worker_kind": { "type": ["string", "null"] },
-          "parallel_safety": { "type": ["string", "null"] },
-          "promotion_ids": { "type": "array", "items": { "type": "string" } },
-          "latest_promotion_status": { "type": "string" },
-          "promotable_files": { "type": "array", "items": { "type": "string" } },
-          "promoted_files": { "type": "array", "items": { "type": "string" } },
-          "manifest_ref": { "type": "string" }
+          "candidate_id": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          },
+          "strategy": {
+            "type": "string"
+          },
+          "workspace_policy": {
+            "type": "string"
+          },
+          "backend_reason": {
+            "type": "string"
+          },
+          "branch_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "parent_worker_invocation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parent_runtime_profile_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "worker_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parallel_safety": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "promotion_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "latest_promotion_status": {
+            "type": "string"
+          },
+          "promotable_files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "promoted_files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "manifest_ref": {
+            "type": "string"
+          }
         }
       }
     },
@@ -142,123 +334,278 @@
       "items": {
         "type": "object",
         "required": [
-          "promotion_id",
-          "task_id",
-          "candidate_id",
-          "status",
           "approval_mode",
+          "candidate_id",
           "promotable_files",
           "promoted_files",
+          "promotion_id",
+          "status",
+          "task_id",
           "updated_at"
         ],
         "properties": {
-          "promotion_id": { "type": "string" },
-          "task_id": { "type": "string" },
-          "candidate_id": { "type": "string" },
-          "status": { "type": "string" },
-          "approval_mode": { "type": "string" },
-          "promotable_files": { "type": "array", "items": { "type": "string" } },
-          "promoted_files": { "type": "array", "items": { "type": "string" } },
-          "merge_gate_ok": { "type": ["boolean", "null"] },
-          "merge_gate_violations": { "type": "array", "items": { "type": "string" } },
-          "failure_type": { "type": "string" },
-          "failure_message": { "type": "string" },
-          "recovery_action": { "type": "string" },
-          "recovery_status": { "type": "string" },
-          "updated_at": { "type": "string" }
+          "promotion_id": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "candidate_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "approval_mode": {
+            "type": "string"
+          },
+          "promotable_files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "promoted_files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "merge_gate_ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "merge_gate_violations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "failure_type": {
+            "type": "string"
+          },
+          "failure_message": {
+            "type": "string"
+          },
+          "recovery_action": {
+            "type": "string"
+          },
+          "recovery_status": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
         }
       }
     },
     "merge_gate_summary": {
       "type": "object",
-      "required": ["total", "passed_count", "blocked_count", "blocked_refs", "violations"],
+      "required": [
+        "blocked_count",
+        "blocked_refs",
+        "passed_count",
+        "total",
+        "violations"
+      ],
       "properties": {
-        "total": { "type": "integer" },
-        "passed_count": { "type": "integer" },
-        "blocked_count": { "type": "integer" },
-        "blocked_refs": { "type": "array", "items": { "type": "string" } },
-        "violations": { "type": "array", "items": { "type": "string" } }
+        "total": {
+          "type": "integer"
+        },
+        "passed_count": {
+          "type": "integer"
+        },
+        "blocked_count": {
+          "type": "integer"
+        },
+        "blocked_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "violations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "promotion_recovery_summary": {
       "type": "object",
       "required": [
-        "total",
-        "recovered_count",
-        "unresolved_count",
         "discarded_candidate_count",
-        "recovery_actions",
-        "unresolved_refs",
+        "next_actions",
+        "recovered_count",
         "recovered_refs",
-        "next_actions"
+        "recovery_actions",
+        "total",
+        "unresolved_count",
+        "unresolved_refs"
       ],
       "properties": {
-        "total": { "type": "integer" },
-        "recovered_count": { "type": "integer" },
-        "unresolved_count": { "type": "integer" },
-        "discarded_candidate_count": { "type": "integer" },
-        "recovery_actions": { "type": "array", "items": { "type": "string" } },
-        "unresolved_refs": { "type": "array", "items": { "type": "string" } },
-        "recovered_refs": { "type": "array", "items": { "type": "string" } },
-        "next_actions": { "type": "array", "items": { "type": "string" } }
+        "total": {
+          "type": "integer"
+        },
+        "recovered_count": {
+          "type": "integer"
+        },
+        "unresolved_count": {
+          "type": "integer"
+        },
+        "discarded_candidate_count": {
+          "type": "integer"
+        },
+        "recovery_actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unresolved_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recovered_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "next_actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "collaboration_summary": {
       "type": "object",
       "required": [
-        "total_workers",
-        "successful_workers",
-        "failed_workers",
-        "blocked_workers",
-        "total_model_calls",
-        "total_tool_calls",
         "artifact_refs",
-        "validation_refs",
+        "blocked_workers",
+        "collaboration_protocol",
+        "failed_workers",
         "failure_evidence_refs",
         "merge_strategy",
-        "collaboration_protocol",
+        "next_actions",
         "strategy_modes",
-        "next_actions"
+        "successful_workers",
+        "total_model_calls",
+        "total_tool_calls",
+        "total_workers",
+        "validation_refs"
       ],
       "properties": {
-        "total_workers": { "type": "integer" },
-        "successful_workers": { "type": "integer" },
-        "failed_workers": { "type": "integer" },
-        "blocked_workers": { "type": "integer" },
-        "total_model_calls": { "type": "integer" },
-        "total_tool_calls": { "type": "integer" },
-        "artifact_refs": { "type": "array", "items": { "type": "string" } },
-        "validation_refs": { "type": "array", "items": { "type": "string" } },
-        "failure_evidence_refs": { "type": "array", "items": { "type": "string" } },
-        "candidate_workspace_count": { "type": "integer" },
-        "promotion_queue_total": { "type": "integer" },
-        "promotion_pending_count": { "type": "integer" },
-        "promotion_blocked_count": { "type": "integer" },
-        "merge_gate_block_count": { "type": "integer" },
-        "promotion_recovered_count": { "type": "integer" },
-        "promotion_recovery_unresolved_count": { "type": "integer" },
-        "merge_strategy": { "type": "string" },
+        "total_workers": {
+          "type": "integer"
+        },
+        "successful_workers": {
+          "type": "integer"
+        },
+        "failed_workers": {
+          "type": "integer"
+        },
+        "blocked_workers": {
+          "type": "integer"
+        },
+        "total_model_calls": {
+          "type": "integer"
+        },
+        "total_tool_calls": {
+          "type": "integer"
+        },
+        "artifact_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "validation_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "failure_evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "candidate_workspace_count": {
+          "type": "integer"
+        },
+        "promotion_queue_total": {
+          "type": "integer"
+        },
+        "promotion_pending_count": {
+          "type": "integer"
+        },
+        "promotion_blocked_count": {
+          "type": "integer"
+        },
+        "merge_gate_block_count": {
+          "type": "integer"
+        },
+        "promotion_recovered_count": {
+          "type": "integer"
+        },
+        "promotion_recovery_unresolved_count": {
+          "type": "integer"
+        },
+        "merge_strategy": {
+          "type": "string"
+        },
         "collaboration_protocol": {
           "type": "object",
           "required": [
-            "isolation_model",
-            "review_agent_role",
             "debug_agent_role",
+            "isolation_model",
             "merge_gate_role",
-            "promotion_queue_role"
+            "promotion_queue_role",
+            "review_agent_role"
           ],
           "properties": {
-            "isolation_model": { "type": "string" },
-            "review_agent_role": { "type": "string" },
-            "debug_agent_role": { "type": "string" },
-            "merge_gate_role": { "type": "string" },
-            "promotion_queue_role": { "type": "string" }
+            "isolation_model": {
+              "type": "string"
+            },
+            "review_agent_role": {
+              "type": "string"
+            },
+            "debug_agent_role": {
+              "type": "string"
+            },
+            "merge_gate_role": {
+              "type": "string"
+            },
+            "promotion_queue_role": {
+              "type": "string"
+            }
           }
         },
-        "strategy_modes": { "type": "array", "items": { "type": "string" } },
-        "next_actions": { "type": "array", "items": { "type": "string" } }
+        "strategy_modes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "next_actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
-    "updated_at": { "type": "string" }
+    "updated_at": {
+      "type": "string"
+    }
   }
 }

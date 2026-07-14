@@ -3,39 +3,91 @@
   "title": "ContextMount",
   "type": "object",
   "required": [
-    "schema_version",
     "context_mount_id",
-    "run_id",
-    "task_id",
+    "includes",
     "mount_type",
-    "includes"
+    "run_id",
+    "schema_version",
+    "task_id"
   ],
   "properties": {
-    "schema_version": { "type": "string" },
-    "context_mount_id": { "type": "string" },
-    "run_id": { "type": "string" },
-    "task_id": { "type": "string" },
+    "schema_version": {
+      "type": "string"
+    },
+    "context_mount_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
     "mount_type": {
       "type": "string",
-      "enum": ["planning_context", "coding_context", "review_context", "debug_context", "summary_context"]
+      "enum": [
+        "planning_context",
+        "coding_context",
+        "review_context",
+        "debug_context",
+        "summary_context"
+      ]
     },
     "includes": {
       "type": "object",
       "properties": {
-        "root_guidance": { "type": "boolean" },
-        "goal_brief": { "type": "boolean" },
-        "task_brief": { "type": "boolean" },
-        "artifact_refs": { "type": "array", "items": { "type": "string" } },
-        "failure_evidence_refs": { "type": "array", "items": { "type": "string" } },
-        "decision_refs": { "type": "array", "items": { "type": "string" } },
-        "validation_refs": { "type": "array", "items": { "type": "string" } },
-        "recent_event_count": { "type": "integer" },
-        "isolation_policy": { "type": "string" },
-        "parent_worker_invocation_id": { "type": "string" },
-        "parent_runtime_profile_id": { "type": "string" },
-        "parallel_safety": { "type": "string" }
+        "root_guidance": {
+          "type": "boolean"
+        },
+        "goal_brief": {
+          "type": "boolean"
+        },
+        "task_brief": {
+          "type": "boolean"
+        },
+        "artifact_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "failure_evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "decision_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "validation_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recent_event_count": {
+          "type": "integer"
+        },
+        "isolation_policy": {
+          "type": "string"
+        },
+        "parent_worker_invocation_id": {
+          "type": "string"
+        },
+        "parent_runtime_profile_id": {
+          "type": "string"
+        },
+        "parallel_safety": {
+          "type": "string"
+        }
       }
     },
-    "summary": { "type": "string" }
+    "summary": {
+      "type": "string"
+    }
   }
 }

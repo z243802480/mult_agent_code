@@ -3,25 +3,73 @@
   "title": "UsageSignalAnalysis",
   "type": "object",
   "required": [
-    "schema_version",
+    "candidate_decision_points",
     "created_at",
-    "status",
-    "source",
-    "summary",
+    "next_actions",
     "priority_items",
     "roadmap_tasks",
-    "candidate_decision_points",
-    "next_actions"
+    "schema_version",
+    "source",
+    "status",
+    "summary"
   ],
   "properties": {
-    "schema_version": { "type": "string" },
-    "created_at": { "type": "string" },
-    "status": { "type": "string" },
-    "source": { "type": "object" },
-    "summary": { "type": "object" },
-    "priority_items": { "type": "array", "items": { "type": "object" } },
-    "roadmap_tasks": { "type": "array", "items": { "type": "object" } },
-    "candidate_decision_points": { "type": "array", "items": { "type": "object" } },
-    "next_actions": { "type": "array", "items": { "type": "string" } }
+    "schema_version": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "source": {
+      "type": "object"
+    },
+    "summary": {
+      "type": "object"
+    },
+    "active_summary": {
+      "type": "object"
+    },
+    "superseded_signals": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "dogfooding_gate": {
+      "type": "object"
+    },
+    "acceptance_signal_gate": {
+      "type": "object"
+    },
+    "next_batch_plan": {
+      "type": "object"
+    },
+    "priority_items": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "roadmap_tasks": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "candidate_decision_points": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "next_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
   }
 }

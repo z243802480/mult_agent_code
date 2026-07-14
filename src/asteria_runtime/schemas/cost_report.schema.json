@@ -3,59 +3,128 @@
   "title": "CostReport",
   "type": "object",
   "required": [
-    "schema_version",
-    "run_id",
-    "model_calls",
-    "tool_calls",
+    "cheap_model_calls",
+    "context_compactions",
     "estimated_input_tokens",
     "estimated_output_tokens",
-    "strong_model_calls",
-    "cheap_model_calls",
+    "model_calls",
     "repair_attempts",
-    "context_compactions",
-    "user_decisions",
+    "run_id",
+    "schema_version",
     "status",
+    "strong_model_calls",
+    "tool_calls",
+    "user_decisions",
     "warnings"
   ],
   "properties": {
-    "schema_version": { "type": "string" },
-    "run_id": { "type": ["string", "null"] },
-    "model_calls": { "type": "integer" },
-    "tool_calls": { "type": "integer" },
-    "tool_budget_units": { "type": "integer" },
+    "schema_version": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "model_calls": {
+      "type": "integer"
+    },
+    "tool_calls": {
+      "type": "integer"
+    },
+    "tool_budget_units": {
+      "type": "integer"
+    },
     "tool_call_breakdown": {
       "type": "object",
-      "additionalProperties": { "type": "integer" }
+      "additionalProperties": {
+        "type": "integer"
+      }
     },
-    "estimated_input_tokens": { "type": ["integer", "null"] },
-    "estimated_output_tokens": { "type": ["integer", "null"] },
-    "latest_context_estimated_tokens": { "type": "integer" },
-    "max_context_estimated_tokens": { "type": "integer" },
-    "context_window_tokens": { "type": "integer" },
-    "context_window_ratio": { "type": "number" },
+    "estimated_input_tokens": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "estimated_output_tokens": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "latest_context_estimated_tokens": {
+      "type": "integer"
+    },
+    "max_context_estimated_tokens": {
+      "type": "integer"
+    },
+    "context_window_tokens": {
+      "type": "integer"
+    },
+    "context_window_ratio": {
+      "type": "number"
+    },
     "context_pressure_status": {
       "type": "string",
-      "enum": ["within_budget", "near_limit", "hard_stop", "exceeded"]
+      "enum": [
+        "within_budget",
+        "near_limit",
+        "hard_stop",
+        "exceeded"
+      ]
+    },
+    "strong_model_calls": {
+      "type": "integer"
+    },
+    "cheap_model_calls": {
+      "type": "integer"
+    },
+    "repair_attempts": {
+      "type": "integer"
+    },
+    "research_calls": {
+      "type": "integer"
+    },
+    "context_compactions": {
+      "type": "integer"
+    },
+    "user_decisions": {
+      "type": "integer"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "within_budget",
+        "near_limit",
+        "exceeded",
+        "stopped"
+      ]
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     },
     "latest_context_sections": {
       "type": "object",
-      "additionalProperties": { "type": "integer" }
+      "additionalProperties": {
+        "type": "integer"
+      }
     },
     "max_context_sections": {
       "type": "object",
-      "additionalProperties": { "type": "integer" }
+      "additionalProperties": {
+        "type": "integer"
+      }
     },
     "context_duplicate_content_hashes": {
       "type": "array",
-      "items": { "type": "string" }
-    },
-    "strong_model_calls": { "type": "integer" },
-    "cheap_model_calls": { "type": "integer" },
-    "repair_attempts": { "type": "integer" },
-    "research_calls": { "type": "integer" },
-    "context_compactions": { "type": "integer" },
-    "user_decisions": { "type": "integer" },
-    "status": { "type": "string", "enum": ["within_budget", "near_limit", "exceeded", "stopped"] },
-    "warnings": { "type": "array", "items": { "type": "string" } }
+      "items": {
+        "type": "string"
+      }
+    }
   }
 }

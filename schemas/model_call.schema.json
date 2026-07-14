@@ -3,15 +3,15 @@
   "title": "ModelCall",
   "type": "object",
   "required": [
-    "schema_version",
+    "created_at",
     "model_call_id",
-    "run_id",
-    "purpose",
-    "model_provider",
     "model_name",
+    "model_provider",
     "model_tier",
-    "status",
-    "created_at"
+    "purpose",
+    "run_id",
+    "schema_version",
+    "status"
   ],
   "properties": {
     "task_id": {
@@ -34,62 +34,246 @@
         "null"
       ]
     },
-    "schema_version": { "type": "string" },
-    "model_call_id": { "type": "string" },
-    "run_id": { "type": ["string", "null"] },
-    "agent_id": { "type": ["string", "null"] },
-    "runtime_profile_id": { "type": ["string", "null"] },
-    "model_profile_id": { "type": ["string", "null"] },
-    "agent_role": { "type": ["string", "null"] },
-    "agent_role_contract": { "type": ["object", "null"] },
-    "deadline_profile": { "type": ["string", "null"] },
-    "deadline_ms": { "type": ["integer", "null"] },
-    "model_route": { "type": ["object", "null"] },
+    "schema_version": {
+      "type": "string"
+    },
+    "model_call_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "agent_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "runtime_profile_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "model_profile_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "agent_role": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "agent_role_contract": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "deadline_profile": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "deadline_ms": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "model_route": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
     "route_fallback": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "properties": {
-        "used": { "type": "boolean" },
-        "from_tier": { "type": "string" },
-        "to_tier": { "type": "string" },
-        "reason": { "type": "string" },
-        "policy": { "type": "string" }
+        "used": {
+          "type": "boolean"
+        },
+        "from_tier": {
+          "type": "string"
+        },
+        "to_tier": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "policy": {
+          "type": "string"
+        }
       }
     },
-    "prompt_envelope_hash": { "type": ["string", "null"] },
-    "prompt_envelope_path": { "type": ["string", "null"] },
-    "context_envelope_hash": { "type": ["string", "null"] },
-    "context_envelope_path": { "type": ["string", "null"] },
-    "capability_manifest_hash": { "type": ["string", "null"] },
-    "context_mode": { "type": ["string", "null"], "enum": ["slim", "focused", null] },
-    "fast_path_task_kind": {
-      "type": ["string", "null"],
-      "enum": ["doc_update", "simple_file", "single_file_bugfix", "complex_change", "high_risk", null]
+    "prompt_envelope_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
     },
-    "purpose": { "type": "string" },
-    "model_provider": { "type": "string" },
-    "model_name": { "type": "string" },
-    "model_tier": { "type": "string", "enum": ["cheap", "medium", "strong"] },
-    "input_tokens": { "type": ["integer", "null"] },
-    "output_tokens": { "type": ["integer", "null"] },
-    "duration_ms": { "type": ["integer", "null"] },
+    "prompt_envelope_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "context_envelope_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "context_envelope_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "capability_manifest_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "context_mode": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "slim",
+        "focused",
+        null
+      ]
+    },
+    "fast_path_task_kind": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "doc_update",
+        "simple_file",
+        "single_file_bugfix",
+        "complex_change",
+        "high_risk",
+        null
+      ]
+    },
+    "purpose": {
+      "type": "string"
+    },
+    "model_provider": {
+      "type": "string"
+    },
+    "model_name": {
+      "type": "string"
+    },
+    "model_tier": {
+      "type": "string",
+      "enum": [
+        "cheap",
+        "medium",
+        "strong"
+      ]
+    },
+    "input_tokens": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "output_tokens": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "duration_ms": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
     "streaming": {
       "type": "object",
       "properties": {
-        "requested": { "type": "boolean" },
-        "supported": { "type": "boolean" },
-        "mode": { "type": "string" },
-        "first_chunk_ms": { "type": ["integer", "null"] },
-        "last_chunk_ms": { "type": ["integer", "null"] },
-        "duration_ms": { "type": ["integer", "null"] },
-        "chunk_count": { "type": "integer" },
-        "idle_timeout_ms": { "type": ["integer", "null"] },
-        "deadline_ms": { "type": ["integer", "null"] },
-        "finish_reason": { "type": ["string", "null"] },
-        "error_type": { "type": ["string", "null"] }
+        "requested": {
+          "type": "boolean"
+        },
+        "supported": {
+          "type": "boolean"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "first_chunk_ms": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "last_chunk_ms": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "duration_ms": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "chunk_count": {
+          "type": "integer"
+        },
+        "idle_timeout_ms": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "deadline_ms": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "finish_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       }
     },
-    "status": { "type": "string" },
-    "created_at": { "type": "string" },
-    "summary": { "type": "string" }
+    "status": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    }
   }
 }

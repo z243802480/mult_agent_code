@@ -3,45 +3,110 @@
   "title": "DailyReport",
   "type": "object",
   "required": [
-    "schema_version",
-    "date",
-    "cycle_id",
-    "schedule_type",
-    "root",
-    "status",
+    "budget",
     "created_at",
-    "plan_path",
+    "cycle_id",
+    "date",
     "executed",
     "goal",
-    "objective",
-    "progress",
-    "stop_reason",
-    "budget",
-    "results",
-    "summary",
-    "risks",
     "model_profile",
-    "next_actions"
+    "next_actions",
+    "objective",
+    "plan_path",
+    "progress",
+    "results",
+    "risks",
+    "root",
+    "schedule_type",
+    "schema_version",
+    "status",
+    "stop_reason",
+    "summary"
   ],
   "properties": {
-    "schema_version": { "type": "string" },
-    "date": { "type": "string" },
-    "cycle_id": { "type": "string" },
-    "schedule_type": { "type": "string" },
-    "root": { "type": "string" },
-    "status": { "type": "string" },
-    "created_at": { "type": "string" },
-    "plan_path": { "type": "string" },
-    "executed": { "type": "boolean" },
-    "goal": { "type": "string" },
-    "objective": { "type": "string" },
-    "progress": { "type": "object" },
-    "stop_reason": { "type": ["string", "null"] },
-    "budget": { "type": "object" },
-    "results": { "type": "array", "items": { "type": "object" } },
-    "summary": { "type": "string" },
-    "risks": { "type": "array", "items": { "type": "string" } },
-    "model_profile": { "type": "object" },
-    "next_actions": { "type": "array", "items": { "type": "string" } }
+    "schema_version": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string"
+    },
+    "cycle_id": {
+      "type": "string"
+    },
+    "schedule_type": {
+      "type": "string"
+    },
+    "root": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "plan_path": {
+      "type": "string"
+    },
+    "executed": {
+      "type": "boolean"
+    },
+    "goal": {
+      "type": "string"
+    },
+    "objective": {
+      "type": "string"
+    },
+    "progress": {
+      "type": "object"
+    },
+    "stop_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "budget": {
+      "type": "object"
+    },
+    "automation_manifest": {
+      "type": "object"
+    },
+    "stop_conditions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence_outputs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "summary": {
+      "type": "string"
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "model_profile": {
+      "type": "object"
+    },
+    "next_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
   }
 }

@@ -3,74 +3,169 @@
   "title": "ModelCapabilityProfile",
   "type": "object",
   "required": [
-    "schema_version",
-    "root",
     "profile_count",
-    "profiles"
+    "profiles",
+    "root",
+    "schema_version"
   ],
   "properties": {
-    "schema_version": { "type": "string" },
-    "root": { "type": "string" },
-    "profile_count": { "type": "integer" },
+    "schema_version": {
+      "type": "string"
+    },
+    "root": {
+      "type": "string"
+    },
+    "profile_count": {
+      "type": "integer"
+    },
     "profiles": {
       "type": "array",
       "items": {
         "type": "object",
         "required": [
-          "provider",
-          "model",
-          "purpose",
-          "model_tier",
-          "total_calls",
-          "success_calls",
           "failure_calls",
-          "success_rate",
-          "input_tokens",
-          "output_tokens",
           "failure_types",
-          "recommended_action"
+          "input_tokens",
+          "model",
+          "model_tier",
+          "output_tokens",
+          "provider",
+          "purpose",
+          "recommended_action",
+          "success_calls",
+          "success_rate",
+          "total_calls"
         ],
         "properties": {
-          "provider": { "type": "string" },
-          "model": { "type": "string" },
-          "purpose": { "type": "string" },
-          "model_tier": { "type": "string" },
-          "total_calls": { "type": "integer" },
-          "success_calls": { "type": "integer" },
-          "failure_calls": { "type": "integer" },
-          "success_rate": { "type": "number" },
-          "input_tokens": { "type": "integer" },
-          "output_tokens": { "type": "integer" },
-          "average_input_tokens": { "type": "number" },
-          "average_output_tokens": { "type": "number" },
-          "total_workers": { "type": "integer" },
-          "successful_workers": { "type": "integer" },
-          "failed_workers": { "type": "integer" },
-          "worker_success_rate": { "type": "number" },
-          "validation_total": { "type": "integer" },
-          "validation_passed": { "type": "integer" },
-          "validation_pass_rate": { "type": "number" },
-          "runtime_request_total": { "type": "integer" },
-          "runtime_request_rate": { "type": "number" },
-          "runtime_request_types": { "type": "object" },
-          "route_signal_total": { "type": "integer" },
-          "route_signal_success": { "type": "integer" },
-          "route_signal_failure": { "type": "integer" },
-          "route_signal_success_rate": { "type": "number" },
-          "route_task_kinds": { "type": "object" },
-          "route_decisions": { "type": "object" },
-          "recent_route_signals": { "type": "array", "items": { "type": "string" } },
-          "matrix_signal_total": { "type": "integer" },
-          "matrix_signal_success": { "type": "integer" },
-          "matrix_signal_failure": { "type": "integer" },
-          "matrix_signal_success_rate": { "type": "number" },
-          "matrix_task_kinds": { "type": "object" },
-          "matrix_routes": { "type": "object" },
-          "recent_matrix_signals": { "type": "array", "items": { "type": "string" } },
-          "merge_gate_blocks": { "type": "integer" },
-          "failure_types": { "type": "object" },
-          "recommended_action": { "type": "string" },
-          "recent_failures": { "type": "array", "items": { "type": "string" } }
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "model_tier": {
+            "type": "string"
+          },
+          "total_calls": {
+            "type": "integer"
+          },
+          "success_calls": {
+            "type": "integer"
+          },
+          "failure_calls": {
+            "type": "integer"
+          },
+          "success_rate": {
+            "type": "number"
+          },
+          "input_tokens": {
+            "type": "integer"
+          },
+          "output_tokens": {
+            "type": "integer"
+          },
+          "average_input_tokens": {
+            "type": "number"
+          },
+          "average_output_tokens": {
+            "type": "number"
+          },
+          "total_workers": {
+            "type": "integer"
+          },
+          "successful_workers": {
+            "type": "integer"
+          },
+          "failed_workers": {
+            "type": "integer"
+          },
+          "worker_success_rate": {
+            "type": "number"
+          },
+          "validation_total": {
+            "type": "integer"
+          },
+          "validation_passed": {
+            "type": "integer"
+          },
+          "validation_pass_rate": {
+            "type": "number"
+          },
+          "runtime_request_total": {
+            "type": "integer"
+          },
+          "runtime_request_rate": {
+            "type": "number"
+          },
+          "runtime_request_types": {
+            "type": "object"
+          },
+          "route_signal_total": {
+            "type": "integer"
+          },
+          "route_signal_success": {
+            "type": "integer"
+          },
+          "route_signal_failure": {
+            "type": "integer"
+          },
+          "route_signal_success_rate": {
+            "type": "number"
+          },
+          "route_task_kinds": {
+            "type": "object"
+          },
+          "route_decisions": {
+            "type": "object"
+          },
+          "recent_route_signals": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "matrix_signal_total": {
+            "type": "integer"
+          },
+          "matrix_signal_success": {
+            "type": "integer"
+          },
+          "matrix_signal_failure": {
+            "type": "integer"
+          },
+          "matrix_signal_success_rate": {
+            "type": "number"
+          },
+          "matrix_task_kinds": {
+            "type": "object"
+          },
+          "matrix_routes": {
+            "type": "object"
+          },
+          "recent_matrix_signals": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "merge_gate_blocks": {
+            "type": "integer"
+          },
+          "failure_types": {
+            "type": "object"
+          },
+          "recommended_action": {
+            "type": "string"
+          },
+          "recent_failures": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       }
     }

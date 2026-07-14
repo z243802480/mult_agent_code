@@ -3,35 +3,84 @@
   "title": "ToolObservation",
   "type": "object",
   "required": [
-    "schema_version",
+    "created_at",
+    "observation",
     "observation_id",
-    "run_id",
-    "task_id",
-    "tool_call_id",
-    "tool_name",
     "ok",
+    "run_id",
+    "schema_version",
     "status",
     "summary",
-    "observation",
-    "created_at"
+    "task_id",
+    "tool_call_id",
+    "tool_name"
   ],
   "properties": {
-    "schema_version": { "type": "string" },
-    "observation_id": { "type": "string" },
-    "run_id": { "type": ["string", "null"] },
-    "task_id": { "type": "string" },
-    "tool_call_id": { "type": "string" },
-    "tool_name": { "type": "string" },
-    "ok": { "type": "boolean" },
-    "status": { "type": "string" },
-    "summary": { "type": "string" },
-    "error_class": { "type": ["string", "null"] },
-    "artifact_refs": { "type": "array", "items": { "type": "string" } },
-    "evidence_refs": { "type": "array", "items": { "type": "string" } },
-    "user_progress_event_id": { "type": ["string", "null"] },
-    "next_hint": { "type": "string" },
-    "capability_decision": { "type": "object" },
-    "observation": { "type": "object" },
-    "created_at": { "type": "string" }
+    "schema_version": {
+      "type": "string"
+    },
+    "observation_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "tool_call_id": {
+      "type": "string"
+    },
+    "tool_name": {
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "status": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "error_class": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "artifact_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "user_progress_event_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "next_hint": {
+      "type": "string"
+    },
+    "capability_decision": {
+      "type": "object"
+    },
+    "observation": {
+      "type": "object"
+    },
+    "created_at": {
+      "type": "string"
+    }
   }
 }

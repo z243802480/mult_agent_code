@@ -3,25 +3,33 @@
   "title": "GoalSpec",
   "type": "object",
   "required": [
-    "schema_version",
-    "goal_id",
-    "original_goal",
-    "normalized_goal",
-    "goal_type",
     "assumptions",
+    "budget",
     "constraints",
-    "non_goals",
-    "expanded_requirements",
-    "target_outputs",
     "definition_of_done",
-    "verification_strategy",
-    "budget"
+    "expanded_requirements",
+    "goal_id",
+    "goal_type",
+    "non_goals",
+    "normalized_goal",
+    "original_goal",
+    "schema_version",
+    "target_outputs",
+    "verification_strategy"
   ],
   "properties": {
-    "schema_version": { "type": "string" },
-    "goal_id": { "type": "string" },
-    "original_goal": { "type": "string" },
-    "normalized_goal": { "type": "string" },
+    "schema_version": {
+      "type": "string"
+    },
+    "goal_id": {
+      "type": "string"
+    },
+    "original_goal": {
+      "type": "string"
+    },
+    "normalized_goal": {
+      "type": "string"
+    },
     "goal_type": {
       "type": "string",
       "enum": [
@@ -34,44 +42,137 @@
         "unknown"
       ]
     },
-    "assumptions": { "type": "array", "items": { "type": "string" } },
-    "constraints": { "type": "array", "items": { "type": "string" } },
-    "non_goals": { "type": "array", "items": { "type": "string" } },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "non_goals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "expanded_requirements": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "priority", "description", "source", "acceptance"],
+        "required": [
+          "acceptance",
+          "description",
+          "id",
+          "priority",
+          "source"
+        ],
         "properties": {
-          "id": { "type": "string" },
-          "priority": { "type": "string", "enum": ["must", "should", "could", "wont"] },
-          "description": { "type": "string" },
-          "source": { "type": "string", "enum": ["user", "inferred", "research", "memory", "decision"] },
-          "acceptance": { "type": "array", "items": { "type": "string" } }
+          "id": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "must",
+              "should",
+              "could",
+              "wont"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "user",
+              "inferred",
+              "research",
+              "memory",
+              "decision"
+            ]
+          },
+          "acceptance": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       }
     },
-    "target_outputs": { "type": "array", "items": { "type": "string" } },
-    "definition_of_done": { "type": "array", "items": { "type": "string" } },
-    "verification_strategy": { "type": "array", "items": { "type": "string" } },
-    "execution_preferences": {
-      "type": "object",
-      "properties": {
-        "delegation": { "type": "string", "enum": ["auto", "preferred", "required"] },
-        "requested_capability": { "type": ["string", "null"] },
-        "requested_read_scope": { "type": "array", "items": { "type": "string" } }
+    "target_outputs": {
+      "type": "array",
+      "items": {
+        "type": "string"
       }
     },
-    "budget": { "type": "object" },
+    "definition_of_done": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "verification_strategy": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "budget": {
+      "type": "object"
+    },
     "risk_tier": {
       "type": "string",
-      "enum": ["high", "default", "readonly"]
+      "enum": [
+        "high",
+        "default",
+        "readonly"
+      ]
     },
     "research_type": {
       "type": "string",
-      "enum": ["documentation", "creative", "research"]
+      "enum": [
+        "documentation",
+        "creative",
+        "research"
+      ]
     },
-    "research_cli_type": { "type": "string" },
-    "research_report_ref": { "type": "string" }
+    "research_cli_type": {
+      "type": "string"
+    },
+    "research_report_ref": {
+      "type": "string"
+    },
+    "execution_preferences": {
+      "type": "object",
+      "properties": {
+        "delegation": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "preferred",
+            "required"
+          ]
+        },
+        "requested_capability": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requested_read_scope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
   }
 }

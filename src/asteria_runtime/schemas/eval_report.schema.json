@@ -3,30 +3,84 @@
   "title": "EvalReport",
   "type": "object",
   "required": [
-    "schema_version",
-    "run_id",
-    "goal_eval",
     "artifact_eval",
-    "outcome_eval",
-    "trajectory_eval",
     "cost_eval",
-    "overall"
+    "goal_eval",
+    "outcome_eval",
+    "overall",
+    "run_id",
+    "schema_version",
+    "trajectory_eval"
   ],
   "properties": {
-    "schema_version": { "type": "string" },
-    "run_id": { "type": ["string", "null"] },
-    "goal_eval": { "type": "object" },
-    "artifact_eval": { "type": "object" },
-    "outcome_eval": { "type": "object" },
-    "trajectory_eval": { "type": "object" },
-    "cost_eval": { "type": "object" },
+    "schema_version": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "goal_eval": {
+      "type": "object"
+    },
+    "artifact_eval": {
+      "type": "object"
+    },
+    "outcome_eval": {
+      "type": "object"
+    },
+    "trajectory_eval": {
+      "type": "object"
+    },
+    "cost_eval": {
+      "type": "object"
+    },
     "overall": {
       "type": "object",
-      "required": ["status", "score", "reason"],
+      "required": [
+        "reason",
+        "score",
+        "status"
+      ],
       "properties": {
-        "status": { "type": "string", "enum": ["pass", "partial", "fail"] },
-        "score": { "type": ["number", "null"] },
-        "reason": { "type": "string" }
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "partial",
+            "fail"
+          ]
+        },
+        "score": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "failure_classification": {
+      "type": "object",
+      "required": [
+        "category",
+        "recommended_command",
+        "reason"
+      ],
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "recommended_command": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
       }
     }
   }

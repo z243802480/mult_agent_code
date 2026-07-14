@@ -18,32 +18,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 ROOT_SCHEMAS = REPO_ROOT / "schemas"
 PACKAGE_SCHEMAS = REPO_ROOT / "src" / "asteria_runtime" / "schemas"
 
-# Same-named schemas whose repo-root and packaged copies currently differ in CONTENT.
-# The runtime resolves the repo-root copy first (resources.schema_dir), so drift here means a
-# source run and an installed wheel validate against different contracts — and the stale copy can
-# silently under-validate persisted runtime objects (the user_progress_event drift let bogus
-# transcript_kind values through until it was synced in S74). These entries are KNOWN pre-existing
-# drift pending per-schema triage: decide the correct copy, verify producers satisfy the stricter
-# one, then sync and REMOVE from this list. Do NOT add new names here — fix the drift instead.
-KNOWN_SCHEMA_CONTENT_DRIFT = {
-    "agent_loop_run_summary.schema.json",
-    "agent_run_graph.schema.json",
-    "context_budget_snapshot.schema.json",
-    "context_mount.schema.json",
-    "cost_report.schema.json",
-    "daily_plan.schema.json",
-    "daily_report.schema.json",
-    "eval_report.schema.json",
-    "goal_spec.schema.json",
-    "model_call.schema.json",
-    "model_capability_profile.schema.json",
-    "model_route_check.schema.json",
-    "runtime_profile.schema.json",
-    "task.schema.json",
-    "tool_observation.schema.json",
-    "usage_signal_analysis.schema.json",
-    "validation_run.schema.json",
-}
+# The two copies are now IDENTICAL and must stay that way. There used to be a
+# KNOWN_SCHEMA_CONTENT_DRIFT allowlist here holding 17 pre-existing divergences; they were merged
+# (union of properties/enums/required, verified by the full suite) and the allowlist is gone, so
+# drift is now caught unconditionally. Do not reintroduce an allowlist — fix the drift instead:
+# `python scripts/sync_schemas.py` copies the repo-root copy into the package.
 
 
 def _schema_names(directory: Path) -> set[str]:
@@ -66,35 +45,30 @@ def test_every_repo_schema_is_packaged() -> None:
 
 
 def test_shared_schemas_have_identical_content() -> None:
-    """Same-named root/packaged schemas must define the same contract.
+    """Same-named root/packaged schemas must define the SAME contract — no exceptions.
 
-    The runtime loads the repo-root copy; if it diverges from the packaged copy, source runs and
-    installed wheels validate against different contracts and the stale copy can under-validate.
-    KNOWN_SCHEMA_CONTENT_DRIFT carries the pre-existing drift pending per-schema triage.
+    A source run validates against the repo-root copy; an installed wheel validates against the
+    packaged one. When they diverge, the same runtime object is legal in one deployment and rejected
+    in the other — and it fails only in the wheel, i.e. only for real users. The drift found in B7
+    was exactly that: the packaged agent_run_graph REQUIRED three fields the root copy did not, so
+    records written happily in dev would have been rejected once installed.
     """
     shared = _schema_names(ROOT_SCHEMAS) & _schema_names(PACKAGE_SCHEMAS)
     drifted = sorted(
-        name
-        for name in shared
-        if name not in KNOWN_SCHEMA_CONTENT_DRIFT
-        and _load(ROOT_SCHEMAS / name) != _load(PACKAGE_SCHEMAS / name)
+        name for name in shared if _load(ROOT_SCHEMAS / name) != _load(PACKAGE_SCHEMAS / name)
     )
     assert not drifted, (
-        "repo-root and packaged schema copies diverged in content (runtime loads the root copy, so "
-        "this validates source runs vs installed wheels against different contracts): "
-        f"{drifted}. Sync them and verify producers satisfy the stricter copy."
+        "repo-root and packaged schema copies diverged in content — a source run and an installed "
+        f"wheel would validate against different contracts: {drifted}. "
+        "Run `python scripts/sync_schemas.py` (and make sure producers satisfy the merged copy)."
     )
 
 
-def test_known_schema_drift_allowlist_is_not_stale() -> None:
-    """Allowlisted names must STILL drift; once synced, prune them so regressions are caught."""
-    shared = _schema_names(ROOT_SCHEMAS) & _schema_names(PACKAGE_SCHEMAS)
-    no_longer_drifting = sorted(
-        name
-        for name in KNOWN_SCHEMA_CONTENT_DRIFT
-        if name in shared and _load(ROOT_SCHEMAS / name) == _load(PACKAGE_SCHEMAS / name)
-    )
-    assert not no_longer_drifting, (
-        "these schemas no longer drift between root and packaged; remove them from "
-        f"KNOWN_SCHEMA_CONTENT_DRIFT so future drift is caught: {no_longer_drifting}"
+def test_no_schema_is_packaged_without_a_repo_root_copy() -> None:
+    """The mirror of test_every_repo_schema_is_packaged: a schema that exists ONLY in the package is
+    invisible to source runs and to this repo's own review, and nothing keeps it honest."""
+    orphaned = sorted(_schema_names(PACKAGE_SCHEMAS) - _schema_names(ROOT_SCHEMAS))
+    assert not orphaned, (
+        "schemas present only in the packaged copy (source runs never load these, so they drift "
+        f"unreviewed): {orphaned}"
     )

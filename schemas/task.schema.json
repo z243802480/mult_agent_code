@@ -3,53 +3,128 @@
   "title": "Task",
   "type": "object",
   "required": [
-    "schema_version",
-    "task_id",
-    "title",
-    "description",
-    "status",
-    "priority",
-    "role",
-    "depends_on",
     "acceptance",
     "allowed_tools",
-    "expected_artifacts"
+    "depends_on",
+    "description",
+    "expected_artifacts",
+    "priority",
+    "role",
+    "schema_version",
+    "status",
+    "task_id",
+    "title"
   ],
   "properties": {
-    "schema_version": { "type": "string" },
-    "task_id": { "type": "string" },
-    "title": { "type": "string" },
-    "description": { "type": "string" },
+    "schema_version": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
     "status": {
       "type": "string",
-      "enum": ["backlog", "ready", "in_progress", "testing", "reviewing", "blocked", "done", "discarded"]
+      "enum": [
+        "backlog",
+        "ready",
+        "in_progress",
+        "testing",
+        "reviewing",
+        "blocked",
+        "done",
+        "discarded"
+      ]
     },
     "priority": {
       "type": "string",
-      "enum": ["critical", "high", "medium", "low"]
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low"
+      ]
     },
-    "role": { "type": "string" },
-    "depends_on": { "type": "array", "items": { "type": "string" } },
-    "acceptance": { "type": "array", "items": { "type": "string" } },
-    "allowed_tools": { "type": "array", "items": { "type": "string" } },
-    "expected_artifacts": { "type": "array", "items": { "type": "string" } },
-    "read_scope": { "type": "array", "items": { "type": "string" } },
-    "write_scope": { "type": "array", "items": { "type": "string" } },
+    "role": {
+      "type": "string"
+    },
+    "depends_on": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "acceptance": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "allowed_tools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "expected_artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "read_scope": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "write_scope": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "context_requirements": {
       "type": "object",
       "properties": {
         "mount_type": {
           "type": "string",
-          "enum": ["planning_context", "coding_context", "review_context", "debug_context", "summary_context"]
+          "enum": [
+            "planning_context",
+            "coding_context",
+            "review_context",
+            "debug_context",
+            "summary_context"
+          ]
         },
-        "include_artifacts": { "type": "boolean" },
-        "include_failures": { "type": "boolean" },
-        "include_decisions": { "type": "boolean" },
-        "include_validation": { "type": "boolean" },
-        "recent_event_count": { "type": "integer" }
+        "include_artifacts": {
+          "type": "boolean"
+        },
+        "include_failures": {
+          "type": "boolean"
+        },
+        "include_decisions": {
+          "type": "boolean"
+        },
+        "include_validation": {
+          "type": "boolean"
+        },
+        "recent_event_count": {
+          "type": "integer"
+        }
       }
     },
-    "validation_commands": { "type": "array", "items": { "type": "string" } },
+    "validation_commands": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "failure_policy": {
       "type": "string",
       "enum": [
@@ -63,53 +138,182 @@
     },
     "parallel_safety": {
       "type": "string",
-      "enum": ["readonly", "disjoint_writes", "serial"]
+      "enum": [
+        "readonly",
+        "disjoint_writes",
+        "serial"
+      ]
     },
     "merge_strategy": {
       "type": "string",
-      "enum": ["none", "first_passed", "best_score", "lowest_cost_passed", "manual_decision"]
+      "enum": [
+        "none",
+        "first_passed",
+        "best_score",
+        "lowest_cost_passed",
+        "manual_decision"
+      ]
     },
-    "runtime_profile_hints": { "type": "object" },
+    "runtime_profile_hints": {
+      "type": "object"
+    },
     "task_kind": {
       "type": "string",
-      "enum": ["diagnostic", "implementation", "verification", "research", "decision", "report", "ui"]
+      "enum": [
+        "diagnostic",
+        "implementation",
+        "verification",
+        "research",
+        "decision",
+        "report",
+        "ui"
+      ]
     },
     "research_type": {
       "type": "string",
-      "enum": ["documentation", "creative", "research"]
+      "enum": [
+        "documentation",
+        "creative",
+        "research"
+      ]
     },
-    "expected_changed_files": { "type": "array", "items": { "type": "string" } },
+    "expected_changed_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "verification_policy": {
       "type": "object",
       "properties": {
-        "required": { "type": "boolean" },
-        "allow_expected_failure": { "type": "boolean" },
-        "commands": { "type": "array", "items": { "type": "string" } }
+        "required": {
+          "type": "boolean"
+        },
+        "allow_expected_failure": {
+          "type": "boolean"
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "completion_contract": {
       "type": "object",
       "properties": {
-        "requires_changed_artifact": { "type": "boolean" },
-        "requires_verification": { "type": "boolean" },
-        "allows_expected_failure": { "type": "boolean" }
+        "requires_changed_artifact": {
+          "type": "boolean"
+        },
+        "requires_verification": {
+          "type": "boolean"
+        },
+        "allows_expected_failure": {
+          "type": "boolean"
+        }
       }
     },
-    "assigned_agent_id": { "type": ["string", "null"] },
-    "created_at": { "type": "string" },
-    "updated_at": { "type": "string" },
+    "assigned_agent_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "updated_at": {
+      "type": "string"
+    },
     "quality": {
       "type": "object",
       "properties": {
-        "clarity_score": { "type": "number" },
-        "testability_score": { "type": "number" },
-        "size_score": { "type": "number" },
-        "artifact_score": { "type": "number" },
-        "dependency_score": { "type": "number" },
-        "risk_score": { "type": "number" },
-        "passed": { "type": "boolean" }
+        "clarity_score": {
+          "type": "number"
+        },
+        "testability_score": {
+          "type": "number"
+        },
+        "size_score": {
+          "type": "number"
+        },
+        "artifact_score": {
+          "type": "number"
+        },
+        "dependency_score": {
+          "type": "number"
+        },
+        "risk_score": {
+          "type": "number"
+        },
+        "passed": {
+          "type": "boolean"
+        }
       }
     },
-    "notes": { "type": "string" }
+    "notes": {
+      "type": "string"
+    },
+    "allowed_mcp": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "allowed_skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "mcp_servers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "skill_catalog": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "execution_preferences": {
+      "type": "object",
+      "properties": {
+        "delegation": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "preferred",
+            "required"
+          ]
+        },
+        "requested_capability": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requested_read_scope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
   }
 }
