@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readServerSurface } from "./server-surface.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const serverSource = readFileSync(path.join(root, "studio/server.mjs"), "utf8");
+const serverSource = readServerSurface(path.join(root, "studio"));
 
 assert.match(
   serverSource,
