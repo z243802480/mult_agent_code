@@ -11,6 +11,7 @@ from asteria_runtime.commands.execute_command import (
 )
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.plan_command import PlanCommand
+from asteria_runtime.core.agent_tool_surface import model_tool_surface
 from asteria_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 
@@ -2873,6 +2874,29 @@ def test_concurrent_write_flags_bind_to_permission_mode(tmp_path: Path) -> None:
     }
     assert cmd._concurrent_subagents_enabled(on) is True
     assert cmd._isolated_parallel_writes_enabled(on) is True
+
+
+def test_autopilot_mode_is_not_marked_stricter_than_balanced_on_the_tool_surface(
+    tmp_path: Path,
+) -> None:
+    """The most autonomous tier must not be the most restricted one.
+
+    `auto` was missing from the shell-allowed set, so it was the only mode whose tool surface marked
+    `shell` and `run_tests` "deny" — stricter than `reviewed_auto`, which is backwards. This pins the
+    ordering. It is NOT a live behaviour fix: today the surface's `permission` field gates nothing
+    (the model payload carries tool names only; enforcement is in ToolExecutionGateway), so both
+    tiers really do offer shell either way. The point is that the inversion cannot come back and
+    start biting if that field is ever honoured.
+    """
+    cmd = ExecuteCommand(tmp_path)
+    assert cmd._shell_allowed({"permission_mode": "auto"}) is True
+    assert cmd._shell_allowed({"permission_mode": "reviewed_auto"}) is True
+    assert cmd._shell_allowed({"permission_mode": "ask_everything"}) is False
+
+    surface = model_tool_surface(["run_command"], allow_shell=cmd._shell_allowed({"permission_mode": "auto"}))
+    offered = {tool["name"]: tool["permission"] for tool in surface}
+    assert offered["shell"] != "deny"
+    assert offered["run_tests"] != "deny"
 
 
 def test_execute_command_concurrent_isolated_writes_disjoint_promote(tmp_path: Path) -> None:

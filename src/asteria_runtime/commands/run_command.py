@@ -1374,7 +1374,7 @@ class RunCommand:
                 # re-decompose. In auto / reviewed_auto, reset it to ready and re-drive instead of
                 # stopping to ask for `continue`, bounded by the budget hard-stop, the per-task
                 # continue cap, and the recovery-cycle counter. Off (ask_everything) => falls through.
-                if self._auto_continue_soft_fuse_enabled():
+                if self._auto_continue_soft_fuse_enabled(run_id):
                     soft_outcome = self._auto_continue_soft_fuse(
                         run_id, steps, progress, soft_fuse_continues
                     )
@@ -1386,7 +1386,7 @@ class RunCommand:
                 # failure types still escalate to a human DecisionPoint). Repair tasks created =>
                 # continue the (inner-cycle-bounded) loop; a DecisionPoint => pause for the human;
                 # nothing actionable => today's stop. Off => byte-identical to the block below.
-                if self._auto_goal_replan_enabled():
+                if self._auto_goal_replan_enabled(run_id):
                     replan_outcome = self._auto_goal_replan(run_id, steps, progress)
                     if replan_outcome == "continue":
                         continue
@@ -1555,7 +1555,25 @@ class RunCommand:
         agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
         return bool(agent_loop.get("task_plan_quality_gate_blocks", False))
 
-    def _auto_continue_soft_fuse_enabled(self) -> bool:
+    def _permission_mode(self, run_id: str) -> str | None:
+        """The run's OWN permission mode, read back from its ``run_config.json``.
+
+        The constructor argument only seeds a *new* run — it is what writes ``run_config.json`` in
+        the first place. Every later entry into the same run (``continue_run``, and above all
+        ``resume``, which never carried a permission level at all) would otherwise fall back to the
+        signature default ``balanced``, silently granting an ``ask_everything`` run the autonomy
+        rings its user explicitly declined. The execute layer already reads this same file (via
+        ``effective_policy_for_run``), so reading it here is what keeps the two halves of one run
+        from disagreeing about how autonomous they are allowed to be.
+        """
+        try:
+            config = load_run_config(self.root / ".asteria" / "runs" / run_id, self.validator)
+        except Exception:  # noqa: BLE001 - an unreadable config must not decide autonomy silently
+            config = None
+        mode = (config or {}).get("permission_mode")
+        return str(mode) if mode else self.permission_level
+
+    def _auto_continue_soft_fuse_enabled(self, run_id: str) -> bool:
         # Soft-fuse (max_rounds) auto-continue ring: when a task exhausts its *soft* per-task round
         # budget but is still progressing (exit_reason == "max_rounds", NOT a tool failure), give it
         # another batch of rounds instead of stopping to ask the human to type `resume`/`continue`.
@@ -1568,7 +1586,9 @@ class RunCommand:
         raw_agent_loop = policy.get("agent_loop")
         agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
         return bool(
-            agent_loop.get("auto_continue", autonomy_rings_default_on(self.permission_level))
+            agent_loop.get(
+                "auto_continue", autonomy_rings_default_on(self._permission_mode(run_id))
+            )
         )
 
     def _auto_continue_soft_fuse(
@@ -1670,7 +1690,7 @@ class RunCommand:
             )
         return "continue"
 
-    def _auto_goal_replan_enabled(self) -> bool:
+    def _auto_goal_replan_enabled(self, run_id: str) -> bool:
         # ADR-0017 third ring: auto-invoke goal-level ReplanCommand at the block boundary.
         # Default bound to the permission mode (set-and-forget): auto/reviewed_auto → on so a
         # blocked task auto-replans within lineage cap instead of stopping to ask for `resume`;
@@ -1680,11 +1700,11 @@ class RunCommand:
         agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
         return bool(
             agent_loop.get(
-                "auto_replan_goal", autonomy_rings_default_on(self.permission_level)
+                "auto_replan_goal", autonomy_rings_default_on(self._permission_mode(run_id))
             )
         )
 
-    def _auto_accept_enabled(self) -> bool:
+    def _auto_accept_enabled(self, run_id: str) -> bool:
         # Set-and-forget finalize, bound to the permission mode like the autonomy rings:
         # auto/reviewed_auto → on, ask_everything → off; explicit agent_loop.auto_accept overrides
         # (byte-reversible). Reverses the 2026-07-02 "run stops for explicit review" DecisionPoint
@@ -1693,7 +1713,9 @@ class RunCommand:
         raw_agent_loop = policy.get("agent_loop")
         agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
         return bool(
-            agent_loop.get("auto_accept", autonomy_rings_default_on(self.permission_level))
+            agent_loop.get(
+                "auto_accept", autonomy_rings_default_on(self._permission_mode(run_id))
+            )
         )
 
     def _pending_candidate_promotions(self, run_dir: Path) -> list[dict]:
@@ -1721,7 +1743,7 @@ class RunCommand:
         """
         if self._run_status(run_id) != "completed":
             return
-        if not self._auto_accept_enabled():
+        if not self._auto_accept_enabled(run_id):
             return
         run_dir = self.root / ".asteria" / "runs" / run_id
         try:

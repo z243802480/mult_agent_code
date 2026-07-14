@@ -10,6 +10,7 @@ from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.commands.new_command import NewCommand
 from asteria_runtime.commands.resume_command import ResumeCommand
 from asteria_runtime.commands.run_command import RunCommand
+from asteria_runtime.core.run_config import write_run_config
 from asteria_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 from tests.helpers.spine import is_spine_request, spine_response, spine_turn
@@ -1691,12 +1692,14 @@ def test_auto_goal_replan_enabled_binds_to_permission_mode(tmp_path: Path) -> No
     InitCommand(tmp_path).run()
     # Set-and-forget default (2026-07-13): reviewed_auto/auto bind the goal-replan ring ON;
     # ask_everything keeps it off. Explicit agent_loop.auto_replan_goal still overrides either way.
-    assert RunCommand(tmp_path, "g", permission_level="reviewed_auto")._auto_goal_replan_enabled() is True
-    assert RunCommand(tmp_path, "g", permission_level="auto")._auto_goal_replan_enabled() is True
-    assert RunCommand(tmp_path, "g", permission_level="ask_everything")._auto_goal_replan_enabled() is False
+    # No run_config on disk yet (brand-new run) → the constructor argument is the seed.
+    new = "run-unwritten"
+    assert RunCommand(tmp_path, "g", permission_level="reviewed_auto")._auto_goal_replan_enabled(new) is True
+    assert RunCommand(tmp_path, "g", permission_level="auto")._auto_goal_replan_enabled(new) is True
+    assert RunCommand(tmp_path, "g", permission_level="ask_everything")._auto_goal_replan_enabled(new) is False
     # Explicit False overrides the mode-on default (byte-reversible opt-out).
     _patch_policy(tmp_path, lambda p: p.setdefault("agent_loop", {}).__setitem__("auto_replan_goal", False))
-    assert RunCommand(tmp_path, "g", permission_level="auto")._auto_goal_replan_enabled() is False
+    assert RunCommand(tmp_path, "g", permission_level="auto")._auto_goal_replan_enabled(new) is False
 
 
 def test_run_command_auto_replans_blocked_task_by_default_under_reviewed_auto(tmp_path: Path) -> None:
@@ -1834,11 +1837,46 @@ def test_auto_continue_soft_fuse_enabled_binds_to_permission_mode(tmp_path: Path
     # Set-and-forget default (2026-07-14): reviewed_auto/auto bind the soft-fuse continue ring ON so
     # a max_rounds boundary auto-continues instead of stopping to ask for `continue`; ask_everything
     # keeps it off. Explicit agent_loop.auto_continue still overrides either way (byte-reversible).
-    assert RunCommand(tmp_path, "g", permission_level="reviewed_auto")._auto_continue_soft_fuse_enabled() is True
-    assert RunCommand(tmp_path, "g", permission_level="auto")._auto_continue_soft_fuse_enabled() is True
-    assert RunCommand(tmp_path, "g", permission_level="ask_everything")._auto_continue_soft_fuse_enabled() is False
+    new = "run-unwritten"
+    assert RunCommand(tmp_path, "g", permission_level="reviewed_auto")._auto_continue_soft_fuse_enabled(new) is True
+    assert RunCommand(tmp_path, "g", permission_level="auto")._auto_continue_soft_fuse_enabled(new) is True
+    assert RunCommand(tmp_path, "g", permission_level="ask_everything")._auto_continue_soft_fuse_enabled(new) is False
     _patch_policy(tmp_path, lambda p: p.setdefault("agent_loop", {}).__setitem__("auto_continue", False))
-    assert RunCommand(tmp_path, "g", permission_level="auto")._auto_continue_soft_fuse_enabled() is False
+    assert RunCommand(tmp_path, "g", permission_level="auto")._auto_continue_soft_fuse_enabled(new) is False
+
+
+def test_rings_read_the_permission_mode_the_run_was_created_with_not_the_constructor(
+    tmp_path: Path,
+) -> None:
+    """A run carries its own permission mode; re-entering it must not re-negotiate autonomy.
+
+    ``resume`` builds a RunCommand with no permission level at all, so it lands on the signature
+    default ``balanced``. Before this, that silently switched every run-level ring ON for a run whose
+    user had explicitly chosen ``ask_everything`` — autonomy escalated by the act of resuming, and
+    the run's own execute layer (which reads run_config.json) disagreed with its run layer about it.
+    """
+    InitCommand(tmp_path).run()
+    run_id = "run-strict"
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    run_dir.mkdir(parents=True)
+    # Exactly how ResumeCommand builds it: no permission_level → signature default "balanced".
+    resumed = RunCommand(tmp_path, goal="")
+    assert resumed.permission_level == "balanced"
+    write_run_config(
+        run_dir=run_dir,
+        validator=resumed.validator,
+        run_id=run_id,
+        mode="goal",
+        permission_level="ask_everything",
+        model_strategy="auto",
+    )
+
+    assert resumed._auto_goal_replan_enabled(run_id) is False
+    assert resumed._auto_continue_soft_fuse_enabled(run_id) is False
+    assert resumed._auto_accept_enabled(run_id) is False
+
+    # And the run's own mode wins over a constructor argument that disagrees, in both directions.
+    assert RunCommand(tmp_path, "g", permission_level="auto")._auto_accept_enabled(run_id) is False
 
 
 def test_auto_continue_soft_fuse_resets_max_rounds_task_and_continues(tmp_path: Path) -> None:

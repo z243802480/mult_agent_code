@@ -2001,8 +2001,18 @@ class ExecuteCommand:
         return "exception"
 
     def _shell_allowed(self, policy: dict) -> bool:
+        # Marks `shell` / `run_tests` as "ask" rather than "deny" on the model's tool surface.
+        #
+        # `auto` was missing from this set, which inverted the tiers: the MOST permissive mode was
+        # the only one whose surface marked shell and tests denied. That never bit, and this is not
+        # a live bug fix — the surface's `permission` field reaches nothing today (the model payload
+        # carries tool *names* only, and enforcement lives in ToolExecutionGateway + the always-on
+        # hard guards), so both tiers really do offer shell. It is corrected here so the inversion
+        # cannot start biting the day that field is honoured. (The legacy strings that used to sit
+        # in this set — allow / allow_all / trusted — are not values normalize_permission_mode can
+        # produce, so they matched nothing either.)
         permission = str(policy.get("permission_mode") or "").lower()
-        return permission in {"reviewed_auto", "allow", "allow_all", "trusted"}
+        return permission in {"reviewed_auto", "auto"}
 
     def _model_tool_call_summary(
         self,
