@@ -57,3 +57,12 @@ jobs:
 
       - name: Unit tests
         run: npm test
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      # The UI specs are hermetic: each boots its own Studio server against a seeded temp workspace.
+      # They used to be un-runnable in CI (one keyed off the developer's local .asteria/runs), which
+      # is exactly how they rotted unnoticed.
+      - name: UI tests
+        run: npm run test:ui
