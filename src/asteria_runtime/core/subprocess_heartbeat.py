@@ -45,7 +45,12 @@ def run_with_heartbeat(
         raise ValueError("run_with_heartbeat currently requires text=True")
 
     interval = _heartbeat_interval(heartbeat_seconds)
-    if interval <= 0:
+    # Heartbeats off is NOT a reason to skip the process-tree kill. subprocess.run's timeout handler
+    # kills only the direct child, so this fast path used to leave the whole grandchild subtree
+    # running (the runtime spawns its own children) — an orphaned process leak on every timed-out
+    # call with heartbeats disabled. Take it only when there is no timeout to enforce; otherwise fall
+    # through to the loop below, which terminates the group. Heartbeat printing stays off (interval<=0).
+    if interval <= 0 and timeout is None:
         return subprocess.run(
             list(args),
             cwd=cwd,
@@ -112,7 +117,7 @@ def run_with_heartbeat(
                     stderr="".join(stderr_chunks),
                 )
             now = time.monotonic()
-            if now >= next_heartbeat:
+            if interval > 0 and now >= next_heartbeat:
                 print(
                     _heartbeat_line(
                         label=display_label,
