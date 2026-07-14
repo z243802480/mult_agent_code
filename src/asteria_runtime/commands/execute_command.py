@@ -1230,11 +1230,16 @@ class ExecuteCommand:
             task=task,
         )
         allow_readback = fast_path.task_kind not in {"bug_fix", "single_file_bugfix"}
-        verification_results = [
-            obs
-            for obs in observations
-            if _is_verification_observation(obs, allow_readback=allow_readback)
-        ]
+        # Judge verification on each command's LATEST outcome (red→green on the same command passes),
+        # not the cumulative pass/fail of every call — else the repair loop's mandatory initial
+        # failing test dooms a genuinely fixed task (ring_recovery benchmark, 2026-07-14).
+        verification_results = _latest_verification_per_command(
+            [
+                obs
+                for obs in observations
+                if _is_verification_observation(obs, allow_readback=allow_readback)
+            ]
+        )
         # NB: we deliberately do NOT pass allow_verified_noop=True here. It was tempting for repair
         # tasks (a real fix whose changed-files detection false-negatived), but real-stack validation
         # (ring_val_f) showed it opens a false-completion hole: a task can "close" by running ANY
@@ -1999,6 +2004,37 @@ def _is_verification_observation(observation: Any, *, allow_readback: bool = Fal
     if name in _VERIFICATION_TOOL_NAMES:
         return True
     return allow_readback and name == "read_file"
+
+
+def _latest_verification_per_command(verification_results: list) -> list:
+    """Judge a repair loop's verification on each command's LATEST outcome, not the cumulative
+    pass/fail of every call across the whole task.
+
+    To fix a bug the model MUST first run the failing test (red), then fix and re-run it (green):
+    counting that mandatory initial red as a permanent failure made ``check_completion_contract``
+    append ``verification did not pass`` (verification_passed != verification_total) and marked a
+    genuinely fixed, verified-green task ``blocked`` — defeating the entire repair ring. The
+    real-stack ``ring_recovery`` benchmark (2026-07-14) surfaced exactly this: glm ran pytest (fail)
+    → fixed the code → ran pytest (pass), and was still blocked because the initial red counted.
+
+    Dedup by the verification COMMAND keeping the LAST observation, so red→green on the SAME command
+    passes, while a red test cannot be masked by later running a DIFFERENT passing command — that
+    other command's latest is what counts, and the failing test's latest is still red (preserves the
+    ring_val_f anti-gaming guard). Observations without a command (e.g. doc readbacks) pass through
+    unchanged."""
+    latest: dict[str, Any] = {}
+    order: list[str] = []
+    passthrough: list = []
+    for obs in verification_results:
+        data = getattr(obs, "data", {}) or {}
+        command = str(data.get("requested_command") or data.get("command") or "").strip()
+        if not command:
+            passthrough.append(obs)
+            continue
+        if command not in latest:
+            order.append(command)
+        latest[command] = obs
+    return passthrough + [latest[command] for command in order]
 
 
 def _looks_like_path(value: str) -> str | bool:
