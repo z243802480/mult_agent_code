@@ -1808,6 +1808,92 @@ def test_run_command_auto_goal_replan_closes_loop_end_to_end(tmp_path: Path) -> 
     assert any(event["title"] == "自动重规划已创建修复任务" for event in progress)
 
 
+def _write_run_summary(command: RunCommand, run_id: str, task_id: str, exit_reason: str) -> None:
+    """Overwrite agent_loop_run_summary.json with a chosen exit_reason (soft-fuse test seam)."""
+    from asteria_runtime.core.agent_loop_run_summary import (
+        build_agent_loop_run_summary,
+        persist_agent_loop_run_summary,
+    )
+
+    run_dir = command.root / ".asteria" / "runs" / run_id
+    summary = build_agent_loop_run_summary(
+        run_id=run_id,
+        task_id=task_id,
+        status="blocked",
+        exit_reason=exit_reason,
+        rounds_completed=6,
+        max_rounds=6,
+        summary="soft-fuse test summary",
+        recommended_command="status --debug",
+    )
+    persist_agent_loop_run_summary(run_dir=run_dir, validator=command.validator, summary=summary)
+
+
+def test_auto_continue_soft_fuse_enabled_binds_to_permission_mode(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    # Set-and-forget default (2026-07-14): reviewed_auto/auto bind the soft-fuse continue ring ON so
+    # a max_rounds boundary auto-continues instead of stopping to ask for `continue`; ask_everything
+    # keeps it off. Explicit agent_loop.auto_continue still overrides either way (byte-reversible).
+    assert RunCommand(tmp_path, "g", permission_level="reviewed_auto")._auto_continue_soft_fuse_enabled() is True
+    assert RunCommand(tmp_path, "g", permission_level="auto")._auto_continue_soft_fuse_enabled() is True
+    assert RunCommand(tmp_path, "g", permission_level="ask_everything")._auto_continue_soft_fuse_enabled() is False
+    _patch_policy(tmp_path, lambda p: p.setdefault("agent_loop", {}).__setitem__("auto_continue", False))
+    assert RunCommand(tmp_path, "g", permission_level="auto")._auto_continue_soft_fuse_enabled() is False
+
+
+def test_auto_continue_soft_fuse_resets_max_rounds_task_and_continues(tmp_path: Path) -> None:
+    # A task blocked purely by the soft max_rounds fuse (made progress, no tool failure) is reset to
+    # ready so the loop re-drives it — no human `continue` gate.
+    run_id = _blocked_run(tmp_path)
+    command = RunCommand(tmp_path, "create a repairable module")
+    _write_run_summary(command, run_id, "task-0001", "max_rounds")
+    steps: list = []
+
+    outcome = command._auto_continue_soft_fuse(run_id, steps, None, {})
+
+    assert outcome == "continue"
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    task = next(t for t in task_plan["tasks"] if t["task_id"] == "task-0001")
+    assert task["status"] == "ready"
+    assert "软迭代保险丝" in task["notes"]
+    assert any(step.name == "continue" and step.status == "completed" for step in steps)
+
+
+def test_auto_continue_soft_fuse_ignores_tool_failed(tmp_path: Path) -> None:
+    # Orthogonality: a genuinely-failed task (exit_reason tool_failed) is NOT a soft fuse — the ring
+    # declines it (returns "stop", leaves it blocked) so it falls through to the replan ring.
+    run_id = _blocked_run(tmp_path)  # FakeBrokenExecuteClient => exit_reason == "tool_failed"
+    command = RunCommand(tmp_path, "create a repairable module")
+    steps: list = []
+
+    outcome = command._auto_continue_soft_fuse(run_id, steps, None, {})
+
+    assert outcome == "stop"
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    task = next(t for t in task_plan["tasks"] if t["task_id"] == "task-0001")
+    assert task["status"] == "blocked"
+
+
+def test_auto_continue_soft_fuse_respects_per_task_cap(tmp_path: Path) -> None:
+    # Hard ceiling: once a task has soft-fuse-continued up to the cap without finishing, the ring
+    # escalates to a resumable boundary (returns "stop") instead of re-driving forever.
+    run_id = _blocked_run(tmp_path)
+    command = RunCommand(tmp_path, "create a repairable module")
+    _write_run_summary(command, run_id, "task-0001", "max_rounds")
+    steps: list = []
+
+    outcome = command._auto_continue_soft_fuse(run_id, steps, None, {"task-0001": 6})
+
+    assert outcome == "stop"
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    task = next(t for t in task_plan["tasks"] if t["task_id"] == "task-0001")
+    assert task["status"] == "blocked"
+    assert any(step.name == "continue" and step.status == "blocked" for step in steps)
+
+
 def test_run_command_does_not_debug_provider_transient_blocker(tmp_path: Path) -> None:
     result = RunCommand(
         tmp_path,

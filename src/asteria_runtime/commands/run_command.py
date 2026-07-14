@@ -18,6 +18,7 @@ from asteria_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
 from asteria_runtime.core.active_next_step import capability_feedback_active_next_step
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.agent_loop_profiles import AgentLoopProfileRegistry
+from asteria_runtime.core.agent_loop_run_summary import latest_agent_loop_run_summary
 from asteria_runtime.core.budget import BudgetController, resolve_budget_limits
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.core.main_path import (
@@ -30,6 +31,7 @@ from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.permission_policy import autonomy_rings_default_on
 from asteria_runtime.core.run_config import load_run_config
 from asteria_runtime.core.run_recap import author_run_recap
+from asteria_runtime.core.task_board import TaskBoard, TaskStateError
 from asteria_runtime.models.factory import create_recap_client
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
 from asteria_runtime.core.real_provider_matrix import (
@@ -1249,6 +1251,10 @@ class RunCommand:
         progressed = False
         inner_cycles = 0
         max_inner_cycles = self._policy_max_inner_execute_cycles(run_id)
+        # Per-task soft-fuse continue counter (in-memory, not persisted → no task-schema surface):
+        # caps how many times the soft max_rounds auto-continue ring re-drives a single task within
+        # this batch, keeping that budget separate from the shared recovery-cycle counter.
+        soft_fuse_continues: dict[str, int] = {}
         while self._ready_count(run_id) > 0:
             inner_cycles += 1
             if inner_cycles > max_inner_cycles:
@@ -1331,6 +1337,17 @@ class RunCommand:
                             ui_intent="needs_attention",
                         )
                     return progressed
+                # Soft-fuse auto-continue ring (checked BEFORE replan): a task blocked purely by the
+                # soft max_rounds fuse made progress and just needs more rounds — not a failure to
+                # re-decompose. In auto / reviewed_auto, reset it to ready and re-drive instead of
+                # stopping to ask for `continue`, bounded by the budget hard-stop, the per-task
+                # continue cap, and the recovery-cycle counter. Off (ask_everything) => falls through.
+                if self._auto_continue_soft_fuse_enabled():
+                    soft_outcome = self._auto_continue_soft_fuse(
+                        run_id, steps, progress, soft_fuse_continues
+                    )
+                    if soft_outcome == "continue":
+                        continue
                 # ADR-0017 goal-level replan ring (flag-gated, default off): instead of stopping at
                 # the resumable boundary and asking the human to type `replan`, auto-invoke
                 # ReplanCommand within its OWN bounds (goal_spec immutable; lineage cap and risky
@@ -1505,6 +1522,121 @@ class RunCommand:
         raw_agent_loop = policy.get("agent_loop")
         agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
         return bool(agent_loop.get("task_plan_quality_gate_blocks", False))
+
+    def _auto_continue_soft_fuse_enabled(self) -> bool:
+        # Soft-fuse (max_rounds) auto-continue ring: when a task exhausts its *soft* per-task round
+        # budget but is still progressing (exit_reason == "max_rounds", NOT a tool failure), give it
+        # another batch of rounds instead of stopping to ask the human to type `resume`/`continue`.
+        # Bound to the permission mode like the other autonomy rings (auto / reviewed_auto → on so
+        # "pick a mode and let it develop" is real; ask_everything → off). max_rounds is a soft cost
+        # fuse, NOT one of the must-interrupt hard gates (budget hard-stop / permission / irreversible
+        # / provable no-progress) — 研发总计划 §16 line 70/325. Explicit agent_loop.auto_continue
+        # overrides (byte-reversible). (User-authorized default flip, 2026-07-14.)
+        policy = self._policy()
+        raw_agent_loop = policy.get("agent_loop")
+        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
+        return bool(
+            agent_loop.get("auto_continue", autonomy_rings_default_on(self.permission_level))
+        )
+
+    def _auto_continue_soft_fuse(
+        self,
+        run_id: str,
+        steps: list[RunStepSummary],
+        progress: UserProgressLogger | None,
+        continues: dict[str, int],
+    ) -> str:
+        """Auto-continue a task blocked purely by the soft ``max_rounds`` fuse (not a failure).
+
+        Returns one of:
+        * ``"continue"`` — a soft-fuse-blocked task was reset to ``ready``; the caller re-enters the
+          inner-cycle-bounded loop to give it another batch of rounds.
+        * ``"stop"`` — nothing is soft-fuse-blocked, the budget hard-stop is reached, or the per-task
+          continue cap is hit; fall through to the replan ring / resumable boundary.
+
+        Three hard ceilings still interrupt: the budget hard-stop
+        (``max_model_calls_per_goal × hard_stop_threshold``), the per-task continue cap, and — one
+        level up — the recovery-cycle counter (``max_inner_cycles``). This is deliberately checked
+        *before* the replan ring: a soft-fuse task made progress and just needs more rounds, so
+        re-decomposing it (replan) would be the wrong recovery.
+        """
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        summary = latest_agent_loop_run_summary(run_dir, self.validator)
+        if not isinstance(summary, dict) or summary.get("exit_reason") != "max_rounds":
+            return "stop"
+        task_id = str(summary.get("task_id") or "")
+        if not task_id:
+            return "stop"
+        # Hard ceiling #1 (must-interrupt): at the budget hard-stop the run MUST pause for a human
+        # DecisionPoint — never silently re-drive past it. Fall through so _budget_guard / the budget
+        # decision surfaces it on the next continue_run iteration.
+        pressure = BudgetController.pressure(self._policy(), self._cost_report(run_id))
+        if pressure.get("status") == "hard_stop":
+            return "stop"
+        # Hard ceiling #2: per-task continue cap (mirrors the replan lineage cap) so a task that keeps
+        # exhausting the soft fuse without ever satisfying its completion contract escalates to a
+        # human boundary instead of re-driving forever.
+        raw_agent_loop = self._policy().get("agent_loop")
+        raw_cap = (
+            raw_agent_loop.get("max_soft_fuse_continues_per_task")
+            if isinstance(raw_agent_loop, dict)
+            else None
+        )
+        cap = int(raw_cap) if raw_cap is not None else 6
+        used = continues.get(task_id, 0)
+        if used >= cap:
+            steps.append(
+                RunStepSummary(
+                    "continue",
+                    "blocked",
+                    (
+                        f"Task {task_id} hit the soft round fuse {used} time(s) without finishing; "
+                        "escalating to a resumable boundary for review."
+                    ),
+                )
+            )
+            return "stop"
+        # Reset the soft-fuse-blocked task back to ready and let the existing loop re-drive it.
+        # blocked→ready is an allowed TaskBoard transition; update_status persists immediately.
+        board = TaskBoard(run_dir / "task_plan.json", self.validator)
+        try:
+            current = board.get_task(task_id)
+        except TaskStateError:
+            return "stop"
+        if current.get("status") != "blocked":
+            return "stop"
+        board.update_status(task_id, "ready")
+        board.update_notes(
+            task_id,
+            "自动越过软迭代保险丝，继续推进（受预算硬闸门与续跑上限约束）。",
+        )
+        continues[task_id] = used + 1
+        steps.append(
+            RunStepSummary(
+                "continue",
+                "completed",
+                (
+                    f"Auto-continued task {task_id} past the soft round fuse "
+                    f"({continues[task_id]}/{cap}); giving it another batch of rounds."
+                ),
+            )
+        )
+        if progress:
+            progress.record(
+                run_id=run_id,
+                channel="progress",
+                phase="execute",
+                status="running",
+                title="自动继续推进",
+                summary=(
+                    "当前任务用尽了单轮迭代预算但仍在推进，已自动继续下一批推进"
+                    "（达到预算硬闸门或续跑上限仍会暂停交你决策）。"
+                ),
+                display_level="main",
+                transcript_kind="repair",
+                ui_intent="work_progress",
+            )
+        return "continue"
 
     def _auto_goal_replan_enabled(self) -> bool:
         # ADR-0017 third ring: auto-invoke goal-level ReplanCommand at the block boundary.
