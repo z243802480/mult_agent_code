@@ -21,6 +21,10 @@ export function useSessionEvents(
     startedAt: number;
   } | null>(null);
   const [connectivity, setConnectivity] = useState<ConnectivityStatus>("live");
+  // Whether this session's transcript has been read at least once. Before it has, `isRunning` is
+  // false only because we have not looked yet — consumers that act on "not running" (the composer
+  // flushing its restored queue) must wait, or they would fire a message into a live run.
+  const [runStateKnown, setRunStateKnown] = useState(false);
   const unsubRef = useRef<(() => void) | null>(null);
   // Per-session event cache (I6): switching back to a session restores its events instantly instead
   // of flashing to [] and re-reading the whole transcript. The on-disk JSONL stays the source of
@@ -38,10 +42,12 @@ export function useSessionEvents(
     const sid = activeSession.session_id;
     setEvents(cacheRef.current.get(sid) ?? []);
     setConnectivity("live");
+    setRunStateKnown(false);
     void api
       .events(sid)
       .then((data) => mergeEvents(data.events ?? []))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setRunStateKnown(true));
     unsubRef.current?.();
     unsubRef.current = subscribeToEvents(sid, mergeEvents, setConnectivity);
     return () => {
@@ -249,6 +255,7 @@ export function useSessionEvents(
     isRunning,
     interrupted,
     runState,
+    runStateKnown,
     connectivity,
     sendGoal,
     sendSideAsk,

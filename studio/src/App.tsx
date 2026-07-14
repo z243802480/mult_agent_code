@@ -405,6 +405,7 @@ export function App() {
         />
         <Composer
           key={bootstrap.activeSession?.session_id ?? "no-session"}
+          sessionId={bootstrap.activeSession?.session_id}
           onSend={sessionEvents.sendGoal}
           onSideAsk={sendSideAsk}
           sideAsk={composerSideAsk}
@@ -417,6 +418,7 @@ export function App() {
               : undefined
           }
           isRunning={sessionEvents.isRunning}
+          runStateKnown={sessionEvents.runStateKnown}
           onStop={sessionEvents.stopRun}
           files={bootstrap.files}
         />

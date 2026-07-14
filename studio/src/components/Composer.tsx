@@ -7,6 +7,7 @@ import {
   type PermissionTierId,
 } from "../permissionTiers";
 import type { WorkspaceFile } from "../types";
+import { loadQueue, saveQueue } from "../session/composerQueue";
 
 const MENTION_LIMIT = 8;
 
@@ -77,8 +78,10 @@ export function Composer({
   viewMode = "focus",
   initialPermissionMode,
   isRunning = false,
+  runStateKnown = true,
   onStop,
   files = [],
+  sessionId,
 }: {
   onSend: (
     message: string,
@@ -93,8 +96,12 @@ export function Composer({
   viewMode?: import("../hooks/useViewMode").StudioViewMode;
   initialPermissionMode?: PermissionTierId;
   isRunning?: boolean;
+  /** False until this session's transcript has been read once — see the queue-flush effect. */
+  runStateKnown?: boolean;
   onStop?: () => Promise<void> | void;
   files?: WorkspaceFile[];
+  /** Scopes the persisted queue so lined-up messages belong to the session they were typed in. */
+  sessionId?: string;
 }) {
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("auto");
@@ -105,7 +112,12 @@ export function Composer({
   const [sending, setSending] = useState(false);
   // Messages typed while a run is in flight (I9). They wait honestly for the run to finish, then
   // auto-send at the turn boundary — we never claim to inject mid-step, which the runtime can't honor.
-  const [queue, setQueue] = useState<string[]>([]);
+  // Seeded from (and mirrored to) per-session storage: these used to live in memory only, so a
+  // refresh dropped the user's lined-up instructions without a word. See composerQueue.ts.
+  const [queue, setQueue] = useState<string[]>(() => loadQueue(sessionId ?? ""));
+  useEffect(() => {
+    saveQueue(sessionId ?? "", queue);
+  }, [sessionId, queue]);
   const wasRunning = useRef(false);
   // @-file mention (mainstream coding-agent affordance): type @ to point the agent at a workspace
   // file. The path is inserted as text; the runtime reads it via its file tools — no backend change.
@@ -195,10 +207,15 @@ export function Composer({
     }
   }
 
-  // Flush the head of the queue when the current run finishes (isRunning true→false). One at a time
-  // at the turn boundary; each queued item's own run then unblocks the next.
+  // Flush the head of the queue whenever the session is idle. One at a time at the turn boundary;
+  // each queued item's own run then unblocks the next.
+  //
+  // Gated on runStateKnown, not on a running→idle transition. The transition gate meant a queue
+  // RESTORED after a refresh never flushed (no transition ever happened) — it just sat there. But we
+  // also cannot flush the moment we mount: before the transcript is read, `isRunning` is false only
+  // because we have not looked yet, and sending then would fire a message into a still-live run.
   useEffect(() => {
-    if (wasRunning.current && !isRunning && queue.length > 0 && !sending) {
+    if (runStateKnown && !isRunning && queue.length > 0 && !sending) {
       const [head, ...rest] = queue;
       setQueue(rest);
       setSending(true);
@@ -208,7 +225,7 @@ export function Composer({
     }
     wasRunning.current = isRunning;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRunning, queue.length]);
+  }, [isRunning, runStateKnown, queue.length, sending]);
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     // Mention menu owns the keyboard while open: navigate + insert instead of send/stop.
