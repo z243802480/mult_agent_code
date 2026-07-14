@@ -803,6 +803,13 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) {
     payload.capability_decisions = redact(
       await readJsonlTail(path.join(runDir, "capability_decisions.jsonl"), 80),
     );
+    // runtime_hooks.jsonl: same have-write-no-read gap. The control hooks are what nudge the model
+    // (turn_start) and hold the loop open when an expected artifact is missing (pre_final) — the
+    // reason a run sometimes takes more rounds than it said it would. The main thread shows only the
+    // held-open ones; the full hook trail belongs here, as evidence.
+    payload.runtime_hooks = redact(
+      await readJsonlTail(path.join(runDir, "runtime_hooks.jsonl"), 120),
+    );
     const runtimeRequests = await readJsonlTail(path.join(runDir, "runtime_requests.jsonl"), 120);
     const decisions = await readJsonlTail(path.join(runDir, "decisions.jsonl"), 120);
     const currentDecisions = latestDecisions(decisions).map((decision) =>

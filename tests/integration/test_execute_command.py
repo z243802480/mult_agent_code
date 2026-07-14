@@ -2438,6 +2438,66 @@ def test_stop_guardrail_forces_continue_when_artifact_missing(tmp_path: Path) ->
     assert "result.py" in decision.additional_context
 
 
+def test_stop_guardrail_reports_missing_artifacts_as_structured_facts(tmp_path: Path) -> None:
+    """B5: the guardrail hands back the REASON as structured facts, not just prompt text. The prompt
+    (`additional_context`) is written for the MODEL; the UI must never show it as user-facing copy, so
+    the missing paths travel separately and the loop composes its own words for the user."""
+    record = {
+        "hook_name": "pre_final",
+        "data": {"root": str(tmp_path), "expected_artifacts": ["result.py", "notes/out.md"]},
+    }
+    decision = _methodology_stop_guardrail_decision(record)
+    assert decision is not None
+    assert decision.facts["missing_artifacts"] == ["result.py", "notes/out.md"]
+
+
+class FakeQuitsEarlyClient:
+    """A model that declares the task done on its very first turn without producing anything — the
+    exact case the continuity guardrail exists for."""
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        payload = {"narration": "看起来已经好了。", "tool_calls": [], "done": True}
+        return ChatResponse(
+            content=json.dumps(payload, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(10, 20, 30),
+            model_provider="fake",
+            model_name="fake-quits-early",
+            raw_response={},
+        )
+
+
+def test_held_open_loop_tells_the_user_why_on_the_main_thread(tmp_path: Path) -> None:
+    """B5: when the guardrail holds the loop open, the user gets a main-thread card saying WHICH
+    artifacts are still missing. Without it the extra rounds read as the agent spinning for no reason
+    (the hook only ever wrote runtime_hooks.jsonl / events.jsonl, which the thread does not read)."""
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    # The guardrail only enforces entries that look like a concrete path — the plan fake's default is
+    # the prose placeholder "implementation artifact", which it correctly refuses to wait for (else it
+    # would hold the loop open on a file that can never exist). Name a real deliverable so the
+    # guardrail has something to check.
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    task_plan["tasks"][0]["expected_artifacts"] = ["src/notes.py"]
+    (run_dir / "task_plan.json").write_text(json.dumps(task_plan), encoding="utf-8")
+
+    ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeQuitsEarlyClient()).run()
+
+    events = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    held = [e for e in events if (e.get("data") or {}).get("held_open") is True]
+    assert held, "a held-open loop must explain itself on the main thread"
+    card = held[0]
+    assert card["display_level"] == "main"
+    assert card["data"]["missing_artifacts"], "the card must name what is still missing"
+    # The user-facing copy is composed from the facts — never the model-facing prompt text.
+    assert "tool calls" not in card["summary"]
+    assert card["data"]["hook_name"] == "pre_final"
+
+
 def test_stop_guardrail_allows_stop_when_artifact_exists(tmp_path: Path) -> None:
     (tmp_path / "result.py").write_text("x\n", encoding="utf-8")
     record = {

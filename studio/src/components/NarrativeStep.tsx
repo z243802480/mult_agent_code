@@ -65,6 +65,7 @@ function stepIcon(kind: NarrativeStepType["kind"]) {
   if (kind === "result") return <FileText size={14} />;
   if (kind === "repair") return <RefreshCw size={14} />;
   if (kind === "verification") return <ShieldAlert size={14} />;
+  if (kind === "guardrail") return <ShieldAlert size={14} />;
   if (kind === "final") return <CheckCircle2 size={14} />;
   if (kind === "subagent") return <Users size={14} />;
   return <XCircle size={14} />;

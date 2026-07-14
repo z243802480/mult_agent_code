@@ -23,12 +23,17 @@ class RuntimeHookDecision:
 
     additional_context: str = ""  # injected into the model's next turn (a reminder / nudge)
     continue_turn: bool = False  # hold the loop open when the model tried to stop (Stop-hook)
+    # The FACTS behind the decision (e.g. which expected artifacts are missing), structured so the
+    # caller can tell the user WHY the loop was held open in its own words. `additional_context` is
+    # prompt text written FOR THE MODEL — it must never be shown to the user as if it were copy.
+    facts: dict[str, Any] = field(default_factory=dict)
 
     def merge(self, other: RuntimeHookDecision) -> RuntimeHookDecision:
         parts = [part for part in (self.additional_context, other.additional_context) if part]
         return RuntimeHookDecision(
             additional_context="\n".join(parts),
             continue_turn=self.continue_turn or other.continue_turn,
+            facts={**self.facts, **other.facts},
         )
 
 

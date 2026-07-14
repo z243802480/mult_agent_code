@@ -158,7 +158,7 @@ function TurnMiddle({
   // to drive itself — "Agent 步骤 执行迭代", "已记录能力决策", "计划思考中", "观察", phase narration,
   // "正在压缩上下文", thinking placeholders — is machinery. It lives in the Inspector (raw evidence),
   // never on the main thread. This is a WHITELIST, not a per-card blacklist.
-  const DETAIL_KINDS = new Set(["repair", "error", "subagent"]);
+  const DETAIL_KINDS = new Set(["repair", "error", "subagent", "guardrail"]);
   const detailSteps = steps.filter(
     (step) =>
       !permIds.has(step.id) &&

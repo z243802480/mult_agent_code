@@ -78,7 +78,12 @@ export function LiveStream({
     steps.filter(
       (step) =>
         !isPendingPermissionStep(step) &&
-        (step.kind === "tool" || step.kind === "repair" || step.kind === "subagent"),
+        (step.kind === "tool" ||
+          step.kind === "repair" ||
+          step.kind === "subagent" ||
+          // Held-open guardrail: shown WHILE the run is live, so the extra rounds have a reason on
+          // screen as they happen — not only in hindsight after the turn closes.
+          step.kind === "guardrail"),
     ),
   );
   const fileChanges = extractFileChangesFromSteps(steps);

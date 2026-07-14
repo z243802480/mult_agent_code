@@ -722,6 +722,7 @@ export function EvidenceExplorer({
   const mcpInvocations = (runDetail?.mcp_invocations ?? []) as AnyRecord[];
   const skillInvocations = (runDetail?.skill_invocations ?? []) as AnyRecord[];
   const capabilityDecisions = (runDetail?.capability_decisions ?? []) as AnyRecord[];
+  const runtimeHooks = (runDetail?.runtime_hooks ?? []) as AnyRecord[];
   const files = runDetail?.files ?? [];
   const selectedKey = selectedEvidence ? `${selectedEvidence.kind}:${selectedEvidence.title}` : "";
 
@@ -772,6 +773,12 @@ export function EvidenceExplorer({
       return firstText(
         `${String(item.task_id ?? item.kind ?? "evidence")} ${String(item.status ?? item.outcome ?? "")}`,
         String(item.path ?? ""),
+      );
+    // A hook row reads as "which hook fired, on which task" — the summary carries what it did.
+    if (kind === "hook")
+      return firstText(
+        `${String(item.hook_name ?? "hook")} ${String(item.task_id ?? "")}`.trim(),
+        String(item.summary ?? ""),
       );
     if (kind === "route")
       return firstText(
@@ -951,6 +958,7 @@ export function EvidenceExplorer({
           <EvidenceBlock title="MCP 调用" items={mcpInvocations.slice(-8)} kind="mcp" />
           <EvidenceBlock title="技能调用" items={skillInvocations.slice(-8)} kind="skill" />
           <EvidenceBlock title="能力决策" items={capabilityDecisions.slice(-8)} kind="capability" />
+          <EvidenceBlock title="运行时 Hook" items={runtimeHooks.slice(-8)} kind="hook" />
           {files.length > 0 && (
             <div className="runFiles">
               <small>运行文件 ({files.length})</small>

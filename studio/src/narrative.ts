@@ -113,6 +113,11 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   // they are loop bookkeeping (iteration/progress markers) and fold in as a quiet turn step.
   if (transcriptKind === "tool_use" || transcriptKind === "tool_result")
     return isRealToolEvent(event) ? "tool" : "turn";
+  // The continuity guardrail HELD THE LOOP OPEN: the model tried to finish, a deterministic evidence
+  // check said an expected artifact is still missing, and the run kept going. This is the ONE thing
+  // that explains "why did it run more rounds than it said it needed" — it is not a verification row
+  // to fold away, and it is not a failure. Marked structurally (data.held_open), never by title text.
+  if (((event.data ?? {}) as Record<string, unknown>).held_open === true) return "guardrail";
   if (transcriptKind === "verification") return "verification";
   if (transcriptKind === "repair") return "repair";
   // Evidence/diagnostic RECORDS are quiet process rows, never the closing answer (ADR-0021). Mapping
@@ -195,6 +200,7 @@ function narrativeLabel(kind: NarrativeStep["kind"], event: StudioEvent): string
     return event.runtime_event_type === "final_report" ? "最终报告" : "文件改动";
   if (kind === "repair") return "修复";
   if (kind === "verification") return "验证";
+  if (kind === "guardrail") return "还差产出";
   if (kind === "final") return "最终答复";
   if (kind === "subagent") return "子 agent";
   if (kind === "hold") return "已保留待你查看";
@@ -322,7 +328,9 @@ export function buildRunNarrative(events: StudioEvent[]): RunNarrative {
       summary: projectSummary(event.summary || event.content_delta || event.title),
       status: event.status,
       events: [event],
-      defaultOpen: kind === "final",
+      // A held-open guardrail opens by default: its whole point is to answer "why is it still going",
+      // and an answer the user has to click for is an answer they will not read.
+      defaultOpen: kind === "final" || kind === "guardrail",
     });
   }
   // Only the last actively-running step expands automatically

@@ -260,6 +260,9 @@ export type RunDetailPayload = {
   mcp_invocations?: AnyRecord[];
   skill_invocations?: AnyRecord[];
   capability_decisions?: AnyRecord[];
+  // Control-hook trail (turn_start nudges + pre_final holds). Evidence for the Inspector; the main
+  // thread only surfaces the holds, which are what explain extra rounds.
+  runtime_hooks?: AnyRecord[];
   events?: AnyRecord[];
   legacy_events?: AnyRecord[];
   raw_evidence?: AnyRecord;
@@ -286,6 +289,9 @@ export type NarrativeStep = {
     | "result"
     | "repair"
     | "verification"
+    // The continuity guardrail held the loop open (an expected artifact was still missing when the
+    // model tried to finish). First-class on the thread: it is what explains the extra rounds.
+    | "guardrail"
     | "final"
     | "error"
     | "subagent"

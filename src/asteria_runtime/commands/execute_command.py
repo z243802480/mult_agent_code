@@ -832,6 +832,39 @@ class ExecuteCommand:
                     "methodology_skill_names": skill_names,
                 },
             )
+            # A hook that HELD THE LOOP OPEN changed what the user sees: the model tried to finish and
+            # the run kept going. Without a card that reads as "还差 X 没产出,让它继续做" the extra
+            # rounds look like the agent spinning for no reason. Only continue_turn earns a card —
+            # the turn_start reminder injection is scaffolding and stays in the Inspector (the main
+            # thread does not narrate how the loop prompts itself).
+            if decision.continue_turn:
+                missing = [str(item) for item in (decision.facts.get("missing_artifacts") or [])]
+                self._record_progress(
+                    context,
+                    task,
+                    channel="progress",
+                    event_type="message",
+                    phase="execute",
+                    status="running",
+                    title="还差产出,继续做",
+                    summary=(
+                        "模型想收尾,但这些交付物还没出现:"
+                        + "、".join(missing)
+                        + "。已让它继续完成并验证。"
+                        if missing
+                        else "模型想收尾,但完成条件还没满足。已让它继续。"
+                    ),
+                    display_level="main",
+                    transcript_kind="verification",
+                    data={
+                        "task_id": str(task.get("task_id") or ""),
+                        "hook_name": event_name,
+                        "held_open": True,
+                        "missing_artifacts": missing,
+                        "iteration": payload.get("iteration"),
+                        "model_driven_turn": True,
+                    },
+                )
             return TurnControl(
                 additional_context=decision.additional_context,
                 continue_turn=decision.continue_turn,
@@ -2253,6 +2286,9 @@ def _methodology_stop_guardrail_decision(record: dict) -> RuntimeHookDecision | 
             + ". Produce and verify them with tool calls before finishing."
         ),
         continue_turn=True,
+        # The reason, structured — so the loop can tell the user why it did not stop. The prompt text
+        # above is written for the MODEL and is never shown as user-facing copy.
+        facts={"missing_artifacts": missing},
     )
 
 
