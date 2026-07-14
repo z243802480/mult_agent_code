@@ -67,7 +67,7 @@ from asteria_runtime.core.runtime_policy import (
 from asteria_runtime.core.task_blocking_handler import BlockingResult, TaskBlockingHandler
 from asteria_runtime.core.task_attempt_runner import TaskAttemptRunner
 from asteria_runtime.core.fast_path_policy import classify_fast_path
-from asteria_runtime.core.task_contract import check_completion_contract
+from asteria_runtime.core.task_contract import check_completion_contract, looks_like_file_path
 from asteria_runtime.core.task_execution_evidence import TaskExecutionEvidenceRecorder
 from asteria_runtime.core.task_board import TaskBoard
 from asteria_runtime.core.tool_execution_gateway import ToolExecutionGateway
@@ -2300,18 +2300,10 @@ def _latest_verification_per_command(verification_results: list) -> list:
     return passthrough + [latest[command] for command in order]
 
 
-def _looks_like_path(value: str) -> str | bool:
-    """A concrete relative FILE path (for the stop-guardrail) vs a prose placeholder or directory
-    scope: no whitespace, and either a directory separator or a filename extension. A trailing-slash
-    entry (e.g. ``src/``) is a directory SCOPE, not a deliverable file — the guardrail must not force
-    the loop open waiting for it to "exist" (the model may legitimately write files anywhere in
-    scope, or the concrete filename differs), so it is not treated as a path to check."""
-    text = value.strip()
-    if not text or any(ch.isspace() for ch in text):
-        return False
-    if text.endswith("/") or text.endswith("\\"):
-        return False
-    return ("/" in text) or ("\\" in text) or ("." in Path(text).name)
+# The stop-guardrail and the completion contract must agree on what counts as a checkable file, or a
+# task can be held open for an artifact one of them does not even consider a file. One predicate,
+# defined next to the contract that enforces it (task_contract.looks_like_file_path).
+_looks_like_path = looks_like_file_path
 
 
 def _methodology_turn_start_decision(record: dict) -> RuntimeHookDecision | None:

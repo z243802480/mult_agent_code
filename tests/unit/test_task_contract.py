@@ -1,6 +1,7 @@
 from asteria_runtime.core.task_contract import (
     allows_expected_failure,
     check_completion_contract,
+    looks_like_file_path,
     context_requirements,
     failure_policy,
     parallel_safety,
@@ -141,3 +142,74 @@ def test_path_in_write_scope_accepts_root_html_for_implementation_artifact() -> 
 def test_path_in_read_scope_accepts_workspace_root_listing() -> None:
     scope = ["index.html", "styles.css"]
     assert path_in_read_scope(".", scope, kind="ui") is True
+
+
+class _PassedVerification:
+    ok = True
+
+
+def test_prose_expected_changed_files_do_not_fail_a_task_that_did_the_work() -> None:
+    """The contract used to filter expected_changed_files with a hardcoded denylist of four exact
+    strings, so any other wording the planner produced — the plural, a rephrasing, another language —
+    was treated as a FILE that must change. A task that wrote its code and passed verification was
+    then judged "expected changed files were not modified". The planner writes these entries in free
+    text; no fixed vocabulary can enumerate them, so the test must be structural."""
+    for placeholder in (
+        "implementation artifact",
+        "implementation artifacts",  # merely the plural — used to fail
+        "the new notes module",
+        "更新后的文档",
+    ):
+        task = {
+            "task_id": "task-0001",
+            "task_kind": "implementation",
+            "expected_changed_files": [placeholder],
+        }
+        check = check_completion_contract(
+            task,
+            changed_files=["src/notes.py"],
+            verification_results=[_PassedVerification()],
+        )
+        assert check.ok, f"{placeholder!r} must not be treated as a file: {check.violations}"
+
+
+def test_a_named_file_is_still_enforced() -> None:
+    """The fix must not weaken the gate: a concrete path the planner named must really be modified."""
+    task = {
+        "task_id": "task-0001",
+        "task_kind": "implementation",
+        "expected_changed_files": ["src/notes.py"],
+    }
+    missed = check_completion_contract(
+        task, changed_files=["src/other.py"], verification_results=[_PassedVerification()]
+    )
+    assert not missed.ok
+    assert "expected changed files were not modified" in missed.violations[0]
+    hit = check_completion_contract(
+        task, changed_files=["src/notes.py"], verification_results=[_PassedVerification()]
+    )
+    assert hit.ok
+
+
+def test_doing_nothing_is_still_not_done() -> None:
+    """Prose entries stop being files — they must not become a loophole to finish with no artifact."""
+    task = {
+        "task_id": "task-0001",
+        "task_kind": "implementation",
+        "expected_changed_files": ["the new module"],
+    }
+    check = check_completion_contract(
+        task, changed_files=[], verification_results=[_PassedVerification()]
+    )
+    assert not check.ok
+    assert "required changed artifact was not produced" in check.violations
+
+
+def test_looks_like_file_path_is_structural() -> None:
+    """One predicate, shared by the stop-guardrail and the completion contract — they must agree on
+    what a checkable file is, or a task can be held open for something the other side ignores."""
+    assert looks_like_file_path("src/notes.py") is True
+    assert looks_like_file_path("index.html") is True
+    assert looks_like_file_path("src/") is False  # a directory scope is not a deliverable
+    assert looks_like_file_path("implementation artifact") is False  # prose
+    assert looks_like_file_path("") is False

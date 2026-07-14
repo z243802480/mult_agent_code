@@ -1,6 +1,29 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
+
+
+def looks_like_file_path(value: str) -> bool:
+    """Is this entry a concrete relative FILE the runtime can check on disk — as opposed to a prose
+    placeholder ("implementation artifact", "the new module") or a directory scope ("src/")?
+
+    Single source of truth for every deterministic boundary that asks "did the expected file appear".
+    It is a STRUCTURAL test — no whitespace, and either a separator or a filename extension — because
+    the planner writes these entries in free text and no fixed vocabulary can enumerate them. The
+    contract used to filter with a hardcoded denylist of four exact strings instead, so
+    "implementation artifacts" (merely the plural) was treated as a FILE that must change, and a task
+    that did all its work and verified it was still judged "expected changed files were not modified".
+
+    A directory scope is not a deliverable: the model may legitimately write anywhere within it, so
+    demanding that "src/" itself "exist as a changed file" would fail every task that used one.
+    """
+    text = value.strip()
+    if not text or any(ch.isspace() for ch in text):
+        return False
+    if text.endswith("/") or text.endswith("\\"):
+        return False
+    return ("/" in text) or ("\\" in text) or ("." in Path(text).name)
 
 
 TASK_KINDS = {
@@ -327,11 +350,17 @@ def _task_text(task: dict) -> str:
 
 
 def _expected_changed_files(task: dict) -> list[str]:
+    """The entries the planner named that are actually FILES we can hold the task to.
+
+    Structural, not a vocabulary: the old hardcoded denylist ({"implementation artifact",
+    "planning artifact", "src/", "tests/"}) only recognized four exact strings, so any other prose the
+    planner happened to write — the plural, a rephrasing, another language — became a "file" that
+    could never be modified, and the task was judged incomplete no matter how much real work it did.
+    """
     explicit = task.get("expected_changed_files")
     if not isinstance(explicit, list):
         return []
-    generic = {"implementation artifact", "planning artifact", "src/", "tests/"}
-    return [str(item) for item in explicit if item and str(item) not in generic]
+    return [str(item) for item in explicit if item and looks_like_file_path(str(item))]
 
 
 def _default_read_scope(task: dict) -> list[str]:
