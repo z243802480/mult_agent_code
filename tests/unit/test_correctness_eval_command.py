@@ -216,6 +216,118 @@ def test_no_run_returns_empty_result(tmp_path: Path) -> None:
     assert "no run found" in result.to_text().lower()
 
 
+class _FakeOutcome:
+    def __init__(self, ok: bool) -> None:
+        self.ok = ok
+        self.data = {"returncode": 0 if ok else 1}
+
+
+def test_rerun_retries_once_before_declaring_divergence(tmp_path: Path, monkeypatch) -> None:
+    # Flaky guard (P1⑤/ADR-0028): a recorded PASS whose re-run FAILS once then PASSES on the single
+    # retry is NOT a divergence — one flaky wobble must not fabricate a gate block.
+    from asteria_runtime.tools.command_tools import RunCommandTool
+
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(SCHEMAS)
+    run_id = _make_run(tmp_path, tool_calls=[("run_command", "success")], tasks=["done"])
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    _write_verification_observation(run_dir, validator, 0, "flaky-cmd", True)
+
+    calls = {"n": 0}
+
+    def _fake_run(self, context, command):  # noqa: ANN001
+        calls["n"] += 1
+        return _FakeOutcome(calls["n"] >= 2)  # first fail, retry passes
+
+    monkeypatch.setattr(RunCommandTool, "run", _fake_run)
+
+    reran = CorrectnessEvalCommand(root=tmp_path, run_id=run_id, rerun=True).run()
+
+    assert calls["n"] == 2  # ran once, retried exactly once
+    rerun = reran.report["rerun_eval"]
+    assert rerun["divergence"] is False
+    assert rerun["pass_count"] == 1
+    assert rerun["commands"][0]["retried"] is True
+    assert reran.report["overall"]["status"] == "pass"
+
+
+def test_rerun_declares_divergence_when_retry_also_fails(tmp_path: Path, monkeypatch) -> None:
+    # A recorded PASS that fails on BOTH the re-run and its one retry is a real divergence → block.
+    from asteria_runtime.tools.command_tools import RunCommandTool
+
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(SCHEMAS)
+    run_id = _make_run(tmp_path, tool_calls=[("run_command", "success")], tasks=["done"])
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    _write_verification_observation(run_dir, validator, 0, "always-fails", True)
+
+    calls = {"n": 0}
+
+    def _fake_run(self, context, command):  # noqa: ANN001
+        calls["n"] += 1
+        return _FakeOutcome(False)  # never passes
+
+    monkeypatch.setattr(RunCommandTool, "run", _fake_run)
+
+    reran = CorrectnessEvalCommand(root=tmp_path, run_id=run_id, rerun=True).run()
+
+    assert calls["n"] == 2  # tried twice before believing the failure
+    assert reran.report["rerun_eval"]["divergence"] is True
+    assert reran.report["rerun_eval"]["commands"][0]["retried"] is True
+    assert reran.report["overall"]["status"] == "fail"
+
+
+def test_persist_independent_writes_signal_and_reads_back(tmp_path: Path) -> None:
+    # Option A round-trip: acceptance-side persist_independent re-runs and merges rerun_eval into
+    # correctness_eval.json; the gate-side independent_signal reads that persisted grade back.
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(SCHEMAS)
+    run_id = _make_run(tmp_path, tool_calls=[("run_command", "success")], tasks=["done"])
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    _write_verification_observation(
+        run_dir, validator, 0, 'python -c "import sys; sys.exit(0)"', True
+    )
+
+    grade = CorrectnessEvalCommand(
+        root=tmp_path, run_id=run_id, rerun=True
+    ).persist_independent(run_dir)
+    assert grade is not None and grade["status"] == "pass"
+
+    report = JsonStore(validator).read(run_dir / "correctness_eval.json", "eval_report")
+    assert report["rerun_eval"]["reran"] is True
+
+    signal = CorrectnessEvalCommand(root=tmp_path).independent_signal(run_dir)
+    assert signal is not None and signal["status"] == "pass"
+
+
+def test_independent_signal_none_when_only_read_only_eval_persisted(tmp_path: Path) -> None:
+    # A read-only run() persists correctness_eval.json WITHOUT rerun_eval → the gate reader returns
+    # None and the gate falls back to the read-only score_signal.
+    run_id = _make_run(tmp_path, tool_calls=[("run_tests", "success")], tasks=["done"])
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    CorrectnessEvalCommand(root=tmp_path, run_id=run_id).run()
+
+    assert (run_dir / "correctness_eval.json").exists()
+    assert CorrectnessEvalCommand(root=tmp_path).independent_signal(run_dir) is None
+
+
+def test_independent_signal_surfaces_divergence(tmp_path: Path) -> None:
+    # The money path for the gate: a persisted divergence is read back as a non-pass grade so the
+    # release gate blocks.
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(SCHEMAS)
+    run_id = _make_run(tmp_path, tool_calls=[("run_command", "success")], tasks=["done"])
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    _write_verification_observation(
+        run_dir, validator, 0, 'python -c "import sys; sys.exit(1)"', True
+    )
+    CorrectnessEvalCommand(root=tmp_path, run_id=run_id, rerun=True).persist_independent(run_dir)
+
+    signal = CorrectnessEvalCommand(root=tmp_path).independent_signal(run_dir)
+    assert signal is not None and signal["status"] == "fail"
+    assert "DIVERGENCE" in signal["reason"]
+
+
 def test_score_signal_grades_real_rate_without_persisting(tmp_path: Path) -> None:
     # score_signal is the read-only reuse hook for the review pipeline: it grades on the real
     # pass rate and must NOT write correctness_eval.json (unlike run()).

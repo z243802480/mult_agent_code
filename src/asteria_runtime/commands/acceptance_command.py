@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand
+from asteria_runtime.commands.correctness_eval_command import CorrectnessEvalCommand
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.run_command import RunCommand
 from asteria_runtime.core.acceptance_catalog import acceptance_metadata_index
@@ -152,6 +153,7 @@ class AcceptanceCommand:
         trend_warnings = self._trend_warnings()
         report["trend_warnings"] = trend_warnings
         self.store.write(report_path, report, "acceptance_report")
+        self._persist_independent_correctness(report)
         promoted_tasks = []
         promotion_error = None
         promoted_run_text = None
@@ -336,6 +338,34 @@ class AcceptanceCommand:
             ).resolve()
         workspace_root.mkdir(parents=True, exist_ok=True)
         return workspace_root
+
+    def _persist_independent_correctness(self, report: dict) -> None:
+        """P1⑤ / ADR-0028 (Option A): re-run each scenario's recorded verification commands against
+        its OWN workspace (guarded, flaky-retried once) and persist the INDEPENDENT grade into that
+        scenario's ``correctness_eval.json``, so the release gate reads a trust-but-verify signal
+        (catching stale/broken/fabricated exit codes) without itself executing anything. The re-run
+        cost lands here in acceptance, by design. Best-effort: a re-run problem must never fail
+        acceptance — the gate simply falls back to the read-only signal for that scenario."""
+        for scenario in report.get("scenarios") or []:
+            if not isinstance(scenario, dict):
+                continue
+            workspace = scenario.get("workspace")
+            if not workspace:
+                continue
+            summary = scenario.get("summary")
+            run_id = summary.get("run_id") if isinstance(summary, dict) else None
+            if not run_id:
+                continue
+            workspace_path = Path(str(workspace))
+            run_dir = workspace_path / ".asteria" / "runs" / str(run_id)
+            if not run_dir.exists():
+                continue
+            try:
+                CorrectnessEvalCommand(
+                    workspace_path, str(run_id), rerun=True
+                ).persist_independent(run_dir)
+            except Exception:  # noqa: BLE001 - best-effort; gate falls back to the read-only signal
+                continue
 
     def _build_report(
         self,

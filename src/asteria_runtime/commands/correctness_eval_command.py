@@ -223,37 +223,27 @@ class CorrectnessEvalCommand:
         passed = 0
         divergent: list[str] = []
         for command, recorded_ok in commands:
-            try:
-                outcome = tool.run(context, command)
-                ok = bool(outcome.ok)
-                returncode = (outcome.data or {}).get("returncode")
-            except Exception as exc:  # noqa: BLE001 - a blocked/denied re-run is a fail, not a crash
-                ok = False
-                returncode = None
-                results.append(
-                    {
-                        "command": command,
-                        "ok": False,
-                        "returncode": None,
-                        "recorded_ok": recorded_ok,
-                        "error": f"{exc.__class__.__name__}: {exc}",
-                    }
-                )
-                if recorded_ok:
-                    divergent.append(command)
-                continue
+            ok, returncode, error = self._run_verification_once(context, tool, command)
+            retried = False
+            if not ok:
+                # Flaky guard (P1⑤ / ADR-0028): believe a failure only after ONE retry, so a
+                # single flaky wobble cannot fabricate a DIVERGENCE and block the release gate.
+                retried = True
+                ok, returncode, error = self._run_verification_once(context, tool, command)
             if ok:
                 passed += 1
             elif recorded_ok:
                 divergent.append(command)
-            results.append(
-                {
-                    "command": command,
-                    "ok": ok,
-                    "returncode": returncode,
-                    "recorded_ok": recorded_ok,
-                }
-            )
+            result: dict = {
+                "command": command,
+                "ok": ok,
+                "returncode": returncode,
+                "recorded_ok": recorded_ok,
+                "retried": retried,
+            }
+            if error is not None:
+                result["error"] = error
+            results.append(result)
         count = len(commands)
         return {
             "reran": True,
@@ -280,6 +270,60 @@ class CorrectnessEvalCommand:
                 "(stale/broken/flaky artifact)."
             )
         return {"status": "fail" if rate <= 0.0 else "partial", "score": rate, "reason": reason}
+
+    def _run_verification_once(
+        self, context: RuntimeContext, tool: RunCommandTool, command: str
+    ) -> tuple[bool, object, str | None]:
+        """Run one recorded verification command through the guarded tool once. Returns
+        ``(ok, returncode, error)`` — a blocked/denied/crashed re-run is a fail (error text set),
+        never a raised exception, so the caller can decide whether to retry (flaky guard)."""
+        try:
+            outcome = tool.run(context, command)
+            return bool(outcome.ok), (outcome.data or {}).get("returncode"), None
+        except Exception as exc:  # noqa: BLE001 - a blocked/denied re-run is a fail, not a crash
+            return False, None, f"{exc.__class__.__name__}: {exc}"
+
+    def independent_signal(self, run_dir: Path) -> dict | None:
+        """Read the persisted INDEPENDENT correctness grade (the trust-but-verify re-run) if one was
+        recorded for ``run_dir`` — reads ``correctness_eval.json`` only, re-executes NOTHING, so the
+        release gate can prefer it without becoming an executor (P1⑤ / ADR-0028, Option A). Returns
+        ``None`` when no re-run was persisted (the caller falls back to the read-only ``score_signal``).
+        """
+        report_path = run_dir / "correctness_eval.json"
+        if not report_path.exists():
+            return None
+        try:
+            report = self.json_store.read(report_path, "eval_report")
+        except (FileNotFoundError, SchemaValidationError):
+            return None
+        rerun_eval = report.get("rerun_eval")
+        if not isinstance(rerun_eval, dict) or not rerun_eval.get("reran"):
+            return None
+        return self._grade_rerun(rerun_eval)
+
+    def persist_independent(self, run_dir: Path) -> dict | None:
+        """Re-execute ``run_dir``'s recorded verification commands against its workspace (guarded,
+        flaky-retried) and MERGE the independent grade into ``correctness_eval.json`` so the release
+        gate can later read it via :meth:`independent_signal` (P1⑤ / ADR-0028, Option A — the cost
+        lands here in acceptance, not at gate time). Returns the grade, or ``None`` when nothing was
+        re-runnable (no recorded verification command). This EXECUTES commands (unlike the read-only
+        path); it is invoked by acceptance, never by the gate."""
+        rerun_eval = self._rerun_signal(run_dir)
+        if rerun_eval is None:
+            return None
+        report_path = run_dir / "correctness_eval.json"
+        report: dict | None = None
+        if report_path.exists():
+            try:
+                report = self.json_store.read(report_path, "eval_report")
+            except (FileNotFoundError, SchemaValidationError):
+                report = None
+        if report is None:
+            report = self._report(self.run_id, self._signals(run_dir))
+        report["rerun_eval"] = rerun_eval
+        report["overall"] = self._grade_rerun(rerun_eval)
+        self.json_store.write(report_path, report, "eval_report")
+        return report["overall"]
 
     def _guarded_context(self, run_dir: Path) -> RuntimeContext:
         # Build a minimal context carrying the effective policy so re-run goes through the same

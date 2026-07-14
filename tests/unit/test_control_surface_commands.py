@@ -1162,6 +1162,85 @@ def test_gate_status_blocks_release_on_failing_real_correctness(
     assert "run_tests/run_command" in payload["blocking_reason"]
 
 
+def test_gate_prefers_independent_rerun_signal_over_read_only(tmp_path: Path, monkeypatch) -> None:
+    # P1⑤ / ADR-0028 (Option A): a scenario whose recorded evidence AND read-only correctness BOTH
+    # say PASS is still BLOCKED when acceptance persisted an INDEPENDENT re-run that DIVERGED
+    # (recorded PASS but FAILs on re-run). The gate reads the persisted independent grade — it never
+    # re-executes anything itself.
+    from asteria_runtime.commands.correctness_eval_command import CorrectnessEvalCommand
+
+    _configure_release_routes(monkeypatch)
+    _write_release_ready_gate_files(tmp_path)
+    validator = SchemaValidator(Path("schemas"))
+
+    workspace = tmp_path / "accept_ws_div"
+    run_dir = workspace / ".asteria" / "runs" / "run-accept-div"
+    run_dir.mkdir(parents=True)
+    # Read-only would PASS: recorded run_command success + all tasks done.
+    (run_dir / "tool_calls.jsonl").write_text(
+        json.dumps({"tool_name": "run_command", "status": "success"}) + "\n", encoding="utf-8"
+    )
+    JsonStore(validator).write(
+        run_dir / "task_plan.json",
+        {"schema_version": "0.1.0", "tasks": [{"task_id": "t0", "status": "done"}]},
+        "task_board",
+    )
+    # But the recorded command FAILS on independent re-run → persist the divergent independent signal.
+    failing = 'python -c "import sys; sys.exit(1)"'
+    JsonlStore(validator).append(
+        run_dir / "tool_observations.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "observation_id": "obs-0",
+            "run_id": "run-accept-div",
+            "task_id": "t0",
+            "tool_call_id": "tc-0",
+            "tool_name": "run_command",
+            "ok": True,
+            "status": "success",
+            "summary": "recorded",
+            "observation": {
+                "tool_name": "run_command",
+                "ok": True,
+                "summary": "recorded",
+                "status": "success",
+                "data": {"requested_command": failing, "command": failing, "returncode": 0},
+            },
+            "created_at": "2026-07-14T00:00:00+08:00",
+        },
+        "tool_observation",
+    )
+    # Sanity: read-only grading trusts the recorded evidence and says PASS ...
+    assert CorrectnessEvalCommand(root=workspace).score_signal(run_dir)["status"] == "pass"
+    # ... but the acceptance-side producer persists the independent (divergent) grade.
+    CorrectnessEvalCommand(workspace, "run-accept-div", rerun=True).persist_independent(run_dir)
+
+    verification_dir = tmp_path / ".asteria" / "verification"
+    (verification_dir / "real_model_acceptance_core.json").write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "aggregate": {"total": 10, "passed": 10},
+                "scenarios": [
+                    {
+                        "ok": True,
+                        "workspace": str(workspace),
+                        "summary": {"run_id": "run-accept-div"},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = GateStatusCommand(tmp_path).run().to_dict()
+
+    assert payload["stage"] == "acceptance_correctness_failed"
+    assert payload["release_ready"] is False
+    assert payload["acceptance_correctness"]["status"] == "fail"
+    assert "DIVERGENCE" in payload["acceptance_correctness"]["reason"]
+
+
 def test_gate_status_route_table_surfaces_offline_tiers(tmp_path: Path, monkeypatch) -> None:
     # strong/medium point at a real provider; cheap stays on the fake/offline provider. route_table
     # must expose all three tiers and honestly flag cheap as silently returning canned output —

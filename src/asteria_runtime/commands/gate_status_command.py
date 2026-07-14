@@ -550,6 +550,11 @@ class GateStatusCommand:
         that actually passed). Returns the WORST graded signal across scenarios, or ``None`` when
         no scenario recorded any executable verification (nothing to fabricate — matches
         ``score_signal``'s own contract). Reads persisted evidence only; re-executes nothing.
+
+        P1⑤ / ADR-0028 (Option A): when acceptance persisted an INDEPENDENT re-run grade
+        (``correctness_eval.json.rerun_eval``), prefer it over the read-only signal — it is
+        trust-but-verify (a recorded PASS that FAILs on re-run is a real regression the gate must
+        catch). The gate still only READS the persisted grade; the re-run cost was paid in acceptance.
         """
         grader = CorrectnessEvalCommand(self.root)
         graded: list[dict[str, Any]] = []
@@ -567,7 +572,7 @@ class GateStatusCommand:
                 )
                 if run_dir is None:
                     continue
-                signal = grader.score_signal(run_dir)
+                signal = grader.independent_signal(run_dir) or grader.score_signal(run_dir)
                 if signal is not None:
                     graded.append(signal)
         if not graded:
