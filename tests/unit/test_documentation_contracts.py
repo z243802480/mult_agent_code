@@ -144,8 +144,11 @@ def test_control_surface_examples_keep_runtime_stable_fields_in_sync(tmp_path: P
         "status_control_surface.json": StatusCommand(tmp_path).run().to_dict(),
         "doctor_control_surface.json": DoctorCommand(tmp_path).run().to_dict(),
         "gate_status_control_surface.json": GateStatusCommand(tmp_path).run().to_dict(),
-        "gate_control_surface.json": GateCommand(Path.cwd()).run().to_dict(),
-        "validation_run_control_surface.json": ValidationRunCommand(Path.cwd(), dry_run=True).run().to_dict(),
+        # tmp_path, not cwd: these two need an initialized workspace, and the repo root only has one
+        # on a developer's machine (.asteria/ is local state, never committed). Against cwd this test
+        # passed locally and died on CI with FileNotFoundError — invisible while CI was switched off.
+        "gate_control_surface.json": GateCommand(tmp_path).run().to_dict(),
+        "validation_run_control_surface.json": ValidationRunCommand(tmp_path, dry_run=True).run().to_dict(),
     }
 
     for filename, runtime_payload in runtime_payloads.items():

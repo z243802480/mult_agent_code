@@ -147,4 +147,16 @@ def _process_exists(pid: int) -> bool:
         os.kill(pid, 0)
     except OSError:
         return False
-    return True
+    # os.kill(pid, 0) also succeeds for a ZOMBIE — a process that is already dead but whose exit
+    # status has not been reaped yet. When we kill the process group, the grandchild dies immediately
+    # but lingers as a zombie until init reparents and reaps it, which on a CI runner can take longer
+    # than this test's window. Treating that as "still running" failed the test while the kill had in
+    # fact worked. "Exists" must mean "still running".
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    except OSError:
+        return False
+    # /proc/<pid>/stat: "<pid> (<comm>) <state> ..." — comm can contain spaces/parens, so split at the
+    # LAST ')'.
+    state = stat.rpartition(")")[2].split()
+    return bool(state) and state[0] != "Z"

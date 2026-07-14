@@ -31,5 +31,12 @@ def test_friction_gate_thresholds_match_contract() -> None:
 
 
 def test_studio_server_maps_replan_to_continue() -> None:
-    source = Path("studio/server.mjs").read_text(encoding="utf-8")
-    assert 'replan: "continue"' in source
+    # The contract is that Studio maps replan -> continue, not that the mapping lives in one
+    # particular file: server.mjs was split and the mapping moved into studio/lib/. Search the whole
+    # Studio server source so a refactor cannot silently drop the mapping OR falsely fail this test.
+    sources = [Path("studio/server.mjs"), *sorted(Path("studio/lib").glob("*.mjs"))]
+    assert any(
+        'replan: "continue"' in source.read_text(encoding="utf-8")
+        for source in sources
+        if source.exists()
+    )

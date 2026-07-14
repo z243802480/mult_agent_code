@@ -246,7 +246,10 @@ def test_runtime_profile_builder_upgrades_weak_capability_route(
     assert mount.runtime_context["capability_registry"]
     selection = mount.runtime_context["model_selection"]
     assert selection["role_contract"]["role"] == "CoderAgent"
-    assert selection["role_contract"]["provider_call_seconds"] == 90
+    # 180s, not 90s: the CoderAgent contract was deliberately given deadline headroom (a28f1ea) because
+    # strong-tier glm streams slower than the medium-calibrated baseline and escalated calls were
+    # hitting provider_timeout. This expectation went stale then and nobody saw it — CI was off.
+    assert selection["role_contract"]["provider_call_seconds"] == 180
     assert selection["reason"] == "capability_feedback_escalated_from_medium"
     assert selection["tier_pressure"] == {
         "default_tier": "medium",
@@ -373,8 +376,9 @@ def test_runtime_profile_builder_uses_strategy_bias_without_clobbering_routes(
         "purpose": "coding",
         "default_model_tier": "medium",
         "deadline_profile": "worker",
-        "provider_call_seconds": 90,
-        "stream_idle_timeout_seconds": 30,
+        # Deadline headroom for slow strong-tier streaming — see a28f1ea.
+        "provider_call_seconds": 180,
+        "stream_idle_timeout_seconds": 45,
         "max_model_calls": 1,
         "responsibilities": [
             "produce scoped candidate changes",
@@ -501,4 +505,5 @@ def test_runtime_profile_builder_records_resolved_model_route(
     runtime_profiles = (
         tmp_path / ".asteria" / "runs" / "run-0004" / "runtime_profiles.jsonl"
     ).read_text(encoding="utf-8")
-    assert '"max_runtime_minutes": 2' in runtime_profiles
+    # ceil(provider_call_seconds / 60) — 3 minutes since the contract's 90s became 180s (a28f1ea).
+    assert '"max_runtime_minutes": 3' in runtime_profiles
