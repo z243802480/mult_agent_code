@@ -133,7 +133,18 @@ class CorrectnessEvalCommand:
         # read-only signal must not crash on a legacy/edge record — it only needs name + status.
         tool_calls = self.jsonl.read_all(run_dir / "tool_calls.jsonl", None)
         command_calls = [c for c in tool_calls if c.get("tool_name") in VERIFICATION_TOOLS]
-        passed = [c for c in command_calls if c.get("status") == "success"]
+        # Grade each DISTINCT verification command on its LATEST outcome, not the cumulative pass/fail
+        # of every call. A repair loop necessarily runs the failing test first, then fixes and re-runs
+        # it passing; counting that mandatory initial red as a permanent failure understates the pass
+        # rate and blocks correctness-gated auto-accept for a genuinely fixed run (ring_recovery
+        # full-loop benchmark, 2026-07-14). Mirrors execute_command._latest_verification_per_command
+        # and _rerun_signal's "each unique command once". A DIFFERENT command's latest still counts, so
+        # a red test cannot be masked by later running an unrelated passing command.
+        latest_by_command: dict[tuple, dict] = {}
+        for call in command_calls:
+            latest_by_command[(call.get("tool_name"), call.get("input_summary"))] = call
+        graded_calls = list(latest_by_command.values())
+        passed = [c for c in graded_calls if c.get("status") == "success"]
 
         tasks: list[dict] = []
         task_plan_path = run_dir / "task_plan.json"
@@ -145,10 +156,10 @@ class CorrectnessEvalCommand:
         blocked = [t for t in active if t.get("status") == "blocked"]
 
         return {
-            "command_verification_call_count": len(command_calls),
+            "command_verification_call_count": len(graded_calls),
             "command_verification_pass_count": len(passed),
             "command_verification_pass_rate": (
-                len(passed) / len(command_calls) if command_calls else 0.0
+                len(passed) / len(graded_calls) if graded_calls else 0.0
             ),
             "task_completion_rate": (len(done) / len(active) if active else 0.0),
             "blocked_task_count": len(blocked),

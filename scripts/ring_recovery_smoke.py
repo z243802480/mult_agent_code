@@ -107,7 +107,7 @@ def _repair_task() -> dict[str, Any]:
     }
 
 
-def _seed_workspace(ws: Path) -> None:
+def _seed_workspace(ws: Path, driver: str) -> None:
     from asteria_runtime.commands.init_command import InitCommand
 
     InitCommand(ws).run()
@@ -115,12 +115,14 @@ def _seed_workspace(ws: Path) -> None:
     policy = json.loads(policy_path.read_text(encoding="utf-8"))
     agent_loop = policy.setdefault("agent_loop", {})
     agent_loop["model_driven_turn"] = True
-    # 无人门(unsupervised):显式打开 repair/replan 环。ExecuteCommand-direct 不像 RunCommand 那样
-    # 把 permission_level 接进 policy["permission_mode"],故默认绑定(autonomy_rings_default_on)在此
-    # 路径不生效(会解析成 rings off);要真 unsupervised 必须显式设 flag(默认绑定另由单测覆盖)。
-    agent_loop["auto_repair"] = True
-    agent_loop["auto_replan"] = True
-    policy["permission_mode"] = "reviewed_auto"
+    if driver == "execute":
+        # ExecuteCommand-direct 不像 RunCommand 那样把 permission_level 接进 policy["permission_mode"],
+        # 故默认绑定(autonomy_rings_default_on)在此路径不生效(会解析成 rings off);要真 unsupervised
+        # 必须显式设 flag。driver=run 则相反:permission_level=reviewed_auto 经 RunCommand 真实驱动
+        # 全部环的默认绑定(execution 层 + goal 层),故**不**设显式 flag,以证默认绑定本身。
+        agent_loop["auto_repair"] = True
+        agent_loop["auto_replan"] = True
+        policy["permission_mode"] = "reviewed_auto"
     policy_path.write_text(json.dumps(policy), encoding="utf-8")
     # 拷已签入的损坏基线 fixture:buggy_math.py(add 返 a-b)+ tests/test_buggy_math.py(断言 ==5)。
     (ws / "buggy_math.py").write_text(
@@ -160,11 +162,16 @@ def evaluate_ring_recovery(
     baseline_red: bool,
     final_green: bool,
     allow_fake: bool,
+    final_phase: str | None = None,
+    require_accepted: bool = False,
 ) -> dict[str, Any]:
     """纯函数:读 run_dir 工件 + 独立 pytest 结果,按 brief 证据契约裁决。可单测(喂合成 fixture)。
 
-    三态:PASS / NO-RECOVER(基线红但终仍红)/ NO-REAL-PROVIDER(跑了 fake·非 allow_fake)。
+    三态:PASS / NO-RECOVER(基线红但终仍红/未收尾)/ NO-REAL-PROVIDER(跑了 fake·非 allow_fake)。
     另返 evidence 供人读(loop 内红转绿 / status / exit_reason / provider / rounds)。
+
+    ``require_accepted``(driver=run 的全端到端):PASS 额外要求 ``final_phase=="ACCEPTED"``——证
+    auto-accept 环在正确性门下自动收尾(整条 research→plan→execute→环→accept 串起来)。
     """
     # agent_loop_run_summary:环收尾态。
     summary_path = run_dir / "agent_loop_run_summary.json"
@@ -204,12 +211,15 @@ def evaluate_ring_recovery(
     saw_done = any(str(e.get("status") or "") == "done" for e in evidence)
 
     loop_completed = status == "completed" and exit_reason == "completed"
+    accepted = str(final_phase or "") == "ACCEPTED"
 
     if not (baseline_red and final_green):
         verdict = "NO-RECOVER"
     elif not (used_real_provider or allow_fake):
         verdict = "NO-REAL-PROVIDER"
     elif not loop_completed:
+        verdict = "NO-RECOVER"
+    elif require_accepted and not accepted:
         verdict = "NO-RECOVER"
     else:
         verdict = "PASS"
@@ -221,6 +231,9 @@ def evaluate_ring_recovery(
         "loop_status": status,
         "loop_exit_reason": exit_reason,
         "loop_completed": loop_completed,
+        "final_phase": final_phase,
+        "require_accepted": require_accepted,
+        "accepted": accepted,
         "rounds_completed": rounds_completed,
         "verification_calls": len(verif),
         "saw_failing_verification": saw_red,
@@ -236,13 +249,17 @@ def evaluate_ring_recovery(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tier", choices=["strong", "medium"], default="strong")
+    parser.add_argument(
+        "--driver",
+        choices=["execute", "run"],
+        default="execute",
+        help="execute=只驱动执行层 repair 环(确定性 seed);run=全 RunCommand 端到端(plan→execute→环→auto-accept)",
+    )
     parser.add_argument("--allow-fake", action="store_true", help="强制 fake provider·仅测管道")
     parser.add_argument("--keep", action="store_true", help="保留临时工作区便于事后查证")
     parser.add_argument("--summary-json", type=Path, default=None)
     args = parser.parse_args()
 
-    from asteria_runtime.commands.execute_command import ExecuteCommand
-    from asteria_runtime.commands.plan_command import PlanCommand
     from asteria_runtime.models.factory import create_model_client
     from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -252,27 +269,49 @@ def main() -> int:
         os.environ["AGENT_MODEL_PROVIDER"] = "fake"
 
     ws = Path(tempfile.mkdtemp(prefix="ring_recovery_"))
-    print(f"=== 自主环 ring-recovery 真栈 benchmark 开始 (tier={args.tier}, ws={ws}) ===")
+    print(f"=== 自主环 ring-recovery 真栈 benchmark 开始 (driver={args.driver}, tier={args.tier}, ws={ws}) ===")
     try:
-        _seed_workspace(ws)
+        _seed_workspace(ws, args.driver)
 
         baseline_red = not _pytest_green(ws)
         print(f"--- 基线核验:pytest {'RED(如期损坏)' if baseline_red else 'GREEN(异常·基线未损坏)'} ---")
 
-        plan = PlanCommand(ws, "fix the failing tests", model_client=SeedGoalClient()).run()
-        run_dir = ws / ".asteria" / "runs" / plan.run_id
-        (run_dir / "task_plan.json").write_text(
-            json.dumps({"schema_version": "0.1.0", "tasks": [_repair_task()]}, ensure_ascii=False),
-            encoding="utf-8",
-        )
-
         model = create_model_client(None, SchemaValidator(_ROOT / "schemas"))
-        ExecuteCommand(
-            ws,
-            run_id=plan.run_id,
-            model_client=model,
-            context_overrides={"execution_model_tier": args.tier},
-        ).run()
+        final_phase: str | None = None
+        if args.driver == "run":
+            # 全端到端:真模型跑 plan→execute→环→auto-accept。permission_level=reviewed_auto 经
+            # RunCommand 真实 arm 全部环的默认绑定(execution 层 auto_repair/replan + goal 层
+            # auto_replan_goal/auto_continue/auto_accept),不显式设 flag。research 关(本地 bugfix 无需)。
+            from asteria_runtime.commands.run_command import RunCommand
+
+            result = RunCommand(
+                ws,
+                "修复 buggy_math.py 里 add 的 bug,使 python -m pytest tests 通过。只改 buggy_math.py,不要改测试。",
+                model_client=model,
+                enable_research=False,
+                permission_level="reviewed_auto",
+                max_iterations=12,
+            ).run()
+            run_id = result.run_id
+            final_phase = result.current_phase
+            print(f"--- RunCommand 终态相态: {final_phase} ---")
+        else:
+            from asteria_runtime.commands.execute_command import ExecuteCommand
+            from asteria_runtime.commands.plan_command import PlanCommand
+
+            plan = PlanCommand(ws, "fix the failing tests", model_client=SeedGoalClient()).run()
+            run_id = plan.run_id
+            (ws / ".asteria" / "runs" / run_id / "task_plan.json").write_text(
+                json.dumps({"schema_version": "0.1.0", "tasks": [_repair_task()]}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            ExecuteCommand(
+                ws,
+                run_id=run_id,
+                model_client=model,
+                context_overrides={"execution_model_tier": args.tier},
+            ).run()
+        run_dir = ws / ".asteria" / "runs" / run_id
 
         final_green = _pytest_green(ws)
         print(f"--- 终态核验:pytest {'GREEN(修好了)' if final_green else 'RED(仍红)'} ---")
@@ -282,6 +321,8 @@ def main() -> int:
             baseline_red=baseline_red,
             final_green=final_green,
             allow_fake=args.allow_fake,
+            final_phase=final_phase,
+            require_accepted=(args.driver == "run"),
         )
         print("\n--- 证据分析 ---")
         for key, value in report.items():
@@ -299,7 +340,11 @@ def main() -> int:
         if args.summary_json:
             args.summary_json.parent.mkdir(parents=True, exist_ok=True)
             args.summary_json.write_text(
-                json.dumps({"tier": args.tier, "workspace": str(ws), **report}, ensure_ascii=False, indent=2),
+                json.dumps(
+                    {"driver": args.driver, "tier": args.tier, "workspace": str(ws), **report},
+                    ensure_ascii=False,
+                    indent=2,
+                ),
                 encoding="utf-8",
             )
             print(f"(summary: {args.summary_json})")

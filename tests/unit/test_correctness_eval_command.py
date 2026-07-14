@@ -29,7 +29,9 @@ def _make_run(
                 "tool_call_id": f"tc-{index}",
                 "run_id": run_id,
                 "tool_name": name,
-                "input_summary": "cmd",
+                # Distinct per call so each is a DISTINCT verification command (score_signal now
+                # grades each unique command's LATEST outcome; a shared summary would collapse them).
+                "input_summary": f"cmd-{index}",
                 "output_summary": "out",
                 "status": status,
             },
@@ -165,6 +167,82 @@ def test_score_is_graded_on_real_pass_rate_not_a_bucket(tmp_path: Path) -> None:
         tmp_path / ".asteria" / "runs" / run_id / "correctness_eval.json", "eval_report"
     )
     assert report["overall"]["score"] == round(2 / 3, 4)
+
+
+def test_score_signal_grades_same_command_on_latest_outcome(tmp_path: Path) -> None:
+    # Repair loop: the SAME verification command failed then passed. score_signal grades it on the
+    # command's LATEST outcome (pass), not 50% — so correctness-gated auto-accept fires for a
+    # genuinely fixed run (ring_recovery full-loop benchmark, 2026-07-14).
+    validator = SchemaValidator(SCHEMAS)
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    run = run_store.create_run("execute")
+    run_id = run["run_id"]
+    run_dir = run_store.run_dir(run_id)
+    jsonl = JsonlStore(validator)
+    same_command = "{'command': 'python -m pytest tests'}"
+    for index, status in enumerate(("failure", "success")):
+        jsonl.append(
+            run_dir / "tool_calls.jsonl",
+            {
+                "schema_version": "0.1.0",
+                "tool_call_id": f"tc-{index}",
+                "run_id": run_id,
+                "tool_name": "run_command",
+                "input_summary": same_command,
+                "output_summary": "out",
+                "status": status,
+            },
+            "tool_call",
+        )
+    JsonStore(validator).write(
+        run_dir / "task_plan.json",
+        {"schema_version": "0.1.0", "tasks": [{"task_id": "t0", "status": "done"}]},
+        "task_board",
+    )
+
+    signal = CorrectnessEvalCommand(root=tmp_path).score_signal(run_dir)
+
+    assert signal is not None
+    assert signal["status"] == "pass"
+    assert signal["score"] == 1.0
+
+
+def test_score_signal_does_not_mask_failing_command_with_a_different_pass(tmp_path: Path) -> None:
+    # Anti-gaming: a failing pytest cannot be masked by later running a DIFFERENT passing command —
+    # each distinct command keeps its own latest, so the failing test still drags the rate below 1.0.
+    validator = SchemaValidator(SCHEMAS)
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    run = run_store.create_run("execute")
+    run_id = run["run_id"]
+    run_dir = run_store.run_dir(run_id)
+    jsonl = JsonlStore(validator)
+    for index, (summary, status) in enumerate(
+        [("{'command': 'pytest tests'}", "failure"), ("{'command': 'echo ok'}", "success")]
+    ):
+        jsonl.append(
+            run_dir / "tool_calls.jsonl",
+            {
+                "schema_version": "0.1.0",
+                "tool_call_id": f"tc-{index}",
+                "run_id": run_id,
+                "tool_name": "run_command",
+                "input_summary": summary,
+                "output_summary": "out",
+                "status": status,
+            },
+            "tool_call",
+        )
+    JsonStore(validator).write(
+        run_dir / "task_plan.json",
+        {"schema_version": "0.1.0", "tasks": [{"task_id": "t0", "status": "done"}]},
+        "task_board",
+    )
+
+    signal = CorrectnessEvalCommand(root=tmp_path).score_signal(run_dir)
+
+    assert signal is not None
+    assert signal["status"] == "partial"
+    assert signal["score"] == 0.5
 
 
 def test_all_verification_pass_and_done_is_pass(tmp_path: Path) -> None:

@@ -58,3 +58,11 @@
 **修后真栈复验 PASS**:`baseline_red=True · final_green=True · loop_status=completed · exit_reason=completed · red_then_green_in_loop=True · used_real_provider=[zai] · rounds=6`。即:损坏基线 → glm 无人门自主诊断+修复 → 独立 pytest 绿 → 契约判 done。**benchmark 兑现了价值:建证明工具→抓真 bug→修→闭环复验。**
 
 复跑:`python scripts/ring_recovery_smoke.py --tier strong`(需 glm key);CI 无 key:`--allow-fake`(仅测管道)。
+
+## 全 RunCommand 端到端串联(`--driver run` · 2026-07-14 · glm+minimax)
+
+`--driver run` 驱动**整条自主环**:research(关)→plan(真模型)→execute(repair 环)→goal-replan 环→**auto-accept**。`permission_level="reviewed_auto"` 经 RunCommand **真实 arm 全部环的默认绑定**(execution 层 auto_repair/auto_replan + goal 层 auto_replan_goal/auto_continue/auto_accept)——**不设显式 flag**,证默认绑定本身。PASS 额外要求 `final_phase=="ACCEPTED"`(auto-accept 在正确性门下自动收尾)。
+
+**又抓到一个同族隐患**:`_maybe_auto_finalize`(auto-accept)用 `CorrectnessEvalCommand.score_signal`(只读),而 `_signals` **也**按全部校验调用算 pass_rate——repair 若**先测(红)后修**则 rate=0.5→"partial"→**auto-accept 不 finalize→无监督修复永远不自动收尾**(与执行层 `verification did not pass` 同族·不同函数)。**修**:`_signals` 同样**按命令去重取最新**(与 `_latest_verification_per_command`/`_rerun_signal` 一致)。此修让 auto-accept 对"先测后修"路径也稳,不再靠模型碰巧"先修后测"。
+
+**真栈复验 PASS**(两跑):`baseline_red · final_phase=ACCEPTED · loop completed · final_green · real_providers=[minimax, zai]`(全端到端两 tier 都真用上)。即:损坏基线 → glm+minimax 全自主 plan→修复→环→正确性门 auto-accept→ACCEPTED,**零人干预**。`--driver execute` 仍单证执行层 repair 环(确定性 seed)。
