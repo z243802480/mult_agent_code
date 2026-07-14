@@ -12,6 +12,7 @@ from typing import Any, Protocol
 
 from asteria_runtime.core.budget import BudgetExceededError
 from asteria_runtime.core.capability_decision_recorder import CapabilityDecisionRecorder
+from asteria_runtime.core.process_flags import NEW_PROCESS_GROUP_FLAGS
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.user_progress_logger import UserProgressLogger
@@ -75,7 +76,7 @@ class StdioMcpSession:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
+            creationflags=NEW_PROCESS_GROUP_FLAGS,
         )
 
     def call(self, method: str, params: dict[str, Any]) -> dict[str, Any]:

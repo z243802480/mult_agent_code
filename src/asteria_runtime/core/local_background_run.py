@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
+from asteria_runtime.core.process_flags import NEW_PROCESS_GROUP_FLAGS
 from asteria_runtime.resources import schema_dir
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -329,7 +330,7 @@ def start_local_background_run(
             stdout=log_handle,
             stderr=subprocess.STDOUT,
             start_new_session=os.name != "nt",
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
+            creationflags=NEW_PROCESS_GROUP_FLAGS,
         )
     except OSError as exc:
         log_handle.write(f"spawn failed: {exc}\n")
