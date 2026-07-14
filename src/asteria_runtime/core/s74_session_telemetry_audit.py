@@ -80,10 +80,14 @@ def audit_session_telemetry(
 
     elapsed = unified.get("elapsed_total")
     if elapsed is not None:
-        elapsed = float(elapsed)
-        cap = float(thresholds.get("elapsed_total_seconds_max") or 0)
-        if cap and elapsed > cap:
-            slo_warnings.append(f"elapsed_total {elapsed}s exceeds audit SLO {cap}s")
+        elapsed_seconds = float(elapsed)
+        # Distinct name: `cap` above is an int (repair_count threshold); reusing it for a float cap
+        # is what mypy flagged.
+        cap_seconds = float(thresholds.get("elapsed_total_seconds_max") or 0)
+        if cap_seconds and elapsed_seconds > cap_seconds:
+            slo_warnings.append(
+                f"elapsed_total {elapsed_seconds}s exceeds audit SLO {cap_seconds}s"
+            )
 
     return {
         "mode": AUDIT_MODE,

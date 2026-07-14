@@ -778,7 +778,9 @@ class ValidationRunCommand:
                 if str(item.get("task_id") or "") in expected_task_ids
                 and str(item.get("parallel_safety") or "") == "readonly"
             ]
-            worker_ids = {
+            # Distinct name: `worker_ids` above is a list in the other branch, so reusing it here for
+            # a set left mypy inferring list[str] and flagging the subset check as a type error.
+            readonly_worker_ids = {
                 str(item.get("worker_invocation_id") or "") for item in readonly_workers
             }
             succeeded_worker_ids = {
@@ -786,11 +788,15 @@ class ValidationRunCommand:
                 for item in worker_results
                 if str(item.get("status") or "") == "succeeded"
             }
-            if expected_task_ids and len(readonly_workers) == len(expected_task_ids) and worker_ids <= succeeded_worker_ids:
+            if (
+                expected_task_ids
+                and len(readonly_workers) == len(expected_task_ids)
+                and readonly_worker_ids <= succeeded_worker_ids
+            ):
                 return (
                     "passed",
                     "Readonly fanout child workers completed inside the readonly boundary.",
-                    [*plan_ids[:2], *sorted(worker_ids)[:2]],
+                    [*plan_ids[:2], *sorted(readonly_worker_ids)[:2]],
                 )
             return (
                 "missing_evidence",

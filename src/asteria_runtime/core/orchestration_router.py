@@ -37,7 +37,7 @@ class OrchestrationRouteResult:
     catalog: dict[str, Any] | None = None
 
     def to_dict(self, *, include_catalog: bool = True) -> dict[str, Any]:
-        payload = {
+        payload: dict[str, Any] = {
             "schema_version": "0.1.0",
             "capability_id": self.capability_id,
             "studio_mode": self.studio_mode,

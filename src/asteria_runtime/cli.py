@@ -1863,7 +1863,11 @@ def _run_cli() -> None:
         from asteria_runtime.storage.schema_validator import SchemaValidator
 
         agent_dir = Path(args.root) / ".asteria"
-        run_store = RunStore(agent_dir, SchemaValidator())
+        # SchemaValidator requires the schema dir. Calling it with no argument raised TypeError, so
+        # `asteria audit-verify` crashed on every invocation — mypy flagged it, but nothing ran mypy.
+        run_store = RunStore(
+            agent_dir, SchemaValidator(Path(__file__).resolve().parents[2] / "schemas")
+        )
         run_id = args.run_id or run_store.current_session_id()
         if not run_id:
             print("No run found. Run `asteria run \"goal\"` first.")

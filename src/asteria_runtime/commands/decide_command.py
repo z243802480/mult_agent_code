@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.policy_config import load_policy_config
@@ -182,7 +183,7 @@ class DecideCommand:
             raise ValueError("question is required when creating an open question")
         metadata = dict(self.metadata)
         metadata["kind"] = "open_question"
-        decision = {
+        decision: dict[str, Any] = {
             "schema_version": "0.1.0",
             "decision_id": self.decision_id or self._next_decision_id(decisions_path),
             "status": "pending",

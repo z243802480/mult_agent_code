@@ -209,7 +209,7 @@ def execution_action_from_tool_calls(
     summary: str = "tool_use execution",
 ) -> dict[str, Any]:
     work_calls, verification_calls = _split_execution_and_verification_calls(tool_calls)
-    primary = (work_calls or verification_calls or [None])[0]
+    primary = next(iter(work_calls or verification_calls), None)
     capability_name = str((primary or {}).get("tool_name") or "write_file")
     return {
         "schema_version": "0.1.0",

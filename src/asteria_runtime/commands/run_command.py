@@ -202,7 +202,7 @@ class RunCommand:
                 self.goal,
                 validator=self.validator,
             )
-            steps = [
+            steps: list[RunStepSummary] = [
                 RunStepSummary("continuation", "completed", eligibility.reason),
             ]
             run_dir = self.root / ".asteria" / "runs" / eligibility.run_id
@@ -226,7 +226,7 @@ class RunCommand:
                 raise RuntimeError('No current session found. Run `asteria new "goal"` first.')
             return self.continue_run(run_id)
 
-        steps: list[RunStepSummary] = []
+        steps = []
         research_context = ""
         if self.enable_research:
             try:
