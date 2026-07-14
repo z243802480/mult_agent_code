@@ -39,7 +39,12 @@ export AGENT_MODEL_PROVIDER=fake
 sessions_context="$("$python_bin" -m asteria_runtime /sessions --root "$tmp_root/workspace" --context)"
 grep -q "snapshot:" <<<"$sessions_context"
 grep -q "handoff:" <<<"$sessions_context"
-grep -q "next:" <<<"$sessions_context"
+# The resume context must tell a future run where to pick up: either the next command to run, or —
+# for a run that auto-accept already finalized (set-and-forget) — that it is ACCEPTED and done.
+# Demanding a bare "next:" was a stale assertion from before auto-accept existed: a finished run has
+# no next step, and printing one would be a lie. (Nothing ran verify.sh while CI was off, so this
+# never surfaced.)
+grep -qE "next:|ACCEPTED" <<<"$sessions_context"
 find "$tmp_root/workspace/.asteria/context/snapshots" -maxdepth 1 -name "*.json" -print -quit | grep -q .
 find "$tmp_root/workspace/.asteria/context/handoffs" -maxdepth 1 -name "*.json" -print -quit | grep -q .
 test -f "$tmp_root/workspace/offline_artifact.txt"
