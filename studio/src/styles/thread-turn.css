@@ -1252,6 +1252,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Why the model last re-planned (todo_write's reason) — quiet, above the items. */
+.planReason {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+
 .planItems {
   display: grid;
   gap: 3px;

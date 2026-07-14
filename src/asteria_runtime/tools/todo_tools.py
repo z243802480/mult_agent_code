@@ -63,6 +63,9 @@ class TodoWriteTool:
                 "path": path.relative_to(context.root).as_posix(),
                 "item_count": len(normalized),
                 "items": normalized,
+                # The model's own words for WHY the plan changed — the one thing that makes a
+                # re-plan readable instead of a list silently mutating under the user.
+                "update_reason": state["update_reason"],
             },
         )
 

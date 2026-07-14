@@ -7,6 +7,10 @@ export type PlanModel = {
   done: number;
   total: number;
   counts: { pending: number; in_progress: number; blocked: number; done: number };
+  // Where the checklist came from: the model's own todo list, or the planner's static task_plan.
+  source: "model_todos" | "task_plan";
+  // The model's words for why it last re-planned (todo_write's `reason`). Empty for a static plan.
+  updateReason: string;
 };
 
 function asRecord(value: unknown): AnyRecord {
@@ -24,10 +28,40 @@ function normalizeState(raw: string): PlanItemState {
   return "pending";
 }
 
-// Honest plan/checklist derived from the run's real task_plan — the itemized plan the runtime
-// actually executed (task_plan.tasks: {task_id, title, status}). Returns null when there is no plan
-// (chat turns, or a run that emitted none) so the UI renders nothing rather than a fake shell.
+function tally(
+  items: PlanItem[],
+  source: PlanModel["source"],
+  updateReason: string,
+): PlanModel | null {
+  if (!items.length) return null;
+  const counts = { pending: 0, in_progress: 0, blocked: 0, done: 0 };
+  for (const item of items) counts[item.state] += 1;
+  return { items, done: counts.done, total: items.length, counts, source, updateReason };
+}
+
+// Honest plan/checklist. Two real sources, and the model's own beats the planner's:
+//   1. model_todos.json — the todo list the MODEL maintains as it works (todo_write). This is how it
+//      actually organized the job, re-planning as it learned; it was written but never read here, so
+//      the checklist used to show only the static plan while the model quietly worked off another one.
+//   2. task_plan.json — the planner's up-front task breakdown. The fallback when the model kept no
+//      todos (a short task, or a model that never called todo_write).
+// Same precedence the runtime's own `todo_read` uses (model_todos → task_plan) — one source of truth,
+// not a second opinion invented in the UI. Returns null when there is no plan at all (chat turns),
+// so the UI renders nothing rather than a fake shell.
 export function derivePlan(runDetail: RunDetailPayload | null | undefined): PlanModel | null {
+  const todos = asRecord(runDetail?.model_todos);
+  const rawTodos = Array.isArray(todos.items) ? (todos.items as unknown[]) : [];
+  const todoItems: PlanItem[] = [];
+  rawTodos.forEach((todo, index) => {
+    const rec = asRecord(todo);
+    const title = String(rec.content ?? rec.title ?? "").trim();
+    if (!title) return;
+    const state = normalizeState(String(rec.status ?? "pending"));
+    todoItems.push({ id: String(rec.id ?? `todo-${index}`), title, state });
+  });
+  const fromTodos = tally(todoItems, "model_todos", String(todos.update_reason ?? "").trim());
+  if (fromTodos) return fromTodos;
+
   const taskPlan = asRecord(runDetail?.task_plan);
   const rawTasks = Array.isArray(taskPlan.tasks) ? (taskPlan.tasks as unknown[]) : [];
   const items: PlanItem[] = [];
@@ -38,10 +72,7 @@ export function derivePlan(runDetail: RunDetailPayload | null | undefined): Plan
     const state = normalizeState(String(rec.task_status ?? rec.status ?? "pending"));
     items.push({ id: String(rec.task_id ?? rec.id ?? `task-${index}`), title, state });
   });
-  if (!items.length) return null;
-  const counts = { pending: 0, in_progress: 0, blocked: 0, done: 0 };
-  for (const item of items) counts[item.state] += 1;
-  return { items, done: counts.done, total: items.length, counts };
+  return tally(items, "task_plan", "");
 }
 
 // The macro phase the run is currently in, for the phase strip. Derived from the latest event that

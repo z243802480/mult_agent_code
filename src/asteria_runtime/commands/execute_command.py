@@ -1666,6 +1666,34 @@ class ExecuteCommand:
                         "model_driven_turn": True,
                     },
                 )
+                # todo_write is not "a tool the model ran" — it IS the model re-planning out loud
+                # (Claude Code's TodoWrite is rendered as the plan, never as a raw tool row). The
+                # generic observation above stays in the Inspector as evidence; the plan itself gets
+                # a main-thread card carrying the items + WHY they changed. A child expert's todos
+                # are its own scratchpad, not the lead's plan, so they stay in the Inspector.
+                if obs.tool_name == "todo_write" and obs.ok and not is_child:
+                    items = [
+                        item for item in (obs.data.get("items") or []) if isinstance(item, dict)
+                    ]
+                    self._record_progress(
+                        context,
+                        task,
+                        channel="progress",
+                        event_type="message",
+                        phase="execute",
+                        status="running",
+                        title="更新计划",
+                        summary=str(obs.data.get("update_reason") or "").strip()
+                        or f"模型把当前工作拆成 {len(items)} 步。",
+                        display_level="main",
+                        transcript_kind="todo_update",
+                        data={
+                            "task_id": task_id,
+                            "iteration": event.iteration,
+                            "todo_items": items,
+                            "model_driven_turn": True,
+                        },
+                    )
         elif event.kind == "fuse":
             # "running" (valid enum) — the terminal blocked status is set by the caller's
             # finalization; this is only an inspector breadcrumb, not the task's final status.

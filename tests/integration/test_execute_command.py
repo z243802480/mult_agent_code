@@ -2498,6 +2498,71 @@ def test_held_open_loop_tells_the_user_why_on_the_main_thread(tmp_path: Path) ->
     assert card["data"]["hook_name"] == "pre_final"
 
 
+class FakeTodoClient:
+    """A model that re-plans out loud: it calls todo_write to break the goal into steps, then works."""
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        iteration = int((getattr(request, "metadata", None) or {}).get("iteration") or 1)
+        if iteration <= 1:
+            payload = {
+                "narration": "先把活拆成三步。",
+                "tool_calls": [
+                    {
+                        "tool_name": "todo_write",
+                        "args": {
+                            "items": [
+                                {"content": "读现有代码", "status": "completed"},
+                                {"content": "写 notes 模块", "status": "in_progress"},
+                                {"content": "补测试", "status": "pending"},
+                            ],
+                            "reason": "把目标拆成三步",
+                        },
+                    }
+                ],
+                "done": False,
+            }
+        else:
+            payload = {"narration": "完成。", "tool_calls": [], "done": True}
+        return ChatResponse(
+            content=json.dumps(payload, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(10, 20, 30),
+            model_provider="fake",
+            model_name="fake-todo",
+            raw_response={},
+        )
+
+
+def test_todo_write_surfaces_the_models_plan_on_the_main_thread(tmp_path: Path) -> None:
+    """B6: todo_write is not "a tool the model ran" — it IS the model re-planning. It used to land as a
+    generic inspector tool row ("使用 todo write") while model_todos.json was written and read by
+    nobody, so the model's real plan was invisible. Now it rides the thread as a todo_update card
+    carrying the items AND the model's reason for changing them."""
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeTodoClient()).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    todos = json.loads((run_dir / "model_todos.json").read_text(encoding="utf-8"))
+    assert [item["status"] for item in todos["items"]] == ["completed", "in_progress", "pending"]
+
+    events = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    cards = [e for e in events if e.get("transcript_kind") == "todo_update"]
+    assert cards, "a re-plan must be visible on the main thread"
+    card = cards[-1]
+    assert card["display_level"] == "main"
+    assert card["summary"] == "把目标拆成三步"
+    assert [item["content"] for item in card["data"]["todo_items"]] == [
+        "读现有代码",
+        "写 notes 模块",
+        "补测试",
+    ]
+
+
 def test_stop_guardrail_allows_stop_when_artifact_exists(tmp_path: Path) -> None:
     (tmp_path / "result.py").write_text("x\n", encoding="utf-8")
     record = {

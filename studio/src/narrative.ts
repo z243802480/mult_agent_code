@@ -290,6 +290,11 @@ function isInternalLoopScaffolding(event: StudioEvent): boolean {
   // Context-mount bookkeeping ("上下文关联" — what the loop attached for the task). Machinery, not
   // conversation; the raw mount stays in context_mounts.jsonl / the Inspector.
   if (transcriptKind === "context_status") return true;
+  // The raw todo_write tool row ("使用 todo write"): the model re-planning is NOT a tool it ran, it is
+  // the plan itself — and it already rides the thread as a todo_update card + the checklist. Keeping
+  // the tool row too would show the same act twice, once in jargon. The call stays in the Inspector.
+  if (String((event.data as Record<string, unknown> | undefined)?.tool_name ?? "") === "todo_write")
+    return true;
   // Loop control-flow NOTICES ("自动重规划已创建修复任务", "已创建修复任务"): the runtime telling
   // ITSELF it spun up a repair task. The actual repair surfaces as its tool calls + narration; this
   // notice is bookkeeping. A GENUINE failure (status="failed") is kept and shown as a real problem.

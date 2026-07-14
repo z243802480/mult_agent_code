@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRunNarrative, toNarrativeEvents } from "./narrative";
+import { buildRunNarrative } from "./narrative";
 import type { StudioEvent } from "./types";
 
 // B5: the continuity guardrail held the loop open — the model tried to finish, an expected artifact
@@ -27,8 +27,9 @@ function heldOpenCard(): StudioEvent {
 
 describe("held-open guardrail on the main thread", () => {
   it("survives the scaffolding filter", () => {
-    const kept = toNarrativeEvents([heldOpenCard()]);
-    expect(kept).toHaveLength(1);
+    // buildRunNarrative is where isInternalLoopScaffolding runs — asserting via toNarrativeEvents
+    // (as this test first did) passes vacuously and proves nothing.
+    expect(buildRunNarrative([heldOpenCard()]).steps).toHaveLength(1);
   });
 
   it("becomes a first-class guardrail step that opens by default", () => {

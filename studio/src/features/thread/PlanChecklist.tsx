@@ -37,14 +37,19 @@ export function PlanChecklist({
         </span>
       </button>
       {open && (
-        <ol className="planItems">
-          {plan.items.map((item) => (
-            <li key={item.id} className={`planItem ${item.state}`}>
-              <ItemIcon state={item.state} />
-              <span className="planItemText">{item.title}</span>
-            </li>
-          ))}
-        </ol>
+        <>
+          {/* Why the model last re-planned (todo_write's reason). Only the model's own list carries
+              this — a static task_plan never changes, so it has nothing to explain. */}
+          {plan.updateReason && <p className="planReason">{plan.updateReason}</p>}
+          <ol className="planItems">
+            {plan.items.map((item) => (
+              <li key={item.id} className={`planItem ${item.state}`}>
+                <ItemIcon state={item.state} />
+                <span className="planItemText">{item.title}</span>
+              </li>
+            ))}
+          </ol>
+        </>
       )}
     </div>
   );

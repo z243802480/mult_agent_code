@@ -263,6 +263,9 @@ export type RunDetailPayload = {
   // Control-hook trail (turn_start nudges + pre_final holds). Evidence for the Inspector; the main
   // thread only surfaces the holds, which are what explain extra rounds.
   runtime_hooks?: AnyRecord[];
+  // The model's own todo list (todo_write) — how it actually organized the work, vs the planner's
+  // static task_plan. Drives the plan checklist when present.
+  model_todos?: AnyRecord;
   events?: AnyRecord[];
   legacy_events?: AnyRecord[];
   raw_evidence?: AnyRecord;
