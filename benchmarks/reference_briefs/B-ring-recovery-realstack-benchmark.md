@@ -66,3 +66,16 @@
 **又抓到一个同族隐患**:`_maybe_auto_finalize`(auto-accept)用 `CorrectnessEvalCommand.score_signal`(只读),而 `_signals` **也**按全部校验调用算 pass_rate——repair 若**先测(红)后修**则 rate=0.5→"partial"→**auto-accept 不 finalize→无监督修复永远不自动收尾**(与执行层 `verification did not pass` 同族·不同函数)。**修**:`_signals` 同样**按命令去重取最新**(与 `_latest_verification_per_command`/`_rerun_signal` 一致)。此修让 auto-accept 对"先测后修"路径也稳,不再靠模型碰巧"先修后测"。
 
 **真栈复验 PASS**(两跑):`baseline_red · final_phase=ACCEPTED · loop completed · final_green · real_providers=[minimax, zai]`(全端到端两 tier 都真用上)。即:损坏基线 → glm+minimax 全自主 plan→修复→环→正确性门 auto-accept→ACCEPTED,**零人干预**。`--driver execute` 仍单证执行层 repair 环(确定性 seed)。
+
+## CI 常态化(2026-07-14)
+
+两档,**别混**:
+
+| 档 | 何时 | 跑什么 | 证什么 |
+|---|---|---|---|
+| **plumbing**(`verify.sh` → 每 push/PR) | 每次 | `ring_recovery_smoke.py --allow-fake` | **只证 harness 未随运行时 API 漂移腐坏**(确定性·无需 key·罐头 provider 修不好 bug,恢复无从证起)。退出码看 `harness_ran`(端到端跑通并产出 loop summary + tool_calls);产不出证据即 exit 1,不静默放行坏掉的 benchmark。verdict 仍如实印 NO-RECOVER。 |
+| **真栈**(`.github/workflows/ring-recovery-nightly.yml` → nightly + 手动) | 每日 02:00 CST | `--driver run --tier strong`(全端到端) | **真恢复证明**:损坏基线→全自主 plan/修复/环/auto-accept→ACCEPTED + 独立 pytest 红转绿。产 `ring_recovery_run.json` 上传为 artifact。 |
+
+**secrets 门控**:nightly 需 repo secrets `AGENT_MODEL_STRONG_API_KEY`(glm)+ `AGENT_MODEL_API_KEY`(minimax);**缺任一则整个 job 优雅 SKIP**(::notice,不误报红)——避免"没配 key 的 fork 天天红"。真模型有非确定性:**失败即如实报红,不重试掩盖**。
+
+为何真栈不进 PR 门:要花钱、要几分钟、真模型非确定 → 不该卡每个 PR。

@@ -226,6 +226,9 @@ def evaluate_ring_recovery(
 
     return {
         "verdict": verdict,
+        # 管道是否真跑起来(产出了 loop summary + tool_calls)。`--allow-fake` 的 CI plumbing 档拿它
+        # 判退出码:罐头 provider 本就修不好 bug(recovery 无从谈起),能证的只有"harness 没腐坏"。
+        "harness_ran": bool(status) and len(tool_calls) > 0,
         "baseline_red": baseline_red,
         "final_green": final_green,
         "loop_status": status,
@@ -336,6 +339,14 @@ def main() -> int:
             "NO-REAL-PROVIDER": "NO-REAL-PROVIDER(跑了 fake·非真栈证明)",
         }[verdict]
         print(f"\n=== RING-RECOVERY {label} ===")
+        if args.allow_fake:
+            # CI plumbing 档:罐头 provider 修不好 bug,recovery 无从证起——**只**证 harness 没随
+            # API 漂移腐坏(端到端跑通并产出证据)。诚实:这**不是**恢复证明,退出码只反映管道。
+            ok = bool(report["harness_ran"])
+            print(
+                f"=== PLUMBING {'OK' if ok else 'BROKEN'}(fake provider 修不好 bug·"
+                "本档只证 harness 未腐坏·非恢复证明) ==="
+            )
 
         if args.summary_json:
             args.summary_json.parent.mkdir(parents=True, exist_ok=True)
@@ -349,6 +360,8 @@ def main() -> int:
             )
             print(f"(summary: {args.summary_json})")
 
+        if args.allow_fake:
+            return 0 if report["harness_ran"] else 1
         return 0 if verdict == "PASS" else 1
     finally:
         if args.keep:

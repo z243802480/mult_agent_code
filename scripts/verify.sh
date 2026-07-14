@@ -15,6 +15,10 @@ export PYTHONPATH="$(pwd)/src${PYTHONPATH:+:$PYTHONPATH}"
 "$python_bin" -m ruff check .
 "$python_bin" -m mypy src
 "$python_bin" scripts/run_benchmarks.py
+# 自主环 ring-recovery benchmark 的 plumbing 档(确定性·无需 provider key)。罐头 provider 修不好
+# bug,故这里**不**证恢复——只证 benchmark harness 没随运行时 API 漂移而腐坏(单测覆盖不到脚本的
+# 端到端接线)。真栈恢复证明在 nightly(.github/workflows/ring-recovery-nightly.yml)。
+"$python_bin" scripts/ring_recovery_smoke.py --allow-fake
 
 tmp_root="$(mktemp -d)"
 trap 'rm -rf "$tmp_root"' EXIT

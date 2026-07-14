@@ -100,6 +100,34 @@ def test_no_real_provider_when_only_fake(tmp_path: Path) -> None:
     assert report["verdict"] == "NO-REAL-PROVIDER"
 
 
+def test_harness_ran_true_when_the_run_produced_evidence(tmp_path: Path) -> None:
+    # CI plumbing 契约(verify.sh 的 --allow-fake 档按此判退出码):harness 端到端跑通并产出
+    # loop summary + tool_calls → harness_ran True → exit 0(即便罐头 provider 没恢复)。
+    run_dir = tmp_path / "runs" / "r6"
+    _seed_run_dir(
+        run_dir,
+        status="completed",
+        exit_reason="completed",
+        verif=[("run_command", "success")],
+        providers=["fake"],
+    )
+    report = evaluate_ring_recovery(
+        run_dir, baseline_red=True, final_green=False, allow_fake=True
+    )
+    assert report["harness_ran"] is True
+
+
+def test_harness_ran_false_when_the_run_produced_nothing(tmp_path: Path) -> None:
+    # 腐坏检测:benchmark 脚本随运行时 API 漂移而跑不出任何证据 → harness_ran False → CI exit 1。
+    # 没有这条,plumbing 档会静默放行一个已经坏掉的 benchmark。
+    empty = tmp_path / "runs" / "r7"
+    empty.mkdir(parents=True)
+    report = evaluate_ring_recovery(
+        empty, baseline_red=True, final_green=False, allow_fake=True
+    )
+    assert report["harness_ran"] is False
+
+
 def test_allow_fake_bypasses_real_provider_gate(tmp_path: Path) -> None:
     run_dir = tmp_path / "runs" / "r5"
     _seed_run_dir(

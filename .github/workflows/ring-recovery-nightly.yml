@@ -1,0 +1,69 @@
+name: Ring Recovery (real stack)
+
+# 自主环 ring-recovery 真栈 benchmark 的常态化档(S77 P1「真 benchmark 证明」)。
+#
+# 为什么不放进 verify.yml:这个档要**真** provider(glm/minimax)、要花钱、要几分钟,且真模型有
+# 非确定性——不该卡每个 PR。verify.sh 里跑的是确定性 plumbing 档(--allow-fake·只证 harness 未腐坏)。
+# 这里是真恢复证明:损坏基线 → 全自主 plan→修复→环→auto-accept → ACCEPTED,独立 pytest 复核。
+#
+# 需要的 repo secrets(缺任一则整个 job 优雅 SKIP,不误报红):
+#   AGENT_MODEL_STRONG_API_KEY  (glm / z.ai)
+#   AGENT_MODEL_API_KEY         (minimax·默认 tier)
+
+on:
+  schedule:
+    - cron: "0 18 * * *" # 每日 02:00 Asia/Shanghai
+  workflow_dispatch:
+
+jobs:
+  ring-recovery:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install package
+        run: python -m pip install -e ".[dev]"
+
+      - name: Check real-provider secrets
+        id: secrets
+        env:
+          STRONG_KEY: ${{ secrets.AGENT_MODEL_STRONG_API_KEY }}
+          DEFAULT_KEY: ${{ secrets.AGENT_MODEL_API_KEY }}
+        run: |
+          if [ -n "$STRONG_KEY" ] && [ -n "$DEFAULT_KEY" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Real-provider secrets are not configured — skipping the real-stack ring-recovery benchmark (this is a skip, not a failure)."
+          fi
+
+      # 全端到端:research 关 → plan(真模型)→ execute(repair 环)→ goal-replan 环 → auto-accept。
+      # 环由 permission_level=reviewed_auto 的默认绑定 arm(不设显式 flag)。PASS 要求终态 ACCEPTED
+      # 且独立 pytest 由红转绿。真模型有非确定性:失败即如实报红,不重试掩盖。
+      - name: Ring recovery (full RunCommand end-to-end, real stack)
+        if: steps.secrets.outputs.available == 'true'
+        env:
+          AGENT_MODEL_STRONG_PROVIDER: glm
+          AGENT_MODEL_STRONG_NAME: glm-5
+          AGENT_MODEL_STRONG_API_KEY: ${{ secrets.AGENT_MODEL_STRONG_API_KEY }}
+          AGENT_MODEL_PROVIDER: minimax
+          AGENT_MODEL_API_KEY: ${{ secrets.AGENT_MODEL_API_KEY }}
+        run: |
+          python scripts/ring_recovery_smoke.py \
+            --driver run --tier strong \
+            --summary-json ring_recovery_run.json
+
+      - name: Upload evidence
+        if: steps.secrets.outputs.available == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ring-recovery-summary
+          path: ring_recovery_run.json
+          if-no-files-found: warn
