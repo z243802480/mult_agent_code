@@ -973,6 +973,18 @@ class ExecuteCommand:
                     available_tools=child_task["allowed_tools"],
                     model_tier=expert.model_tier,
                     max_iterations=max_iterations,
+                    # Bill the expert's calls to the SAME worker profile as the task that delegated
+                    # them — a delegated call is still that task's cost, so the worker tree stays
+                    # whole. `subagent_role` + the child's own task_id keep it attributable per
+                    # expert, so "which expert cost what" is answerable without double counting (B7).
+                    call_attribution={
+                        "runtime_profile_id": runtime_context.get("runtime_profile_id"),
+                        "worker_invocation_id": runtime_context.get(
+                            "current_worker_invocation_id"
+                        ),
+                        "run_id": context.run_id,
+                        "subagent_role": expert.role,
+                    },
                 ),
                 model_client=coder.model_client,
                 tool_runner=self.tool_gateway,
@@ -1010,6 +1022,9 @@ class ExecuteCommand:
                     "backend": str(outcome.data.get("backend") or ""),
                     "model_tier": str(getattr(expert, "model_tier", "") or ""),
                     "read_only": bool(getattr(expert, "read_only", False)),
+                    # What this expert cost (B7) — attributable now that each model call carries the
+                    # task_id that spent it.
+                    "cost": self._model_cost_for_task(context, child_task_id),
                     **(batch or {}),
                 },
             )
@@ -1291,6 +1306,15 @@ class ExecuteCommand:
                 if context.run_id
                 else None
             ),
+            # Cost attribution (B7): the worker tree counts a task's model calls by matching
+            # runtime_profile_id, and the spine never stamped one — so a run that made 5 calls
+            # reported 0. runtime_context carries the mounted profile; pass it through.
+            call_attribution={
+                "runtime_profile_id": runtime_context.get("runtime_profile_id"),
+                "worker_invocation_id": runtime_context.get("current_worker_invocation_id"),
+                "run_id": context.run_id,
+                "subagent_role": runtime_context.get("subagent_role"),
+            },
         )
 
         # 人审边界命中（ADR-0016：人审=显式边界）：脊梁在跑到需人批的工具批前整批停手，本轮无残留
@@ -1602,6 +1626,37 @@ class ExecuteCommand:
                 "focused expert; otherwise just do the work yourself."
             )
         return "\n".join(lines)
+
+    def _model_cost_for_task(self, context: RuntimeContext, task_id: str) -> dict:
+        """What one task (or one delegated expert's child task) actually spent. Reads the model-call
+        log, which since B7 carries the task_id that spent each call. Tokens — not the loop's
+        iteration count — are the honest cost: an expert can burn a big context in few turns."""
+        empty = {"model_calls": 0, "input_tokens": 0, "output_tokens": 0}
+        if context.run_dir is None or not task_id:
+            return empty
+        path = context.run_dir / "model_calls.jsonl"
+        if not path.exists():
+            return empty
+        calls = 0
+        input_tokens = 0
+        output_tokens = 0
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if str(record.get("task_id") or "") != task_id:
+                continue
+            calls += 1
+            input_tokens += int(record.get("input_tokens") or 0)
+            output_tokens += int(record.get("output_tokens") or 0)
+        return {
+            "model_calls": calls,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
 
     def _record_model_driven_event(
         self,

@@ -26,6 +26,9 @@ class SubagentRequest:
     available_tools: list[str]
     model_tier: str
     max_iterations: int
+    # Who to bill this expert's model calls to (runtime_profile_id / worker id / role). Carried on the
+    # request rather than passed alongside, so a remote backend bills the same way a local one does.
+    call_attribution: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -80,6 +83,7 @@ class LocalExecutor:
             max_iterations=request.max_iterations,
             transport="json",
             on_event=on_event,
+            call_attribution=request.call_attribution,
         )
         # Surface what the child actually changed so the LEAD's completion contract can credit the
         # delegated artifacts (shared-workspace skeleton). Same artifact_refs extraction the lead

@@ -118,6 +118,12 @@ class ModelCallLogger:
             "capability_manifest_hash": request.metadata.get("capability_manifest_hash"),
             "context_mode": request.metadata.get("context_mode"),
             "fast_path_task_kind": request.metadata.get("fast_path_task_kind"),
+            # WHO spent this call. The metadata already carried task_id; it was never persisted, so
+            # every spine call looked identical ("purpose=task_execution") and no cost could be
+            # attributed to a task — let alone to the expert a task delegated to (B7).
+            "task_id": request.metadata.get("task_id"),
+            "subagent_role": request.metadata.get("subagent_role"),
+            "worker_invocation_id": request.metadata.get("worker_invocation_id"),
         }
         estimate = estimate_request_context(request)
         record["context_estimate"] = estimate.to_dict()

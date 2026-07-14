@@ -125,6 +125,7 @@ def run_model_driven_turn(
     hook: Callable[[str, dict], TurnControl] | None = None,
     approval_gate: Callable[[list[dict]], Any] | None = None,
     pause_requested: Callable[[], bool] | None = None,
+    call_attribution: dict[str, Any] | None = None,
 ) -> ModelDrivenTurnResult:
     """跑一条模型驱动的循环，直到模型收尾或撞上保险丝。
 
@@ -198,6 +199,10 @@ def run_model_driven_turn(
                 "task_id": task.get("task_id"),
                 "iteration": iteration,
                 "loop": "model_driven_turn",
+                # Who is spending this call (runtime_profile_id / subagent_role / worker id). The
+                # model-call log reads its fields off this metadata, so without it every spine call
+                # lands unattributed and the worker tree's cost rolls up to zero (B7).
+                **(call_attribution or {}),
             },
         )
         response = model_client.chat(request)

@@ -3122,6 +3122,100 @@ def test_execute_command_isolated_writes_flag_off_stays_serial(tmp_path: Path) -
     assert not any((e.get("data") or {}).get("subagent_phase") == "merge_gate" for e in events)
 
 
+class FakeDelegatingClient:
+    """A lead that delegates one coder expert, which writes the file and finishes."""
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        metadata = getattr(request, "metadata", None) or {}
+        iteration = int(metadata.get("iteration") or 1)
+        is_child = "-sub-" in str(metadata.get("task_id") or "")
+        if is_child:
+            payload = (
+                {
+                    "narration": "专家干活",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {"path": "src/alpha.py", "content": "x = 1\n"},
+                        }
+                    ],
+                    "done": False,
+                }
+                if iteration <= 1
+                else {"narration": "专家完成", "tool_calls": [], "done": True}
+            )
+        else:
+            payload = (
+                {
+                    "narration": "委派专家",
+                    "tool_calls": [
+                        {
+                            "tool_name": "spawn_subagent",
+                            "args": {
+                                "role": "coder",
+                                "task": "write alpha",
+                                "write_scope": ["src/alpha.py"],
+                            },
+                        }
+                    ],
+                    "done": False,
+                }
+                if iteration <= 1
+                else {"narration": "主脑完成", "tool_calls": [], "done": True}
+            )
+        return ChatResponse(
+            content=json.dumps(payload, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(100, 200, 300),
+            model_provider="fake",
+            model_name="fake-delegating",
+            raw_response={},
+        )
+
+
+def test_model_calls_are_attributed_to_the_task_and_expert_that_spent_them(
+    tmp_path: Path,
+) -> None:
+    """B7: the worker tree counts a task's model calls by matching runtime_profile_id, and the spine
+    never stamped one — so a run that made 4 execute calls reported ZERO, and a delegated expert's
+    spend was invisible. Now every call carries who spent it: the task, the worker profile, and the
+    expert role when it was delegated."""
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeDelegatingClient()).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    calls = [
+        json.loads(line)
+        for line in (run_dir / "model_calls.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    execute_calls = [c for c in calls if c.get("purpose") == "task_execution"]
+    assert execute_calls, "the run must have made execution calls"
+    # Every execution call is attributable — no more anonymous "purpose=task_execution" rows.
+    assert all(c.get("task_id") for c in execute_calls)
+    assert all(c.get("runtime_profile_id") for c in execute_calls)
+    # The expert's calls carry its role; the lead's do not.
+    expert_calls = [c for c in execute_calls if c.get("subagent_role") == "coder"]
+    lead_calls = [c for c in execute_calls if not c.get("subagent_role")]
+    assert expert_calls and lead_calls
+    assert all("-sub-" in str(c["task_id"]) for c in expert_calls)
+
+    # The worker tree's cost is no longer a lie: it now sums to the execution calls actually made.
+    results = [
+        json.loads(line)
+        for line in (run_dir / "worker_results.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    tree_total = sum(int((r.get("cost") or {}).get("model_calls") or 0) for r in results)
+    assert tree_total == len(execute_calls)
+
+    # The expert's own spend rides its result card, so the UI can show who burned what.
+    result_card = _subagent_cards(tmp_path, plan.run_id, "result")[0]
+    cost = result_card["data"]["cost"]
+    assert cost["model_calls"] == len(expert_calls)
+    assert cost["input_tokens"] > 0 and cost["output_tokens"] > 0
+
+
 def _subagent_cards(tmp_path: Path, run_id: str, phase: str) -> list[dict]:
     run_dir = tmp_path / ".asteria" / "runs" / run_id
     events = [

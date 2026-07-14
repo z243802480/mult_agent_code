@@ -14,6 +14,26 @@
     "created_at"
   ],
   "properties": {
+    "task_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Task that spent this call (the child task id for a delegated expert)."
+    },
+    "subagent_role": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Expert role when a delegated sub-agent made this call; null for the lead."
+    },
+    "worker_invocation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "schema_version": { "type": "string" },
     "model_call_id": { "type": "string" },
     "run_id": { "type": ["string", "null"] },

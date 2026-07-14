@@ -18,7 +18,21 @@ interface ExpertRow {
   changedFiles: string[];
   modelTier: string;
   concurrent: boolean;
+  // What it cost (B7). Model calls were unattributed until the model-call log started carrying the
+  // task_id that spent each one, so an expert's spend was invisible.
+  cost: { model_calls: number; input_tokens: number; output_tokens: number } | null;
   transcript: StudioEvent[];
+}
+
+function asCost(value: unknown): ExpertRow["cost"] {
+  const rec = asRecord(value);
+  const calls = Number(rec.model_calls ?? 0);
+  if (!calls) return null;
+  return {
+    model_calls: calls,
+    input_tokens: Number(rec.input_tokens ?? 0),
+    output_tokens: Number(rec.output_tokens ?? 0),
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -71,6 +85,7 @@ export function buildExpertRows(events: StudioEvent[]): ExpertRow[] {
         changedFiles: [],
         modelTier: "",
         concurrent: false,
+        cost: null,
         transcript: [],
       };
       byChild.set(childId, row);
@@ -87,6 +102,7 @@ export function buildExpertRows(events: StudioEvent[]): ExpertRow[] {
       row.status = data.ok === false ? "failed" : "done";
       if (Array.isArray(data.changed_files)) row.changedFiles = data.changed_files.map(String);
       if (typeof data.model_tier === "string") row.modelTier = data.model_tier;
+      row.cost = asCost(data.cost) ?? row.cost;
     }
   }
 
@@ -168,6 +184,14 @@ export function SubagentPanel({ events }: { events: StudioEvent[] }) {
                     {row.modelTier && <span className="subagentIters">{row.modelTier} 档</span>}
                     {typeof row.iterations === "number" && (
                       <span className="subagentIters">{row.iterations} 步</span>
+                    )}
+                    {row.cost && (
+                      <span
+                        className="subagentIters"
+                        title={`${row.cost.model_calls} 次模型调用 · 输入 ${row.cost.input_tokens} / 输出 ${row.cost.output_tokens} token`}
+                      >
+                        {row.cost.input_tokens + row.cost.output_tokens} token
+                      </span>
                     )}
                     <span className="subagentChevron">{open ? "▾" : "▸"}</span>
                   </button>
