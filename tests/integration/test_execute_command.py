@@ -2838,6 +2838,43 @@ def _enable_isolated_writes(tmp_path: Path, *, isolated: bool) -> None:
     policy_path.write_text(json.dumps(policy), encoding="utf-8")
 
 
+def test_concurrent_write_flags_bind_to_permission_mode(tmp_path: Path) -> None:
+    # User-authorized global-default flip (2026-07-14·ADR-0023): the concurrent-expert-fan-out flags
+    # (B1-a readonly `concurrent_subagents` + B1-b isolated writes `isolated_parallel_write_
+    # production_path`) default ON under auto/reviewed_auto so the model's concurrent expert cluster
+    # is the default capability, and OFF under ask_everything (explicit step-by-step). This mirrors
+    # the other autonomy rings; explicit agent_loop flags still override either way.
+    cmd = ExecuteCommand(tmp_path)
+    for mode in ("auto", "reviewed_auto", "balanced"):
+        assert cmd._concurrent_subagents_enabled({"permission_mode": mode}) is True
+        assert cmd._isolated_parallel_writes_enabled({"permission_mode": mode}) is True
+    for mode in ("ask_everything", "ask"):
+        assert cmd._concurrent_subagents_enabled({"permission_mode": mode}) is False
+        assert cmd._isolated_parallel_writes_enabled({"permission_mode": mode}) is False
+    # Missing/unknown mode → treated as the run default (reviewed_auto) → on.
+    assert cmd._concurrent_subagents_enabled({}) is True
+    assert cmd._isolated_parallel_writes_enabled({}) is True
+    # Explicit flags still override the mode default (byte-reversible opt-out / opt-in).
+    off = {
+        "permission_mode": "auto",
+        "agent_loop": {
+            "concurrent_subagents": False,
+            "isolated_parallel_write_production_path": False,
+        },
+    }
+    assert cmd._concurrent_subagents_enabled(off) is False
+    assert cmd._isolated_parallel_writes_enabled(off) is False
+    on = {
+        "permission_mode": "ask_everything",
+        "agent_loop": {
+            "concurrent_subagents": True,
+            "isolated_parallel_write_production_path": True,
+        },
+    }
+    assert cmd._concurrent_subagents_enabled(on) is True
+    assert cmd._isolated_parallel_writes_enabled(on) is True
+
+
 def test_execute_command_concurrent_isolated_writes_disjoint_promote(tmp_path: Path) -> None:
     """ADR-0023 B1-b: with isolated_parallel_write_production_path on, a batch of ≥2 writing experts
     runs CONCURRENTLY, each in its own candidate workspace; the merge gate sees disjoint writes and

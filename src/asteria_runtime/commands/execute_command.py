@@ -690,11 +690,18 @@ class ExecuteCommand:
 
     def _concurrent_subagents_enabled(self, policy: dict) -> bool:
         """Whether a batch of ≥2 spawn_subagent calls to read-only experts runs concurrently
-        (ADR-0023 B1-a). Default off → byte-identical serial fan-out. Concurrent WRITES (isolated
-        candidate workspaces + merge_gate) are a separate flag/slice (B1-b)."""
+        (ADR-0023 B1-a). Default bound to the permission mode (set-and-forget): auto/reviewed_auto →
+        on so the model's concurrent expert fan-out is the default; ask_everything → off (byte-
+        identical serial fan-out for explicit step-by-step supervision). An explicit
+        agent_loop.concurrent_subagents flag still overrides. (User-authorized global-default flip
+        2026-07-14; read-only fan-out has no writes so no conflict risk.)"""
         raw_agent_loop = policy.get("agent_loop")
         agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
-        return bool(agent_loop.get("concurrent_subagents") or False)
+        return bool(
+            agent_loop.get(
+                "concurrent_subagents", autonomy_rings_default_on(policy.get("permission_mode"))
+            )
+        )
 
     def _max_parallel_workers(self, policy: dict) -> int:
         raw_agent_loop = policy.get("agent_loop")
@@ -708,12 +715,24 @@ class ExecuteCommand:
     def _isolated_parallel_writes_enabled(self, policy: dict) -> bool:
         """Whether a batch of ≥2 spawn_subagent calls that includes WRITING experts fans out
         concurrently, each in its own candidate workspace, reconciled through the merge gate before
-        promotion (ADR-0023 B1-b). Default off → writing batches stay serial on the shared workspace
-        (byte-identical to today). This is capability opt-in, NOT flipping the global parallel_writes
-        default (still a separate autonomy/safety DecisionPoint)."""
+        promotion (ADR-0023 B1-b). Default bound to the permission mode (set-and-forget): auto/
+        reviewed_auto → on so concurrent expert writes are the default capability; ask_everything →
+        off (writing batches stay serial on the shared workspace for explicit step-by-step review).
+        Safety is unconditional regardless of the default: each writer runs in its OWN candidate
+        workspace and the batch reconciles through ONE cross-task merge gate — all disjoint writers
+        promote or none do (never a partial merge of cross-conflicting writes), and candidate
+        creation falls back to a plain copy when git worktrees are unavailable. An explicit
+        agent_loop.isolated_parallel_write_production_path flag still overrides. (User-authorized
+        global-default flip 2026-07-14, resolving the prior autonomy/safety DecisionPoint; the
+        merge-gate-protected B1-b path was real-stack validated in §16 v1.2.25/1.2.26/1.2.29.)"""
         raw_agent_loop = policy.get("agent_loop")
         agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
-        return bool(agent_loop.get("isolated_parallel_write_production_path") or False)
+        return bool(
+            agent_loop.get(
+                "isolated_parallel_write_production_path",
+                autonomy_rings_default_on(policy.get("permission_mode")),
+            )
+        )
 
     def _subagent_backend_kind(self, policy: dict) -> str:
         """Which worker backend runs spawned experts: "local" (default, in-process) or the

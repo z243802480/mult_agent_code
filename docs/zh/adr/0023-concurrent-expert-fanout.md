@@ -1,7 +1,7 @@
 # ADR-0023：并发专家扇出 —— 模型驱动的 spawn_subagent 真并发（Part B1）
 
-**状态**：Accepted（B1-a readonly 已落地；B1-b 隔离写已落地；前端子 agent 面板已落地）
-**日期**：2026-07-08
+**状态**：Accepted（B1-a readonly 已落地；B1-b 隔离写已落地；前端子 agent 面板已落地；**B1-a/B1-b 全局默认已翻开** 2026-07-14·随权限档·见文末更新）
+**日期**：2026-07-08（默认翻转更新 2026-07-14）
 **关系**：落地 [ADR-0022](0022-model-driven-spine-landed.md) 五层架构的 ③专家集群「真并发」；受 [ADR-0016](0016-model-driven-cognition-conformance.md) 支配（并发是模型决策空间，不是 harness 强编排）。取代 2026-06-28 已删的 swarm 中央 FSM 编排（不恢复）。
 
 ## 背景
@@ -67,5 +67,15 @@ lead 一批发的专家里**含写专家**且 flag 开时：每个写 child 在*
 
 ## 回滚或替代条件
 
-- flag `agent_loop.concurrent_subagents=false` 即回退到只读并发前的串行；`agent_loop.isolated_parallel_write_production_path=false` 即回退到写批串行（两 flag 出厂均关）。
+- flag `agent_loop.concurrent_subagents=false` 即回退到只读并发前的串行；`agent_loop.isolated_parallel_write_production_path=false` 即回退到写批串行（两 flag 默认随权限档：auto/reviewed_auto→开·ask_everything→关，见文末默认翻转更新；显式 false 逐字节回退）。
 - 若并发在成功率/正确性/证据一致性上可测地更差，关 flag 并重开讨论。
+
+## 更新（2026-07-14）：B1-a/B1-b 全局默认翻开 —— 用户 DecisionPoint 解冻
+
+用户拍板解冻"parallel_writes 全局默认开"（原列 AGENTS.md §2 冻结）。**关键澄清**：此前混用的"parallel_writes"其实是三样——(1) `RunCommand.parallel_writes`/CLI `--parallel-disjoint-writes` 的**任务批**并行，被 `task_graph.py:52-55` 冻结成 readonly-only（写任务永不并行·既无裸并发也无真并行写·解冻它才是危险的·需重建 disjoint 冲突检测）；(2) 本 ADR 的 **B1-b 子专家隔离写**（`isolated_parallel_write_production_path`·merge-gate 保护）；(3) `parallel_writes_beta_opt_in`（死字段·无 reader）。用户描述的"隔离写+合并门·merge_gate 兜底"精确对应 **(2)**，故翻的是 B1-a/B1-b 的默认，**不碰**危险的任务批冻结 (1)、删除死字段 (3)。
+
+**改动**：`_concurrent_subagents_enabled` / `_isolated_parallel_writes_enabled` 由 `.get(...) or False` 改为 `agent_loop.get(<flag>, autonomy_rings_default_on(policy.get("permission_mode")))`（与 auto_repair/auto_replan 等自主环同一模式·auto/reviewed_auto→开·ask_everything→串行保留逐步监督·显式 flag 覆盖）；两份 `policies.default.json` 移除 `isolated_parallel_write_production_path:false`（让绑定驱动）+ 删死字段 `parallel_writes_beta_opt_in`。
+
+**安全不依赖默认值**（ADR-0016 §2 边界始终在）：每个写 child 在**独立 candidate 工作区**、整批经**一次跨任务 merge gate** 汇合——disjoint 全晋升 / 任一冲突全不晋升（永不半并入·`candidate_execution_gateway.py:109-110`），候选创建 git worktree 不可用时自动回退纯拷贝（`candidate_workspace.py:207-220`·非 git 环境健壮）。**爆炸半径小**：只在模型一批发 ≥2 spawn_subagent 含写专家时触发，单写任务（len<2）恒串行。
+
+**验证**：新增 `test_concurrent_write_flags_bind_to_permission_mode`（随档绑定+显式覆盖）；全量 **1241 passed**（仅 6 条既有失败·经 stash 在 clean HEAD 复现确证零新增回归）；真 policy 加载路径确认 fresh 模板下 reviewed_auto/auto→both on·ask_everything→both off；**真栈 smoke**（minimax·`--mode disjoint`）复跑 PASS——并发扇出 2 coder·merge_gate ok·alpha+beta 均晋升共享工作区（证我的默认改动未破坏 B1-b 机器）。§16 v1.2.33。

@@ -22,7 +22,7 @@ CLI and Studio surface (not command-only UX).
 当前 Brief / 审计签字：docs/zh/reports/S77-commercial-readiness-audit-20260704.md（实现≈71%、市场化 37→利基 43-45、今天不可商业推广）
 前置签字：docs/zh/reports/S76-studio-frontend-productization-20260703.md
 执行顺序：P0 法务/假默认档（小时~天级）→ 战略分叉 DecisionPoint（商业模式/目标市场/可审计深度/是否解锁自主环）→ P0 沙箱 + P1 自主闭环 & 真正确性 gate → 利基付费 Beta
-冻结：新编排 Wave、parallel_writes 全局默认开启、无真实 friction 证据的 Studio 新功能；北极星/swarm/12-Agent
+冻结：新编排 Wave、任务批 disjoint-write 调度解冻（task_graph 冻结点·需重建冲突检测）、无真实 friction 证据的 Studio 新功能；北极星/swarm/12-Agent。**已解冻并落地**：B1-b 子专家隔离并发写全局默认（merge-gate 保护·随权限档·2026-07-14·ADR-0023·§16 v1.2.33）
 ```
 
 Any agent must read `docs/zh/研发总计划.md` before code or doc changes. Do not start a new
