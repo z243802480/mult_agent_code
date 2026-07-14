@@ -46,6 +46,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The Studio server shells out to the Python runtime for real actions (resolving a decision,
+      # running a next action). Without it the UI specs can click the button but nothing ever happens
+      # — so the UI job needs the runtime installed, not just Node.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Asteria runtime
+        working-directory: .
+        run: python -m pip install -e .
+
       - name: Lint
         run: npm run lint
 

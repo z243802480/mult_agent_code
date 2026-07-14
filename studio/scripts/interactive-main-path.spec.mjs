@@ -83,6 +83,10 @@ test("a session that owns a run surfaces its decision, then the next action", as
 
 test("the composer exposes the product slash actions", async ({ page }) => {
   await page.goto(`http://127.0.0.1:${port}/`);
+  // Wait for bootstrap to settle BEFORE typing: the thread only renders the welcome state once
+  // sessions/runs have loaded, and that late render remounts the composer — typing into it first
+  // (fast enough locally, not on CI) gets the draft wiped and the slash menu never opens.
+  await expect(page.locator(".emptyThread")).toBeVisible({ timeout: 15_000 });
   await page.locator(".composer textarea").fill("/");
   await expect(page.locator(".slashMenu")).toBeVisible();
   await expect(page.locator(".slashMenu button").filter({ hasText: "/plan" })).toBeVisible();
