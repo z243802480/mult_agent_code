@@ -8,6 +8,8 @@
     "server": "node server.mjs",
     "start:studio": "powershell -ExecutionPolicy Bypass -File ./start-studio.ps1",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,css}\"",
@@ -54,6 +56,7 @@
     "eslint-plugin-unused-imports": "^4.4.1",
     "globals": "^15.15.0",
     "prettier": "^3.9.4",
-    "typescript-eslint": "^8.63.0"
+    "typescript-eslint": "^8.63.0",
+    "vitest": "^3.2.7"
   }
 }

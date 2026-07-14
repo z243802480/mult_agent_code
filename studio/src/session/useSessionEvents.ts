@@ -3,7 +3,11 @@ import type { AnyRecord, StudioEvent, StudioSession } from "../types";
 import { api, subscribeToEvents, type ConnectivityStatus } from "../api";
 import { isSessionLive } from "../narrative";
 import { mergeEventLists } from "./eventUtils";
+import { deriveRunState } from "./runState";
 import { toast } from "../components/toast";
+
+/** How often we ask the server whether the job is still alive while the events look live. */
+const JOB_PROBE_INTERVAL_MS = 4000;
 
 export function useSessionEvents(
   activeSession: StudioSession | null,
@@ -48,7 +52,50 @@ export function useSessionEvents(
     };
   }, [activeSession?.session_id, mergeEvents]);
 
-  const isRunning = useMemo(() => isSessionLive(events), [events]);
+  // The event log is a hint; the server's job registry is the authority (see runState.ts).
+  const eventsLive = useMemo(() => isSessionLive(events), [events]);
+  const [jobsRunning, setJobsRunning] = useState<number | null>(null);
+  const [staleChecks, setStaleChecks] = useState(0);
+
+  useEffect(() => {
+    if (!activeSession || !eventsLive) {
+      setStaleChecks(0);
+      return;
+    }
+    const sid = activeSession.session_id;
+    let cancelled = false;
+    const probe = async () => {
+      try {
+        const payload = await api.sessionJobs(sid);
+        if (cancelled) return;
+        const running = typeof payload.running === "number" ? payload.running : 0;
+        setJobsRunning(running);
+        // Consecutive-miss counter, not a one-shot: a job that finishes normally drops out of the
+        // running set a beat before its final event lands, and that beat must not read as death.
+        setStaleChecks((seen) => (running > 0 ? 0 : seen + 1));
+      } catch {
+        if (cancelled) return;
+        // Could not ask ≠ the run died. Fall back to the event signal.
+        setJobsRunning(null);
+        setStaleChecks(0);
+      }
+    };
+    void probe();
+    const timer = setInterval(() => void probe(), JOB_PROBE_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [activeSession?.session_id, eventsLive]);
+
+  const runState = deriveRunState({ eventsLive, jobsRunning, staleChecks });
+  const isRunning = runState === "running";
+  const interrupted = runState === "interrupted";
+
+  const resetRunProbe = useCallback(() => {
+    setJobsRunning(null);
+    setStaleChecks(0);
+  }, []);
 
   async function sendGoal(
     message: string,
@@ -57,6 +104,8 @@ export function useSessionEvents(
     permissionMode?: string,
   ) {
     if (!activeSession) return;
+    // A new goal supersedes any earlier verdict about a dead job — re-probe from scratch.
+    resetRunProbe();
     setPendingTurn({ message, mode, startedAt: Date.now() });
     try {
       await api.send(
@@ -198,6 +247,8 @@ export function useSessionEvents(
     mergeEvents,
     pendingTurn,
     isRunning,
+    interrupted,
+    runState,
     connectivity,
     sendGoal,
     sendSideAsk,

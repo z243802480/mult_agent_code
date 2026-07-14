@@ -191,6 +191,19 @@ export type GitFileActionPayload = {
   error?: string;
 };
 
+export type SessionJob = {
+  job_id: string;
+  status: string;
+  mode: string | null;
+  run_id: string | null;
+};
+
+export type SessionJobsPayload = {
+  ok: boolean;
+  running: number;
+  jobs: SessionJob[];
+};
+
 export type OverviewPayload = {
   ok: boolean;
   workspace: string;

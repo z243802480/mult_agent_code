@@ -37,7 +37,11 @@ export function createEventBus({ sessionPath, getWorkspace }) {
       ...redact(event),
     };
     await fs.mkdir(sessionPath(sessionId), { recursive: true });
-    await fs.appendFile(sessionPath(sessionId, "events.jsonl"), `${JSON.stringify(full)}\n`, "utf8");
+    await fs.appendFile(
+      sessionPath(sessionId, "events.jsonl"),
+      `${JSON.stringify(full)}\n`,
+      "utf8",
+    );
     const sessionFile = sessionPath(sessionId, "session.json");
     if (existsSync(sessionFile)) {
       let session = {};

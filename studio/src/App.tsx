@@ -294,6 +294,7 @@ export function App() {
         diffFocus={diffFocus}
         loading={bootstrap.loading}
         isRunning={sessionEvents.isRunning}
+        interrupted={sessionEvents.interrupted}
         connectivity={sessionEvents.connectivity}
         changeCount={review.gitStatus?.change_count ?? review.gitStatus?.changes?.length ?? 0}
         branch={review.gitStatus?.branch}
@@ -375,6 +376,7 @@ export function App() {
           events={sessionEvents.events}
           selected={runEvidence.selectedEvent}
           isRunning={sessionEvents.isRunning}
+          interrupted={sessionEvents.interrupted}
           onSelect={runEvidence.selectEvent}
           onPrompt={bootstrap.pushPrompt}
           onPermit={sessionEvents.permitJob}

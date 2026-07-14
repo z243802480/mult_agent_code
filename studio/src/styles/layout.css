@@ -201,6 +201,12 @@
   animation: pulse 1.6s ease-in-out infinite;
 }
 
+/* Interrupted: the run died without a terminal event. Warn-toned and STILL — never a pulsing dot,
+   which would read as "working" and is exactly the lie this state exists to stop. */
+.headerStatus.interrupted {
+  color: var(--warn);
+}
+
 /* Connectivity pill — shown only when the event stream is not live (I2). Quiet warn/bad tokens. */
 .headerConnectivity {
   align-items: center;

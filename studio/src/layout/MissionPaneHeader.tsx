@@ -25,6 +25,8 @@ type MissionPaneHeaderProps = {
   sideChatOpen: boolean;
   loading: boolean;
   isRunning: boolean;
+  /** Events look live but no job is alive — the run died (see runState.ts). */
+  interrupted?: boolean;
   connectivity?: ConnectivityStatus;
   changeCount: number;
   branch?: string;
@@ -46,6 +48,7 @@ export function MissionPaneHeader({
   sideChatOpen,
   loading,
   isRunning,
+  interrupted,
   connectivity,
   changeCount,
   branch,
@@ -77,11 +80,11 @@ export function MissionPaneHeader({
           </span>
         )}
         <span
-          className={isRunning ? "headerStatus running" : "headerStatus"}
-          title={isRunning ? "Agent 运行中" : "空闲"}
+          className={`headerStatus${isRunning ? " running" : ""}${interrupted ? " interrupted" : ""}`}
+          title={interrupted ? "运行已中断——执行进程已不在了" : isRunning ? "Agent 运行中" : "空闲"}
         >
           <span className="headerStatusDot" />
-          {isRunning ? "运行中" : "空闲"}
+          {interrupted ? "已中断" : isRunning ? "运行中" : "空闲"}
         </span>
         {connectivity && connectivity !== "live" && (
           <span

@@ -14,6 +14,7 @@ import type {
   GitStatusPayload,
   GitDiffPayload,
   GitFileActionPayload,
+  SessionJobsPayload,
 } from "./types";
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -117,6 +118,10 @@ export const api = {
     requestJson<AnyRecord>(`/api/studio/sessions/${encodeURIComponent(sessionId)}/stop`, {
       method: "POST",
     }),
+  // The job registry is the AUTHORITY on whether work is still running (the event log only says
+  // what was written, not whether the process is alive). See useRunState.
+  sessionJobs: (sessionId: string) =>
+    requestJson<SessionJobsPayload>(`/api/studio/sessions/${encodeURIComponent(sessionId)}/jobs`),
   files: () => requestJson<{ ok: boolean; files: WorkspaceFile[] }>("/api/studio/files"),
   previewFile: (path: string) =>
     requestJson<FilePreview>("/api/studio/files/preview", {

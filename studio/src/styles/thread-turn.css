@@ -1426,6 +1426,28 @@
   color: var(--text-primary);
 }
 
+/* Interrupted notice — the run's process is gone. A quiet system line (mainstream agents print an
+   "Interrupted" line rather than leaving a spinner up), not an error banner: the work done before
+   the run died is still valid and still shown above. */
+.threadInterrupted {
+  align-items: flex-start;
+  background: var(--warn-subtle);
+  border-radius: var(--radius-md, 8px);
+  color: var(--text-secondary);
+  display: flex;
+  font-size: 12px;
+  gap: 7px;
+  line-height: 1.55;
+  margin: 6px 0 12px;
+  padding: 9px 12px;
+}
+
+.threadInterrupted svg {
+  color: var(--warn);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
 .jumpToLatest {
   background: var(--accent);
   border: 0;

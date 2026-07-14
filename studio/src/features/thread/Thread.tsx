@@ -42,6 +42,7 @@ export function Thread({
   events,
   selected,
   isRunning,
+  interrupted,
   onSelect,
   onPrompt,
   onPermit,
@@ -66,6 +67,8 @@ export function Thread({
   events: StudioEvent[];
   selected: StudioEvent | null;
   isRunning: boolean;
+  /** The event log looks live but the server has no running job — the run died. See runState.ts. */
+  interrupted?: boolean;
   loading?: boolean;
   onSelect: (event: StudioEvent) => void;
   onPrompt: (text: string) => void;
@@ -378,6 +381,16 @@ export function Thread({
         </button>
       )}
       {shouldShowPending && pendingTurn && <PendingTurn {...pendingTurn} />}
+      {interrupted && (
+        <div className="threadInterrupted" role="status">
+          <AlertTriangle size={13} />
+          <span>
+            运行已中断——执行进程已不在了（Studio
+            服务器重启、进程被外部结束，或机器休眠）。上面是它停下前
+            完成的部分；直接发下一条消息即可继续。
+          </span>
+        </div>
+      )}
       <RuntimeSnapshot
         overview={overview ?? null}
         runDetail={runDetail ?? null}
