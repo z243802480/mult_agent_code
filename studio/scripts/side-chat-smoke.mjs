@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readServerSurface } from "./server-surface.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const keyboard = readFileSync(path.join(root, "src/hooks/useStudioKeyboard.ts"), "utf8");
 const sideChat = readFileSync(path.join(root, "src/features/sidechat/SideChatPanel.tsx"), "utf8");
 const sideUtils = readFileSync(path.join(root, "src/features/sidechat/sideChatUtils.ts"), "utf8");
-const server = readFileSync(path.join(root, "server.mjs"), "utf8");
+const server = readServerSurface(root);
 const app = readFileSync(path.join(root, "src/App.tsx"), "utf8");
 const thread = readFileSync(path.join(root, "src/features/thread/Thread.tsx"), "utf8");
 

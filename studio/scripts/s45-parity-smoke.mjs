@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readServerSurface } from "./server-surface.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -11,10 +12,10 @@ const files = [
   "src/components/AggregateDiffChip.tsx",
   "src/components/MarkdownBody.tsx",
   "src/contextSummary.ts",
-  "server.mjs",
 ].map((rel) => readFileSync(path.join(root, rel), "utf8"));
 
-const [diffPreview, contextPanel, aggregateChip, markdownBody, contextSummary, server] = files;
+const [diffPreview, contextPanel, aggregateChip, markdownBody, contextSummary] = files;
+const server = readServerSurface(root);
 
 assert.match(diffPreview, /layout === "split"/, "DiffPreview must support split layout");
 assert.match(diffPreview, /stage === "staged"/, "DiffPreview must support staged view");

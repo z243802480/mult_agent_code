@@ -97,8 +97,14 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) { �
 
 ## 3. 推荐执行顺序（每步一刀或数刀·独立提交·真 smoke）
 
-> **进度（2026-07-14 续会话）**：server.mjs **2837** 行（②k 拆完 chat Tier 1；起点 5119 → 已减 45%）；
-> `lib/` 现 8 模块。下一刀 = Layer 3 `chat-routes.mjs`（Tier 2 薄端点，见 §3 步骤 6）。
+> **✅ 拆分收官（2026-07-14）**：server.mjs **5119 → 2188 行（减 57%）**；`lib/` 现 9 模块（最大 run-detail-reader 874）。
+> §3 六步全部落地。**剩 execute 层（`startRuntimeJob` 家族，缠着 runtime-progress）本轮不动——另一条轴，值单独规划。**
+>
+> **②l 新增教训:白盒 smoke 会被拆分静默腐蚀,且已经烂过一次**。多个 smoke 用
+> `assert.match(readFileSync("server.mjs"), /符号/)` 断言"后端具备某能力"——这把**能力**耦合到了**文件位置**,
+> 每拆一刀就烂一批。`s45-parity` 的 `/compact:/` 断言在 ②j（上个 session 已推）就失效了,**红在 main 上一直没人发现**。
+> 已加 `scripts/server-surface.mjs`（读 server.mjs + lib/*.mjs 全体）并改造 3 个 smoke——断言"后端表面",不断言文件。
+> 以后再拆不会重蹈。
 >
 > **②k 实测校正（供下一刀复用）**：
 > - 待搬的 31 个函数在源里是**一整块连续区间**（3522 行版的 L1129–1801），不是散落——`git` 视角即一次干净切除，
@@ -123,7 +129,16 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) { �
    readRunDetail/overview/commandJson/runCommand/modelRouteSummary），只导出 `startChatJob` 驱动的 5 名。
    顺带删 5 个全仓零引用的死常量（CHAT_INTRO/GREETING/HELP/ABOUT_CHAT/EVIDENCE）。
    验证：lint 0 error·prettier 无改动·typecheck+build 绿·12 个真 smoke 绿（含 workspace-switcher 证 live getter 跟着切库）。
-6. ⬜ **Layer 3 `chat-routes.mjs`**：Tier 2 薄端点（依赖前面全部到位）。**下一刀。**
+6. ✅ **Layer 3 `chat-routes.mjs`**（②l）：Tier 2 端点层，server.mjs 2850→**2188**。**拆分收官。**
+   搬 16 函数 + `pendingJobs` + `CONTINUABLE_STUDIO_PHASES`；**导出面恰好 5 个**（handleApi 分发的 5 个端点）；注入 19 项
+   （含 `chatAnswer` 整包传入，工厂内解构以保调用点逐字节不变）。
+   **调用图纠正了本底稿的三处判断**（勿照旧文执行）：
+   - `runtimeCommand` / `runtimeContinuationCommand` / `phaseForMode` **留下**——被 `startRuntimeJob` 调，属 execute 层
+     （§2「误挂」规则成立）。
+   - `acknowledgementFor` / `progressEventForMode` **搬走**——§6 说搬走要反向 import 回 4 处，那是**上一刀**的结论；
+     对本刀它们的调用者全在候选集内。
+   - `tailSessionEvents` **搬走**——§2 的 leave-list 也是上一刀语境；它只被 `startChatJob` 调。
+   验证：lint 0 error·typecheck+build 绿·**14 真 smoke 绿**（含 workspace-switcher / session-main-path-contract）。
 
 execute 层（`startRuntimeJob` 家族）本轮**不动**——它是另一条轴，缠着 runtime-progress，值单独规划。
 
