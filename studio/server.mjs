@@ -239,6 +239,11 @@ async function handleApi(request, response, url) {
     sendJson(response, 200, sessionJobsPayload(sessionId));
     return;
   }
+  if (request.method === "POST" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/pause$/)) {
+    const sessionId = decodeURIComponent(url.pathname.split("/").at(-2) || "");
+    sendJson(response, 200, await pauseSessionRun(sessionId));
+    return;
+  }
   if (request.method === "POST" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/stop$/)) {
     const sessionId = decodeURIComponent(url.pathname.split("/").at(-2) || "");
     sendJson(response, 200, stopSessionJobs(sessionId));
@@ -1958,6 +1963,53 @@ function sessionJobsPayload(sessionId) {
     running: jobs.filter((job) => job.status === "running").length,
     jobs,
   };
+}
+
+// Pause ≠ Stop. Stop kills the process tree; the work in flight is gone. Pause drops a signal file in
+// the run directory and lets the runtime notice it at its next TURN BOUNDARY — after the current tool
+// batch finishes, before the next model call. Nothing is half-executed, the process exits on its own,
+// and `resume` picks the run back up. So: no taskkill here, on purpose.
+async function currentRunId() {
+  try {
+    const raw = await fs.readFile(path.join(workspace, ".asteria", "current_session.json"), "utf8");
+    return String(JSON.parse(raw).session_id || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+async function pauseSessionRun(sessionId) {
+  if (!isSafeId(sessionId)) return { ok: false, error: "invalid session id" };
+  const running = [...liveJobs.values()].filter(
+    (job) => job.session_id === sessionId && job.status === "running",
+  );
+  if (!running.length) return { ok: false, error: "no running job" };
+  // A run_id only exists once the runtime has created the run. Before that there is no run directory
+  // to signal — say so instead of silently doing nothing and letting the UI claim it paused.
+  // A job only learns its run_id when it FINISHES (the id is scraped from its output), so while the
+  // run is actually in flight — the only time pause matters — job.run_id is still null. Fall back to
+  // the workspace's current run, which is exactly what `asteria pause` targets and exactly the run
+  // this job is driving.
+  const runIds = new Set(running.map((job) => job.run_id).filter(Boolean));
+  if (!runIds.size) {
+    const current = await currentRunId();
+    if (current) runIds.add(current);
+  }
+  if (!runIds.size) {
+    return { ok: false, error: "run has not started yet — nothing to pause (use Stop to cancel)" };
+  }
+  const paused = [];
+  for (const runId of runIds) {
+    if (!isSafeId(runId)) continue;
+    const runDir = path.join(workspace, ".asteria", "runs", String(runId));
+    try {
+      await fs.mkdir(runDir, { recursive: true });
+      await fs.writeFile(path.join(runDir, "pause.request"), "paused from Studio", "utf8");
+      paused.push(runId);
+    } catch {}
+  }
+  if (!paused.length) return { ok: false, error: "could not write the pause signal" };
+  return { ok: true, paused, at: "next turn boundary" };
 }
 
 function stopSessionJobs(sessionId) {

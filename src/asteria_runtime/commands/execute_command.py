@@ -28,6 +28,7 @@ from asteria_runtime.core.model_driven_turn import (
     TurnEvent,
     run_model_driven_turn,
 )
+from asteria_runtime.core.run_control import clear_pause, pause_reason, pause_requested
 from asteria_runtime.core.agent_run_graph import AgentRunGraphBuilder
 from asteria_runtime.core.agent_harness import load_harness_observations, load_raw_tool_observations
 from asteria_runtime.core.agent_loop_run_summary import (
@@ -391,6 +392,16 @@ class ExecuteCommand:
             execute_task=execute_worker,
             allocate_worker_slots=self.worker_recorder.allocate_execution_slots,
         )
+        # 用户暂停的任务回到 ready —— 但必须等这一轮任务选择**跑完之后**再放回去。
+        # 在暂停处理里当场重置会让同一轮的 coordinator 立刻又把它挑起来(此时信号已被消费),
+        # 于是暂停自己把自己作废掉:任务照跑不误。(真机跑出来的 bug,不是假想的。)
+        # 也不能标 blocked——blocked 会喂进 replan 环,让引擎去重新分解一个用户只是想暂停的目标。
+        for item in executed:
+            if item.status != "paused":
+                continue
+            if task_board.get_task(item.task_id).get("status") == "in_progress":
+                task_board.update_status(item.task_id, "ready")
+
         AgentRunGraphBuilder(self.validator).write(run_dir, run_id=run_id)
 
         final_state = self.run_state_finalizer.finalize(
@@ -1191,12 +1202,31 @@ class ExecuteCommand:
             on_event=lambda event: self._record_model_driven_event(context, task, event),
             hook=_hook,
             approval_gate=_approval_gate,
+            # 用户暂停信号由外部进程(Studio / `asteria pause`)写进 run 目录——运行中的 loop 只能靠
+            # 文件看见它。回调注入,循环本身不碰文件系统。
+            pause_requested=(
+                (lambda: pause_requested(context.root / ".asteria" / "runs" / str(context.run_id)))
+                if context.run_id
+                else None
+            ),
         )
 
         # 人审边界命中（ADR-0016：人审=显式边界）：脊梁在跑到需人批的工具批前整批停手，本轮无残留
         # 写入。复用 FSM 同一套 block/证据/进度落法（单一真源），把任务标 blocked 并留下 pending
         # DecisionPoint —— run 层据 pending_decisions 把整个 run 报成 paused。人批后 resume 重跑本任务，
         # gate 认到 approval 便放行整批。
+        # 用户暂停（无待批决策）：脊梁在回合边界整批停手。任务**不标 blocked**——它没有失败,只是被
+        # 用户按了暂停；resume 会重跑这个任务,已完成的工件都还在。也不走完成契约判定,否则会把"做了
+        # 一半"当成"没做完契约"判 blocked,把一次正常的暂停污染成一次失败。
+        if result.status == "paused" and result.pending_decision is None:
+            return self._user_paused_model_driven_task(
+                task=task,
+                task_board=task_board,
+                context=context,
+                rounds_completed=result.iterations,
+                max_rounds=max_iterations,
+            )
+
         if result.status == "paused" and result.pending_decision is not None:
             return self._pause_model_driven_task(
                 task=task,
@@ -1766,6 +1796,64 @@ class ExecuteCommand:
             tool_calls=0,
             verification_calls=0,
             evidence_path=result.evidence_path,
+        )
+
+    def _user_paused_model_driven_task(
+        self,
+        *,
+        task: dict,
+        task_board: TaskBoard,
+        context: RuntimeContext,
+        rounds_completed: int,
+        max_rounds: int,
+    ) -> TaskExecutionSummary:
+        """用户按下暂停：在回合边界干净停手，run 报 paused，可 resume。
+
+        与人审暂停(_pause_model_driven_task)共用同一条通路，区别只在没有待批决策——所以不生成
+        DecisionPoint、不动 TaskBoard(任务没失败，resume 会重跑它)。"""
+        task_id = task["task_id"]
+        run_dir = context.root / ".asteria" / "runs" / str(context.run_id)
+        reason = pause_reason(run_dir)
+        # 消费信号：留着它，下一次 resume 会在第一个回合边界立刻又暂停——一个永远起不来的 run。
+        clear_pause(run_dir)
+        summary = f"已在回合边界暂停（{reason}）。已完成的工作已保留，`asteria resume` 从这里继续。"
+        self._record_agent_loop_run_summary(
+            context=context,
+            task_id=task_id,
+            status="paused",
+            exit_reason="paused",
+            rounds_completed=rounds_completed,
+            max_rounds=max_rounds,
+            summary=summary,
+            recommended_command="resume",
+            latest_decision=None,
+            latest_execution=None,
+            latest_observation=None,
+            evidence_refs=[],
+        )
+        self._record_progress(
+            context,
+            task,
+            channel="progress",
+            event_type="message",
+            phase="execute",
+            # 用户进度事件用 waiting_user 而不是新造一个 "paused":一个暂停的 run **就是在等用户**,
+            # 这正是现成且准确的词。(loop summary 那层确实需要 paused —— 它要把"用户按了暂停"和
+            # "在等一个决策"区分开。)
+            status="waiting_user",
+            title="已暂停",
+            summary=summary,
+            evidence_refs=[],
+            transcript_kind="progress",
+            ui_intent="needs_input",
+            data={"task_id": task_id, "pause_reason": reason},
+        )
+        return TaskExecutionSummary(
+            task_id=task_id,
+            status="paused",
+            summary=summary,
+            tool_calls=0,
+            verification_calls=0,
         )
 
     def _blocked_task_summary(self, result: BlockingResult) -> TaskExecutionSummary:

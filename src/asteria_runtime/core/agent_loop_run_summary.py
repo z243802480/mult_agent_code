@@ -24,8 +24,9 @@ EXIT_REASONS = {
     "replan_budget_exhausted",
     "loop_no_progress",
     "no_action",
+    "paused",
 }
-SUMMARY_STATUSES = {"completed", "blocked", "waiting_user", "stopped"}
+SUMMARY_STATUSES = {"completed", "blocked", "waiting_user", "stopped", "paused"}
 RECOVERY_ACTIONS = {"repair", "replan", "ask", "stop"}
 
 

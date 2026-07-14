@@ -20,13 +20,30 @@
     "evidence_refs"
   ],
   "properties": {
-    "schema_version": { "type": "string" },
-    "run_id": { "type": ["string", "null"] },
-    "task_id": { "type": "string" },
-    "created_at": { "type": "string" },
+    "schema_version": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
     "status": {
       "type": "string",
-      "enum": ["completed", "blocked", "waiting_user", "stopped"]
+      "enum": [
+        "completed",
+        "blocked",
+        "waiting_user",
+        "stopped",
+        "paused"
+      ]
     },
     "exit_reason": {
       "type": "string",
@@ -43,71 +60,198 @@
         "repair_budget_exhausted",
         "replan_budget_exhausted",
         "loop_no_progress",
-        "no_action"
+        "no_action",
+        "paused"
       ]
     },
-    "rounds_completed": { "type": "integer" },
-    "max_rounds": { "type": "integer" },
-    "summary": { "type": "string" },
-    "recommended_command": { "type": ["string", "null"] },
-    "latest_decision_id": { "type": ["string", "null"] },
-    "latest_execution_id": { "type": ["string", "null"] },
-    "latest_observation_id": { "type": ["string", "null"] },
-    "latest_action": { "type": ["string", "null"] },
+    "rounds_completed": {
+      "type": "integer"
+    },
+    "max_rounds": {
+      "type": "integer"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "recommended_command": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "latest_decision_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "latest_execution_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "latest_observation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "latest_action": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "budget": {
       "type": "object",
       "properties": {
-        "status": { "type": ["string", "null"] },
-        "highest_label": { "type": ["string", "null"] },
-        "highest_ratio": { "type": ["number", "null"] },
-        "model_calls": { "type": "integer" },
-        "tool_calls": { "type": "integer" },
-        "tool_budget_units": { "type": "integer" },
-        "repair_attempts": { "type": "integer" },
-        "warnings": { "type": "array", "items": { "type": "string" } }
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "highest_label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "highest_ratio": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "model_calls": {
+          "type": "integer"
+        },
+        "tool_calls": {
+          "type": "integer"
+        },
+        "tool_budget_units": {
+          "type": "integer"
+        },
+        "repair_attempts": {
+          "type": "integer"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "context_pressure": {
       "type": "object",
       "properties": {
-        "status": { "type": "string" },
-        "context_window_ratio": { "type": "number" },
-        "context_window_tokens": { "type": "integer" },
-        "latest_context_estimated_tokens": { "type": "integer" },
-        "max_context_estimated_tokens": { "type": "integer" },
-        "context_compactions": { "type": "integer" },
-        "duplicate_content_hash_count": { "type": "integer" }
+        "status": {
+          "type": "string"
+        },
+        "context_window_ratio": {
+          "type": "number"
+        },
+        "context_window_tokens": {
+          "type": "integer"
+        },
+        "latest_context_estimated_tokens": {
+          "type": "integer"
+        },
+        "max_context_estimated_tokens": {
+          "type": "integer"
+        },
+        "context_compactions": {
+          "type": "integer"
+        },
+        "duplicate_content_hash_count": {
+          "type": "integer"
+        }
       }
     },
     "recovery_chain": {
       "type": "object",
       "properties": {
-        "required": { "type": "boolean" },
-        "satisfied": { "type": "boolean" },
-        "latest_action": { "type": ["string", "null"] },
-        "observation_status": { "type": ["string", "null"] },
-        "observation_next_recommended_action": { "type": ["string", "null"] },
-        "allowed_actions": { "type": "array", "items": { "type": "string" } },
-        "reason": { "type": "string" }
+        "required": {
+          "type": "boolean"
+        },
+        "satisfied": {
+          "type": "boolean"
+        },
+        "latest_action": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observation_status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observation_next_recommended_action": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "allowed_actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reason": {
+          "type": "string"
+        }
       }
     },
     "loop_quality": {
       "type": "object",
       "description": "loop_quality_guard signal (observe_then_warn): auditable agent-loop SLO, not a hard stop.",
       "properties": {
-        "enabled": { "type": "boolean" },
-        "mode": { "type": "string" },
-        "observations_evaluated": { "type": "integer" },
-        "repeated_identical_observations": { "type": "integer" },
-        "repeated_identical_window": { "type": "integer" },
-        "repeated_failed_verifications": { "type": "integer" },
-        "repeated_failed_window": { "type": "integer" },
-        "warn": { "type": "boolean" },
-        "severity": { "type": "string" },
-        "hard_block": { "type": "boolean" },
-        "reason": { "type": "string" }
+        "enabled": {
+          "type": "boolean"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "observations_evaluated": {
+          "type": "integer"
+        },
+        "repeated_identical_observations": {
+          "type": "integer"
+        },
+        "repeated_identical_window": {
+          "type": "integer"
+        },
+        "repeated_failed_verifications": {
+          "type": "integer"
+        },
+        "repeated_failed_window": {
+          "type": "integer"
+        },
+        "warn": {
+          "type": "boolean"
+        },
+        "severity": {
+          "type": "string"
+        },
+        "hard_block": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
       }
     },
-    "evidence_refs": { "type": "array", "items": { "type": "string" } }
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
   }
 }

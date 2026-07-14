@@ -365,6 +365,9 @@ class RunCommand:
                 ui_intent="work_progress",
             )
             self._execute_until_no_ready(run_id, steps, iteration=index + 1, progress=_progress)
+            if getattr(self, "_user_paused", False):
+                # 用户暂停:停止再派发。任务已回到 ready,`asteria resume` 从这里接着跑。
+                break
             self._emit_execution_progress_events(_progress, run_id, phase="execute")
             if self._runtime_managed_validation_probe_has_evidence(run_id):
                 steps.append(
@@ -1273,6 +1276,35 @@ class RunCommand:
                 parallel_writes=self.parallel_writes,
             ).run()
             progressed = progressed or execute.completed > 0 or execute.blocked > 0
+            # 用户暂停:整个 run 立刻停手,**在任何自主环之前**。暂停不是失败——若让它往下走,任务
+            # 会被当成"没做完"喂进 soft-fuse / goal-replan 环:引擎会去重新规划一个用户只是想暂停一下
+            # 的目标,甚至升级出一个人审决策。已完成的工件都还在,`asteria resume` 从这里继续。
+            paused_tasks = [item for item in execute.executed_tasks if item.status == "paused"]
+            if paused_tasks:
+                steps.append(
+                    RunStepSummary("execute", "paused", paused_tasks[0].summary),
+                )
+                if progress:
+                    progress.record(
+                        run_id=run_id,
+                        channel="progress",
+                        phase="execute",
+                        status="waiting_user",
+                        title="已暂停",
+                        summary=paused_tasks[0].summary,
+                        display_level="main",
+                        transcript_kind="progress",
+                        ui_intent="needs_input",
+                        data={"recommended_command": "resume"},
+                    )
+                # 把 run 本身标成 paused。不标的话它对外仍报 "running" —— 一个已经停下的 run 说自己
+                # 在跑,正是这轮工作一直在消灭的那种谎。
+                self._mark_run_paused(run_id, paused_tasks[0].summary)
+                # 冒泡到外层迭代循环。只在这里 return 是不够的:外层循环忽略本函数的返回值,下一轮
+                # 会再调一次,而任务此时已回到 ready —— 于是暂停被自己作废,任务照跑不误。
+                # (真机跑出来的:ExecuteCommand.run 被调了两次,第一次 paused、第二次 done。)
+                self._user_paused = True
+                return progressed
             steps.append(
                 RunStepSummary(
                     "execute",
@@ -2086,6 +2118,15 @@ class RunCommand:
             },
         ).run()
         return result.decisions[0]
+
+    def _mark_run_paused(self, run_id: str, summary: str) -> None:
+        """用户暂停:run 记录标 paused。current_phase 保持 EXECUTE —— 它没有在等一个决策,
+        它就停在执行中间,等着被 resume。"""
+        run_store = RunStore(self.root / ".asteria", self.validator)
+        run = run_store.load_run(run_id)
+        run["status"] = "paused"
+        run["summary"] = summary
+        run_store.update_run(run)
 
     def _pause_run_for_budget(self, run_id: str, summary: str) -> None:
         run_store = RunStore(self.root / ".asteria", self.validator)

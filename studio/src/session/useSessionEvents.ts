@@ -172,6 +172,23 @@ export function useSessionEvents(
     mergeEvents(eventData.events ?? []);
   }
 
+  async function pauseRun() {
+    if (!activeSession) return;
+    try {
+      const result = await api.pauseSession(activeSession.session_id);
+      if (result?.ok) {
+        // Honest wording: this is a REQUEST. The run keeps going until it reaches a turn boundary —
+        // we never cut a tool batch in half. Claiming "已暂停" the instant the button is clicked would
+        // be a lie for however long the current step takes.
+        toast.success("已请求暂停——它会在当前这一步做完后停下。");
+      } else {
+        toast.error(String(result?.error || "无法暂停——请重试。"));
+      }
+    } catch {
+      toast.error("无法暂停——请重试。");
+    }
+  }
+
   async function runRuntimeAction(nextAction: string): Promise<AnyRecord> {
     if (!activeSession) return { ok: false };
     let result: AnyRecord;
@@ -261,6 +278,7 @@ export function useSessionEvents(
     sendSideAsk,
     permitJob,
     stopRun,
+    pauseRun,
     runRuntimeAction,
     resolveDecision,
     answerDecision,

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { FileText, Loader2, MessageCircle, Send, Square, X } from "lucide-react";
+import { FileText, Loader2, MessageCircle, Pause, Send, Square, X } from "lucide-react";
 import {
   PERMISSION_TIERS,
   DEFAULT_PERMISSION_TIER,
@@ -80,6 +80,7 @@ export function Composer({
   isRunning = false,
   runStateKnown = true,
   onStop,
+  onPause,
   files = [],
   sessionId,
 }: {
@@ -99,6 +100,8 @@ export function Composer({
   /** False until this session's transcript has been read once — see the queue-flush effect. */
   runStateKnown?: boolean;
   onStop?: () => Promise<void> | void;
+  /** Cooperative pause: the run stops at its next turn boundary and can be resumed. */
+  onPause?: () => Promise<void> | void;
   files?: WorkspaceFile[];
   /** Scopes the persisted queue so lined-up messages belong to the session they were typed in. */
   sessionId?: string;
@@ -405,15 +408,31 @@ export function Composer({
           )}
         </div>
         {isRunning && onStop && !sideAsk ? (
-          <button
-            className="composerSend composerStop"
-            type="button"
-            onClick={() => void onStop()}
-            title="停止正在运行的任务"
-          >
-            <Square size={14} />
-            <span>停止</span>
-          </button>
+          <>
+            {onPause && (
+              // Pause sits BEFORE Stop and is the quieter of the two: it is the recoverable one.
+              // Stop kills the process — the work in flight is gone. Pause lets the run finish its
+              // current step, exit cleanly, and be resumed.
+              <button
+                className="composerSend composerPause"
+                type="button"
+                onClick={() => void onPause()}
+                title="在当前这一步做完后暂停（可继续）"
+              >
+                <Pause size={14} />
+                <span>暂停</span>
+              </button>
+            )}
+            <button
+              className="composerSend composerStop"
+              type="button"
+              onClick={() => void onStop()}
+              title="停止正在运行的任务（不可恢复）"
+            >
+              <Square size={14} />
+              <span>停止</span>
+            </button>
+          </>
         ) : (
           <button className="composerSend" disabled={sending} type="submit">
             {sending ? <Loader2 size={15} className="spinning" /> : <Send size={15} />}

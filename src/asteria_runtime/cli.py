@@ -842,6 +842,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     accept_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
 
+    pause_parser = subcommands.add_parser(
+        "pause",
+        aliases=["/pause"],
+        help="Ask a running run to stop at its next turn boundary (resume with `asteria resume`)",
+        epilog=SLASH_ALIAS_HELP,
+    )
+    pause_parser.add_argument("--root", default=".", help="Workspace root path")
+    add_session_id_argument(pause_parser, "Session id; defaults to current session")
+
     resume_parser = subcommands.add_parser(
         "resume",
         aliases=["/resume"],
@@ -1998,6 +2007,26 @@ def _run_cli() -> None:
             print(json.dumps(run_result.to_dict(), ensure_ascii=False, indent=2))
         else:
             print(run_result.to_text())
+        return
+
+    if command == "pause":
+        from asteria_runtime.core.run_control import request_pause
+        from asteria_runtime.storage.run_store import RunStore
+        from asteria_runtime.storage.schema_validator import SchemaValidator
+
+        agent_dir = Path(args.root) / ".asteria"
+        run_store = RunStore(
+            agent_dir, SchemaValidator(Path(__file__).resolve().parents[2] / "schemas")
+        )
+        run_id = args.session_id or run_store.current_session_id()
+        if not run_id:
+            print("No run found. Run `asteria run \"goal\"` first.")
+            raise SystemExit(1)
+        request_pause(run_store.run_dir(run_id))
+        # 诚实措辞:这是一个**请求**。run 在下一个回合边界(上一批工具跑完之后)才会真的停手——
+        # 我们绝不半跑一批工具。如果它已经结束了,信号就只是躺在那儿,由 resume 清掉。
+        print(f"Pause requested for {run_id}. It will stop at the next turn boundary.")
+        print("Resume with `asteria resume` — completed work is kept.")
         return
 
     if command == "resume":

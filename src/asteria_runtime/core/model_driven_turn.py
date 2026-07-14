@@ -124,6 +124,7 @@ def run_model_driven_turn(
     on_event: Callable[[TurnEvent], None] | None = None,
     hook: Callable[[str, dict], TurnControl] | None = None,
     approval_gate: Callable[[list[dict]], Any] | None = None,
+    pause_requested: Callable[[], bool] | None = None,
 ) -> ModelDrivenTurnResult:
     """跑一条模型驱动的循环，直到模型收尾或撞上保险丝。
 
@@ -161,6 +162,19 @@ def run_model_driven_turn(
 
     nudged = False
     for iteration in range(1, max_iterations + 1):
+        # 用户暂停边界（与人审边界同一条通路）：只在**回合起点**检查——上一批工具已经跑完、下一次
+        # 模型调用还没发出。所以暂停不会把一批工具劈成两半，workspace 无残留写入，run 可 resume。
+        # 注入一个回调而不是让循环去读文件：暂停信号是 harness 的边界，认知层不该知道文件系统。
+        if pause_requested is not None and pause_requested():
+            emit(TurnEvent(kind="paused", iteration=iteration))
+            return ModelDrivenTurnResult(
+                status="paused",
+                final_message="",
+                iterations=iteration - 1,  # 本回合一步都没跑
+                events=events,
+                observations=all_observations,
+                pending_decision=None,  # 用户暂停 ≠ 待人批决策
+            )
         # turn_start control hook: the methodology glue may inject a reminder (available skills +
         # current todo + "verify before finishing") as the model's next input. Density is the hook's
         # call (tunable by tier); the loop just injects whatever it returns. Boundary, not cognition.

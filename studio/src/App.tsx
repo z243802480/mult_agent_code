@@ -420,6 +420,7 @@ export function App() {
           isRunning={sessionEvents.isRunning}
           runStateKnown={sessionEvents.runStateKnown}
           onStop={sessionEvents.stopRun}
+          onPause={sessionEvents.pauseRun}
           files={bootstrap.files}
         />
       </main>

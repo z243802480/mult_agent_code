@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from asteria_runtime.commands.run_command import RunCommand, RunResult, RunStepSummary
+from asteria_runtime.core.run_control import clear_pause
 from asteria_runtime.core.runtime_evidence import RuntimeEvidenceReader
 from asteria_runtime.core.session_result_service import SessionResultService
 from asteria_runtime.models.base import ModelClient
@@ -80,6 +81,10 @@ class ResumeCommand:
         if not run_id:
             raise RuntimeError("No run found. Run `asteria run` first.")
         run_dir = run_store.run_dir(run_id)
+        # 消费掉可能残留的暂停信号。正常情况下 loop 在停手时已经清掉它；但若进程在抵达回合边界前
+        # 被杀,信号会留在盘上,那样 resume 会在第一个回合边界立刻又暂停——一个永远起不来的 run。
+        # 用户点了 resume,就是明确要继续。
+        clear_pause(run_dir)
         progress = UserProgressLogger(run_dir / "user_progress.jsonl", self.validator)
         pending = self._pending_decisions(run_dir)
         if pending:

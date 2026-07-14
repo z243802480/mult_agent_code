@@ -15,7 +15,11 @@ class TaskStateError(ValueError):
 ALLOWED_TRANSITIONS = {
     "backlog": {"ready", "discarded"},
     "ready": {"in_progress", "blocked", "discarded"},
-    "in_progress": {"testing", "blocked", "discarded"},
+    # in_progress -> ready: a user pause puts a task back on the shelf. It did NOT fail, so routing it
+    # through `blocked` (the only other way back) would write a failure into its history that never
+    # happened — and a blocked task feeds the replan ring, which would re-decompose a goal the user
+    # merely wanted to pause. The FSM predates pause; this is the missing edge, not a loosening.
+    "in_progress": {"testing", "blocked", "discarded", "ready"},
     "testing": {"reviewing", "blocked", "in_progress", "discarded"},
     "reviewing": {"done", "blocked", "in_progress", "discarded"},
     "blocked": {"ready", "discarded"},

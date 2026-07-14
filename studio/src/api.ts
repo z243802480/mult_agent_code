@@ -120,6 +120,11 @@ export const api = {
     requestJson<AnyRecord>(`/api/studio/sessions/${encodeURIComponent(sessionId)}/stop`, {
       method: "POST",
     }),
+  // Pause ≠ Stop: the run finishes its current step, then exits cleanly and can be resumed.
+  pauseSession: (sessionId: string) =>
+    requestJson<AnyRecord>(`/api/studio/sessions/${encodeURIComponent(sessionId)}/pause`, {
+      method: "POST",
+    }),
   // The job registry is the AUTHORITY on whether work is still running (the event log only says
   // what was written, not whether the process is alive). See useRunState.
   sessionJobs: (sessionId: string) =>

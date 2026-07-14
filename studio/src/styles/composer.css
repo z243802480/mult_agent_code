@@ -206,6 +206,20 @@
   border-color: var(--danger-hover, #a93226);
 }
 
+/* Pause is the recoverable action, so it is the QUIET one — a neutral secondary button next to the
+   red Stop. Giving them the same weight would invite the user to reach for the destructive one. */
+.composerPause {
+  background: var(--surface-2);
+  border-color: var(--border-subtle, rgba(128, 128, 128, 0.16));
+  color: var(--text-secondary);
+  margin-right: 6px;
+}
+
+.composerPause:hover:not(:disabled) {
+  background: var(--surface-3, var(--surface-2));
+  color: var(--text-primary);
+}
+
 .composerSend:active:not(:disabled) {
   background: var(--accent-active);
   border-color: var(--accent-active);
