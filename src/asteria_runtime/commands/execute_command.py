@@ -798,6 +798,10 @@ class ExecuteCommand:
         # Guards the child-index counter so concurrent fan-out (ADR-0023) cannot mint a colliding
         # child_task_id. Evidence appends are already serialized by JsonlStore / UserProgressLogger.
         subagent_counter_lock = threading.Lock()
+        # Batch identity (B4): concurrency was never IN the evidence — the smoke had to infer it from
+        # card ordering. A batch stamps every card it fans out, so the UI reads "2 experts in
+        # parallel" off a field instead of guessing. Serial spawns carry no batch (cards unchanged).
+        batch_counter = {"n": 0}
         concurrent_subagents = self._concurrent_subagents_enabled(context.policy)
         max_parallel_workers = self._max_parallel_workers(context.policy)
         isolated_parallel_writes = self._isolated_parallel_writes_enabled(context.policy)
@@ -886,6 +890,7 @@ class ExecuteCommand:
             args: dict,
             *,
             child_context: RuntimeContext,
+            batch: dict | None = None,
         ) -> SubagentOutcome:
             # Run one expert's bounded 立真身 loop and light up the dispatch + result cards on the
             # lead's main thread (ADR-0022 ③). ``child_context`` is the lead's SHARED workspace for
@@ -920,6 +925,7 @@ class ExecuteCommand:
                     "child_task_id": child_task_id,
                     "subagent_phase": "dispatch",
                     "model_driven_turn": True,
+                    **(batch or {}),
                 },
             )
             executor = resolve_worker_executor(
@@ -964,6 +970,14 @@ class ExecuteCommand:
                     "iterations": outcome.iterations,
                     "ok": outcome.ok,
                     "model_driven_turn": True,
+                    # What the expert actually DID (B4). The executor already returned these; they
+                    # went only to the lead model, so the UI could not say which expert touched
+                    # which file, on which tier, through which backend.
+                    "changed_files": list(outcome.data.get("changed_files") or []),
+                    "backend": str(outcome.data.get("backend") or ""),
+                    "model_tier": str(getattr(expert, "model_tier", "") or ""),
+                    "read_only": bool(getattr(expert, "read_only", False)),
+                    **(batch or {}),
                 },
             )
             return outcome
@@ -987,7 +1001,7 @@ class ExecuteCommand:
                 },
             )
 
-        def _spawn_subagent(args: dict) -> _SubagentResult:
+        def _spawn_subagent(args: dict, *, batch: dict | None = None) -> _SubagentResult:
             # Expert-cluster delegation (ADR-0022): the lead model routes a scoped sub-task to a
             # specialist that runs its OWN bounded 立真身 loop on the SHARED workspace and returns ONLY
             # a summary. Serial default; concurrency + candidate isolation is the batch path below.
@@ -996,9 +1010,32 @@ class ExecuteCommand:
                 return prepared
             expert, child_task_id, child_task, child_runtime_context = prepared
             outcome = _run_child(
-                expert, child_task_id, child_task, child_runtime_context, args, child_context=context
+                expert,
+                child_task_id,
+                child_task,
+                child_runtime_context,
+                args,
+                child_context=context,
+                batch=batch,
             )
             return _result_from_outcome(expert, child_task_id, outcome)
+
+        def _new_batch_id() -> str:
+            with subagent_counter_lock:
+                batch_counter["n"] += 1
+                index = batch_counter["n"]
+            return f"{task_id}-batch-{index:02d}"
+
+        def _batch_card(batch_id: str, size: int, index: int, mode: str) -> dict:
+            # Stamped onto every card a batch fans out. ``concurrent`` is the fact the evidence was
+            # missing: before B4 the only way to know was to guess from card ordering.
+            return {
+                "batch_id": batch_id,
+                "batch_size": size,
+                "batch_index": index,
+                "batch_mode": mode,
+                "concurrent": True,
+            }
 
         def _spawn_isolated_writes(
             prepared_list: list[tuple[Any, str, dict, dict]],
@@ -1021,6 +1058,8 @@ class ExecuteCommand:
                 )
 
             outcomes: list[SubagentOutcome | None] = [None] * len(prepared_list)
+            batch_size = len(prepared_list)
+            batch_id = _new_batch_id()
 
             def _run_indexed(index: int) -> SubagentOutcome:
                 expert, child_task_id, child_task, child_rc = prepared_list[index]
@@ -1037,6 +1076,7 @@ class ExecuteCommand:
                     child_rc,
                     spawn_args_list[index],
                     child_context=child_ctx,
+                    batch=_batch_card(batch_id, batch_size, index, "isolated_writes"),
                 )
 
             workers = min(len(prepared_list), max_parallel_workers)
@@ -1098,6 +1138,9 @@ class ExecuteCommand:
                         "ok": merge_ok,
                         "promoted_files": promoted_count,
                         "model_driven_turn": True,
+                        # Binds this merge back to the batch of experts it reconciled (B4).
+                        "batch_id": batch_id,
+                        "batch_size": batch_size,
                     },
                 )
 
@@ -1154,9 +1197,15 @@ class ExecuteCommand:
             if all(getattr(expert, "read_only", False) for expert in experts):
                 results: list[_SubagentResult | None] = [None] * len(spawn_args_list)
                 workers = min(len(spawn_args_list), max_parallel_workers)
+                size = len(spawn_args_list)
+                fanout_id = _new_batch_id()
                 with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="expert") as pool:
                     futures = {
-                        pool.submit(_spawn_subagent, args): index
+                        pool.submit(
+                            _spawn_subagent,
+                            args,
+                            batch=_batch_card(fanout_id, size, index, "readonly_fanout"),
+                        ): index
                         for index, args in enumerate(spawn_args_list)
                     }
                     for future in as_completed(futures):

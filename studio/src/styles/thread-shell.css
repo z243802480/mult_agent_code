@@ -795,6 +795,14 @@
   color: var(--bad);
 }
 
+/* Concurrent expert fan-out (B4): the parallel chip is the one fact the delegation cards could not
+   show before, so it gets the accent — the rest of the chips stay neutral. */
+.capabilityChip.parallel {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .stepExpandedWrap {
   display: grid;
   grid-template-rows: 0fr;

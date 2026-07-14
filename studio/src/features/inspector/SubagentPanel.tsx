@@ -14,6 +14,10 @@ interface ExpertRow {
   status: ExpertStatus;
   statusLine: string;
   iterations?: number;
+  // What the expert actually did / on what footing (B4 — the runtime stamps these on the result card).
+  changedFiles: string[];
+  modelTier: string;
+  concurrent: boolean;
   transcript: StudioEvent[];
 }
 
@@ -28,7 +32,6 @@ function asRecord(value: unknown): Record<string, unknown> {
 export interface MergeReconciliation {
   ok: boolean;
   summary: string;
-  promotedFiles: number;
 }
 
 export function buildReconciliation(events: StudioEvent[]): MergeReconciliation | null {
@@ -38,10 +41,11 @@ export function buildReconciliation(events: StudioEvent[]): MergeReconciliation 
     const data = asRecord(event.data);
     if (String(data.subagent_phase ?? "") !== "merge_gate") continue;
     // Last reconciliation wins (a run can fan out writers more than once).
+    // The card's own summary already names the outcome AND the count ("晋升 2 个文件到工作区" /
+    // "被合并门阻止:<冲突文件>"), so the banner renders it verbatim — no second, re-derived count.
     result = {
       ok: data.ok !== false,
       summary: String(event.summary ?? ""),
-      promotedFiles: typeof data.promoted_files === "number" ? (data.promoted_files as number) : 0,
     };
   }
   return result;
@@ -64,12 +68,16 @@ export function buildExpertRows(events: StudioEvent[]): ExpertRow[] {
         role: String(data.subagent_role ?? "expert"),
         status: "running",
         statusLine: "",
+        changedFiles: [],
+        modelTier: "",
+        concurrent: false,
         transcript: [],
       };
       byChild.set(childId, row);
       order.push(childId);
     }
     row.role = String(data.subagent_role ?? row.role);
+    if (data.concurrent === true) row.concurrent = true;
     const phase = String(data.subagent_phase ?? "");
     if (phase === "dispatch") {
       if (!row.statusLine) row.statusLine = String(event.summary ?? "");
@@ -77,6 +85,8 @@ export function buildExpertRows(events: StudioEvent[]): ExpertRow[] {
       row.statusLine = String(event.summary ?? row.statusLine);
       if (typeof data.iterations === "number") row.iterations = data.iterations;
       row.status = data.ok === false ? "failed" : "done";
+      if (Array.isArray(data.changed_files)) row.changedFiles = data.changed_files.map(String);
+      if (typeof data.model_tier === "string") row.modelTier = data.model_tier;
     }
   }
 
@@ -154,6 +164,8 @@ export function SubagentPanel({ events }: { events: StudioEvent[] }) {
                     <span className="subagentStatusText" title={row.statusLine}>
                       {row.statusLine || "…"}
                     </span>
+                    {row.concurrent && <span className="subagentIters isParallel">并行</span>}
+                    {row.modelTier && <span className="subagentIters">{row.modelTier} 档</span>}
                     {typeof row.iterations === "number" && (
                       <span className="subagentIters">{row.iterations} 步</span>
                     )}
@@ -161,7 +173,16 @@ export function SubagentPanel({ events }: { events: StudioEvent[] }) {
                   </button>
                   {open && (
                     <div className="subagentDrill">
-                      {row.transcript.length === 0 ? (
+                      {row.changedFiles.length > 0 && (
+                        <div className="subagentFiles">
+                          {row.changedFiles.map((file) => (
+                            <code key={file} className="subagentFile">
+                              {file}
+                            </code>
+                          ))}
+                        </div>
+                      )}
+                      {row.transcript.length === 0 && row.changedFiles.length === 0 ? (
                         <div className="subagentDrillEmpty">该子 agent 暂无可展开的过程记录。</div>
                       ) : (
                         row.transcript.map((event, index) => (

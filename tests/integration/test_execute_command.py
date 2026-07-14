@@ -2720,6 +2720,14 @@ def test_execute_command_concurrent_readonly_subagent_fanout(tmp_path: Path) -> 
     # sequence) — no collisions.
     assert len({(e.get("data") or {}).get("child_task_id") for e in result_cards}) == 2
     assert len({e.get("event_id") for e in events}) == len(events)
+    # B4: the read-only fan-out stamps its own batch identity too, so the UI can say "2 experts in
+    # parallel" without inferring it from card order.
+    assert all((e.get("data") or {}).get("concurrent") is True for e in result_cards)
+    assert all(
+        (e.get("data") or {}).get("batch_mode") == "readonly_fanout" for e in result_cards
+    )
+    assert len({(e.get("data") or {}).get("batch_id") for e in result_cards}) == 1
+    assert all((e.get("data") or {}).get("read_only") is True for e in result_cards)
 
 
 class FakeConcurrentWritersClient:
@@ -2987,6 +2995,68 @@ def test_execute_command_isolated_writes_flag_off_stays_serial(tmp_path: Path) -
         for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert not any((e.get("data") or {}).get("subagent_phase") == "merge_gate" for e in events)
+
+
+def _subagent_cards(tmp_path: Path, run_id: str, phase: str) -> list[dict]:
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    events = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    return [e for e in events if (e.get("data") or {}).get("subagent_phase") == phase]
+
+
+def test_concurrent_batch_stamps_batch_identity_on_cards(tmp_path: Path) -> None:
+    """B4: concurrency is IN the evidence, not inferred. Before this, the only way to know two experts
+    ran in parallel was to guess from card ordering (concurrent_experts_smoke inferred it from
+    [dispatch, dispatch, ...]). Every card a batch fans out now carries batch_id/batch_size/concurrent,
+    so the UI reads the fact off a field. The merge-gate card binds back to the batch it reconciled."""
+    InitCommand(tmp_path).run()
+    _enable_isolated_writes(tmp_path, isolated=True)
+    plan = PlanCommand(tmp_path, "create alpha and beta modules", model_client=FakePlanClient()).run()
+
+    ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeConcurrentWritersClient()).run()
+
+    dispatch = _subagent_cards(tmp_path, plan.run_id, "dispatch")
+    results = _subagent_cards(tmp_path, plan.run_id, "result")
+    assert len(dispatch) == 2 and len(results) == 2
+    for card in dispatch + results:
+        data = card["data"]
+        assert data["concurrent"] is True
+        assert data["batch_size"] == 2
+        assert data["batch_mode"] == "isolated_writes"
+    # One batch, one id — both experts belong to the SAME fan-out, and each has its own slot.
+    batch_ids = {c["data"]["batch_id"] for c in dispatch + results}
+    assert len(batch_ids) == 1
+    assert {c["data"]["batch_index"] for c in dispatch} == {0, 1}
+    # The merge gate binds back to the batch it reconciled.
+    merge = _subagent_cards(tmp_path, plan.run_id, "merge_gate")
+    assert merge and merge[0]["data"]["batch_id"] == batch_ids.pop()
+    # Result cards now carry what the expert actually DID (was returned to the lead model only).
+    changed = sorted(f for c in results for f in c["data"]["changed_files"])
+    assert changed == ["src/alpha.py", "src/beta.py"]
+    assert all(c["data"]["read_only"] is False for c in results)
+    assert all(c["data"]["backend"] for c in results)
+
+
+def test_serial_spawn_carries_no_batch_identity(tmp_path: Path) -> None:
+    """B4 reversibility: a SERIAL spawn is not a batch, so its cards stay byte-identical — no batch_id,
+    and crucially no ``concurrent`` flag that would let the UI claim parallelism that never happened."""
+    InitCommand(tmp_path).run()
+    _enable_isolated_writes(tmp_path, isolated=False)
+    plan = PlanCommand(tmp_path, "create alpha and beta modules", model_client=FakePlanClient()).run()
+
+    ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeConcurrentWritersClient(use_barrier=False)
+    ).run()
+
+    cards = _subagent_cards(tmp_path, plan.run_id, "dispatch") + _subagent_cards(
+        tmp_path, plan.run_id, "result"
+    )
+    assert cards
+    for card in cards:
+        assert "batch_id" not in card["data"]
+        assert "concurrent" not in card["data"]
 
 
 @pytest.mark.spine_default

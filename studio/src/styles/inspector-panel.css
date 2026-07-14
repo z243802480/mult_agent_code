@@ -565,6 +565,24 @@
   font-size: 11px;
   color: var(--text-muted);
 }
+.subagentIters.isParallel {
+  color: var(--accent);
+}
+/* Files the expert actually changed (B4) — the runtime returned them all along; they used to go only
+   to the lead model, so the panel could not say who touched what. */
+.subagentFiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 0 6px;
+}
+.subagentFile {
+  background: var(--surface-3);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  font-size: 10px;
+  padding: 1px 7px;
+}
 .subagentChevron {
   flex: 0 0 auto;
   color: var(--text-muted);

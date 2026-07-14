@@ -29,6 +29,31 @@ function formatEventTime(value: unknown): string {
   return date.toLocaleTimeString();
 }
 
+// What an expert delegation actually did, read off the runtime's own cards (B4). `concurrent` is a
+// FACT the runtime stamps on every card of a fan-out batch — never inferred from card ordering, so a
+// serial delegation (no batch) simply shows no parallel chip.
+function subagentFacts(events: StudioEvent[]): {
+  concurrent: boolean;
+  batchSize: number;
+  changedFiles: string[];
+  tier: string;
+} {
+  let concurrent = false;
+  let batchSize = 0;
+  let tier = "";
+  const changedFiles = new Set<string>();
+  for (const event of events) {
+    const data = (event.data ?? {}) as Record<string, unknown>;
+    if (data.concurrent === true) concurrent = true;
+    if (typeof data.batch_size === "number") batchSize = data.batch_size;
+    if (typeof data.model_tier === "string" && data.model_tier) tier = data.model_tier;
+    for (const file of Array.isArray(data.changed_files) ? data.changed_files : []) {
+      changedFiles.add(String(file));
+    }
+  }
+  return { concurrent, batchSize, changedFiles: [...changedFiles], tier };
+}
+
 function stepIcon(kind: NarrativeStepType["kind"]) {
   if (kind === "goal") return <CircleDot size={14} />;
   if (kind === "thinking") return <Clock3 size={14} />;
@@ -60,6 +85,7 @@ export function NarrativeStep({
   const primary = step.events[0];
   const time = primary ? formatEventTime(primary.created_at) : "";
   const cap = capabilityInfo(primary);
+  const sub = subagentFacts(step.events);
 
   // Goal step stays as a compact user-message bubble.
   if (step.kind === "goal") {
@@ -175,6 +201,19 @@ export function NarrativeStep({
             )}
             {!cap.denied && cap.artifacts > 0 && (
               <span className="capabilityChip">{cap.artifacts} 个文件</span>
+            )}
+          </span>
+        )}
+        {step.kind === "subagent" && (
+          <span className="stepCapabilityChips">
+            {sub.concurrent && (
+              <span className="capabilityChip parallel">
+                {sub.batchSize > 0 ? `并行 · ${sub.batchSize} 位专家` : "并行"}
+              </span>
+            )}
+            {sub.tier && <span className="capabilityChip">{sub.tier} 档</span>}
+            {sub.changedFiles.length > 0 && (
+              <span className="capabilityChip">{sub.changedFiles.length} 个文件</span>
             )}
           </span>
         )}

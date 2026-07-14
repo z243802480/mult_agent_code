@@ -192,15 +192,23 @@ def _analyze(run_dir: Path, mode: str) -> dict[str, Any]:
     result = [e for e in subagent_cards if (e.get("data") or {}).get("subagent_phase") == "result"]
     child_ids = sorted({(e.get("data") or {}).get("child_task_id") for e in result if (e.get("data") or {}).get("child_task_id")})
     roles = sorted({(e.get("data") or {}).get("subagent_role") for e in result})
-    # 并发信号:两 dispatch 卡都在两 result 卡之前(ThreadPool 批) vs 交错(串行)。
-    order = [
-        ((e.get("data") or {}).get("subagent_phase"))
+    # 并发信号(B4):直接读运行时盖的批标记 —— 不再靠卡片顺序猜。
+    # 旧判据是启发式(两 dispatch 卡是否都排在两 result 卡之前),真栈下会被调度抖动误判;
+    # 现在 dispatch/result 卡自带 batch_id + concurrent(execute_command `_batch_card`)。
+    order = [((e.get("data") or {}).get("subagent_phase")) for e in subagent_cards]
+    batch_ids = {
+        (e.get("data") or {}).get("batch_id")
         for e in subagent_cards
-    ]
-    concurrent_batch = False
-    if len(dispatch) >= 2 and len(result) >= 2:
-        first_two = order[:2]
-        concurrent_batch = first_two == ["dispatch", "dispatch"]
+        if (e.get("data") or {}).get("batch_id")
+    }
+    concurrent_batch = any((e.get("data") or {}).get("concurrent") is True for e in subagent_cards)
+    batch_modes = sorted(
+        {
+            (e.get("data") or {}).get("batch_mode")
+            for e in subagent_cards
+            if (e.get("data") or {}).get("batch_mode")
+        }
+    )
     # merge_gate 证据(disjoint/conflict 模式)。ok=False 即合并门挡下(disjoint 违规或跨任务写冲突)。
     merge_gate = []
     merge_path = run_dir / "merge_gate_dry_runs.jsonl"
@@ -219,6 +227,12 @@ def _analyze(run_dir: Path, mode: str) -> dict[str, Any]:
         "child_ids": child_ids,
         "roles": roles,
         "concurrent_batch": concurrent_batch,
+        "batch_ids": sorted(batch_ids),
+        "batch_modes": batch_modes,
+        "changed_files_by_expert": {
+            (e.get("data") or {}).get("child_task_id"): (e.get("data") or {}).get("changed_files")
+            for e in result
+        },
         "merge_gate_runs": len(merge_gate),
         "merge_gate_blocked": merge_gate_blocked,
         "merge_gate_ok": merge_gate_ok,
