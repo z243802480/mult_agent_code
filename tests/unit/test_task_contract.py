@@ -213,3 +213,47 @@ def test_looks_like_file_path_is_structural() -> None:
     assert looks_like_file_path("src/") is False  # a directory scope is not a deliverable
     assert looks_like_file_path("implementation artifact") is False  # prose
     assert looks_like_file_path("") is False
+
+
+def test_extensionless_files_are_files_not_prose() -> None:
+    """Regression: the first cut of the predicate required an extension, which silently demoted
+    Makefile / Dockerfile / LICENSE to "prose" — the completion gate stopped enforcing them, and
+    write_scope (which falls back to this same list) collapsed to EMPTY, so a task whose only
+    deliverable is a Makefile could not write anything at all. The original tests only probed
+    src/notes.py and index.html, so they sailed straight past it."""
+    for name in ("Makefile", "Dockerfile", "LICENSE"):
+        assert looks_like_file_path(name) is True, name
+
+    task = {
+        "task_id": "task-0001",
+        "task_kind": "implementation",
+        "expected_changed_files": ["Makefile"],
+    }
+    assert write_scope(task) == ["Makefile"], "an extension-less deliverable must stay writable"
+    missed = check_completion_contract(
+        task, changed_files=["src/unrelated.py"], verification_results=[_PassedVerification()]
+    )
+    assert not missed.ok, "a named Makefile that was never touched must still fail the task"
+    hit = check_completion_contract(
+        task, changed_files=["Makefile"], verification_results=[_PassedVerification()]
+    )
+    assert hit.ok
+
+
+def test_chinese_prose_is_still_prose() -> None:
+    """CJK prose carries no whitespace to give itself away, so "no spaces" alone cannot separate it
+    from a bare filename. A bare token is a file only if it is ASCII (the Makefile convention); a real
+    Chinese PATH still has a separator or an extension and is recognized."""
+    assert looks_like_file_path("更新后的文档") is False
+    assert looks_like_file_path("docs/zh/研发总计划.md") is True
+    assert looks_like_file_path("研发总计划.md") is True
+
+    task = {
+        "task_id": "task-0001",
+        "task_kind": "implementation",
+        "expected_changed_files": ["更新后的文档"],
+    }
+    check = check_completion_contract(
+        task, changed_files=["src/notes.py"], verification_results=[_PassedVerification()]
+    )
+    assert check.ok, "a Chinese prose placeholder must not be demanded as a file"

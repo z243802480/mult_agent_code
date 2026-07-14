@@ -2,8 +2,8 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S77",
-  "active_phase": "Post-S76 商业化就绪收敛",
+  "active_slice": "B10",
+  "active_phase": "大重塑 Part B（前端拉齐 + 诚实化收敛）",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
     {
@@ -12,75 +12,107 @@
       "phase": "0",
       "depends_on": [],
       "user_demo": "AGENTS + 研发总计划 + triage + vibe_slices 就位",
-      "green_checks": ["pytest tests/unit/test_documentation_contracts.py -q"]
+      "green_checks": [
+        "pytest tests/unit/test_documentation_contracts.py -q"
+      ]
     },
     {
       "id": "S1",
       "name": "Plan 可见",
       "phase": "1",
-      "depends_on": ["S0"],
+      "depends_on": [
+        "S0"
+      ],
       "user_demo": "goal 后 status 显示中文 plan 摘要",
-      "green_checks": ["status --json 含 transcript_kind=plan"],
+      "green_checks": [
+        "status --json 含 transcript_kind=plan"
+      ],
       "reference_brief": "benchmarks/reference_briefs/S1-plan.md"
     },
     {
       "id": "S2",
       "name": "Tool 可见",
       "phase": "1",
-      "depends_on": ["S1"],
+      "depends_on": [
+        "S1"
+      ],
       "user_demo": "status/Thread 显示工具过程块",
-      "green_checks": ["user_progress.jsonl 含 tool_use"],
+      "green_checks": [
+        "user_progress.jsonl 含 tool_use"
+      ],
       "reference_brief": "benchmarks/reference_briefs/S2-tool.md"
     },
     {
       "id": "S3",
       "name": "Verify 可见",
       "phase": "1",
-      "depends_on": ["S2"],
+      "depends_on": [
+        "S2"
+      ],
       "user_demo": "验证结论用户可读",
-      "green_checks": ["user_progress.jsonl 含 verification"],
+      "green_checks": [
+        "user_progress.jsonl 含 verification"
+      ],
       "reference_brief": "benchmarks/reference_briefs/S3-verify.md"
     },
     {
       "id": "S4",
       "name": "Final 可见",
       "phase": "1",
-      "depends_on": ["S3"],
+      "depends_on": [
+        "S3"
+      ],
       "user_demo": "Result / Next step 固定结构",
-      "green_checks": ["required_user_progress_kinds 齐"],
+      "green_checks": [
+        "required_user_progress_kinds 齐"
+      ],
       "reference_brief": "benchmarks/reference_briefs/S4-final.md"
     },
     {
       "id": "S1b",
       "name": "MERGE_TRIM",
       "phase": "1",
-      "depends_on": ["S4"],
+      "depends_on": [
+        "S4"
+      ],
       "user_demo": "CLI 减别名；删 runs_command",
-      "green_checks": ["pytest -q"]
+      "green_checks": [
+        "pytest -q"
+      ]
     },
     {
       "id": "S5",
       "name": "Studio 对齐",
       "phase": "2",
-      "depends_on": ["S1b"],
+      "depends_on": [
+        "S1b"
+      ],
       "user_demo": "Thread 与 status 同一 run 叙事一致",
-      "green_checks": ["node studio/scripts/run-detail-smoke.mjs"],
+      "green_checks": [
+        "node studio/scripts/run-detail-smoke.mjs"
+      ],
       "reference_brief": "benchmarks/reference_briefs/S5-studio.md"
     },
     {
       "id": "S6",
       "name": "权限卡",
       "phase": "2",
-      "depends_on": ["S5"],
+      "depends_on": [
+        "S5"
+      ],
       "user_demo": "permission_request UI",
-      "green_checks": ["node studio/scripts/interactive-main-path.spec.mjs"],
+      "green_checks": [
+        "node studio/scripts/interactive-main-path.spec.mjs"
+      ],
       "reference_brief": "benchmarks/reference_briefs/S6-perm.md"
     },
     {
       "id": "S7",
       "name": "MVP 终点",
       "phase": "2",
-      "depends_on": ["S6"],
+      "depends_on": [
+        "S6"
+      ],
       "user_demo": "small_code_change E2E",
       "green_checks": [
         "python -m asteria_runtime studio-benchmark --root . --json",
@@ -92,7 +124,9 @@
       "id": "S8",
       "name": "续作",
       "phase": "3",
-      "depends_on": ["S7"],
+      "depends_on": [
+        "S7"
+      ],
       "user_demo": "同 session 第二条 goal 带上文",
       "green_checks": [
         "pytest tests/integration/test_session_continuation.py -q",
@@ -104,7 +138,9 @@
       "id": "S9",
       "name": "CapabilityManifest + Ask",
       "phase": "3",
-      "depends_on": ["S8"],
+      "depends_on": [
+        "S8"
+      ],
       "user_demo": "ask/chat 装载 manifest；CLI Start 组 Goal/Plan/Ask",
       "green_checks": [
         "pytest tests/integration/test_chat_capability_manifest.py -q",
@@ -116,7 +152,9 @@
       "id": "S10",
       "name": "Phase 2 稳态",
       "phase": "3",
-      "depends_on": ["S9"],
+      "depends_on": [
+        "S9"
+      ],
       "user_demo": "scoped median model calls / repair formal gate + evidence-bundle",
       "green_checks": [
         "pytest tests/integration/test_phase2_stability_gate.py -q",
@@ -128,7 +166,9 @@
       "id": "S11",
       "name": "North Star RFC 观察窗",
       "phase": "3",
-      "depends_on": ["S10"],
+      "depends_on": [
+        "S10"
+      ],
       "user_demo": "status --json 显示 long_horizon；观察窗签字完成",
       "green_checks": [
         "pytest tests/unit/test_phase2_stability_window.py -q",
@@ -140,7 +180,9 @@
       "id": "S12",
       "name": "North Star v1",
       "phase": "4",
-      "depends_on": ["S11"],
+      "depends_on": [
+        "S11"
+      ],
       "user_demo": "init --north-star-title；accept 链接 milestone；handoff 含 north_star_ref",
       "green_checks": [
         "pytest tests/unit/test_north_star_storage.py -q",
@@ -154,7 +196,9 @@
       "id": "S13",
       "name": "Run Health + S7 clean re-run",
       "phase": "4",
-      "depends_on": ["S12"],
+      "depends_on": [
+        "S12"
+      ],
       "user_demo": "有界 recovery；run-health gate；real provider small_code_change 健康复跑",
       "green_checks": [
         "pytest tests/integration/test_phase4_run_health_gate.py -q",
@@ -167,7 +211,9 @@
       "id": "S14",
       "name": "Beta user path (Phase 7 lite)",
       "phase": "7",
-      "depends_on": ["S13"],
+      "depends_on": [
+        "S13"
+      ],
       "user_demo": "asteria studio → Goal → Review/Accept 主路径按钮；Beta 入门文档",
       "green_checks": [
         "pytest tests/integration/test_phase7_beta_user_path_gate.py -q",
@@ -180,7 +226,9 @@
       "id": "S15",
       "name": "Beta hardening + open invite",
       "phase": "7",
-      "depends_on": ["S14"],
+      "depends_on": [
+        "S14"
+      ],
       "user_demo": "Studio 全路径 small_code_change；wheel 复验；可邀请内测",
       "green_checks": [
         "node studio/scripts/b6-restricted-user-sim.mjs",
@@ -193,7 +241,9 @@
       "id": "S16",
       "name": "Steady vibe iteration",
       "phase": "4",
-      "depends_on": ["S15"],
+      "depends_on": [
+        "S15"
+      ],
       "user_demo": "一条命令跑周脉搏；brief→小 diff→用户路径 demo",
       "green_checks": [
         "python scripts/steady_iteration_check.py --root . --skip-b6",
@@ -205,7 +255,9 @@
       "id": "S17",
       "name": "Runtime session agent",
       "phase": "4",
-      "depends_on": ["S16"],
+      "depends_on": [
+        "S16"
+      ],
       "user_demo": "Beta 小改默认单任务 CC 路径；Harness 仅显式启用",
       "green_checks": [
         "pytest tests/unit/test_execution_profile.py -q",
@@ -218,7 +270,9 @@
       "id": "S18",
       "name": "Swarm worker spawn",
       "phase": "5",
-      "depends_on": ["S17"],
+      "depends_on": [
+        "S17"
+      ],
       "user_demo": "写 worker 强制 harness；fake_serial 记录 spawn 契约",
       "green_checks": [
         "pytest tests/unit/test_worker_spawn.py -q",
@@ -231,7 +285,9 @@
       "id": "S19",
       "name": "Candidate export + merge dry-run",
       "phase": "5",
-      "depends_on": ["S18"],
+      "depends_on": [
+        "S18"
+      ],
       "user_demo": "worker 完成后 export + merge gate dry-run，不 promotion",
       "green_checks": [
         "pytest tests/unit/test_candidate_export.py tests/unit/test_merge_gate_dry_run.py -q",
@@ -244,7 +300,9 @@
       "id": "S20",
       "name": "Studio worker progress + promotion UI",
       "phase": "5",
-      "depends_on": ["S19"],
+      "depends_on": [
+        "S19"
+      ],
       "user_demo": "Thread 背景任务进度条；Inspector merge preview",
       "green_checks": [
         "node studio/scripts/s20-worker-promotion-smoke.mjs",
@@ -256,7 +314,9 @@
       "id": "S21",
       "name": "Swarm gray gate",
       "phase": "5",
-      "depends_on": ["S20"],
+      "depends_on": [
+        "S20"
+      ],
       "user_demo": "维护者 disjoint 灰度路径 + phase5_swarm_gate",
       "green_checks": [
         "python scripts/swarm_maintainer_gray_check.py --root .",
@@ -268,7 +328,9 @@
       "id": "S22",
       "name": "Swarm flag rollout",
       "phase": "5",
-      "depends_on": ["S21"],
+      "depends_on": [
+        "S21"
+      ],
       "user_demo": "维护者评估 real_disjoint_write_workers 就绪与回滚",
       "green_checks": [
         "pytest tests/unit/test_swarm_flag_rollout.py -q",
@@ -280,7 +342,9 @@
       "id": "S23",
       "name": "Real disjoint probe",
       "phase": "5",
-      "depends_on": ["S22"],
+      "depends_on": [
+        "S22"
+      ],
       "user_demo": "maintainer 隔离环境 parallel disjoint probe",
       "green_checks": [
         "pytest tests/integration/test_phase5b_swarm_rollout_gate.py::test_real_disjoint_maintainer_probe_end_to_end -q"
@@ -291,16 +355,22 @@
       "id": "S24",
       "name": "Swarm orchestrator hook",
       "phase": "5",
-      "depends_on": ["S23"],
+      "depends_on": [
+        "S23"
+      ],
       "user_demo": "child_plan → spawn + ExecutionCoordinator 薄层",
-      "green_checks": ["pytest tests/unit/test_swarm_orchestrator.py -q"],
+      "green_checks": [
+        "pytest tests/unit/test_swarm_orchestrator.py -q"
+      ],
       "reference_brief": "benchmarks/reference_briefs/S24-swarm-orchestrator-hook.md"
     },
     {
       "id": "S25",
       "name": "Phase 5 wave2 signoff",
       "phase": "5",
-      "depends_on": ["S24"],
+      "depends_on": [
+        "S24"
+      ],
       "user_demo": "phase5b 闸门 + wave2 签字",
       "green_checks": [
         "python scripts/swarm_flag_rollout_check.py --root .",
@@ -313,34 +383,48 @@
       "id": "S26",
       "name": "Agent loop swarm evidence",
       "phase": "5",
-      "depends_on": ["S25"],
+      "depends_on": [
+        "S25"
+      ],
       "user_demo": "subagent 分解写入 swarm_execution_plans.jsonl",
-      "green_checks": ["pytest tests/integration/test_swarm_agent_loop_integration.py -q"],
+      "green_checks": [
+        "pytest tests/integration/test_swarm_agent_loop_integration.py -q"
+      ],
       "reference_brief": "benchmarks/reference_briefs/S26-agent-loop-swarm-evidence.md"
     },
     {
       "id": "S27",
       "name": "Studio scheduling semantics",
       "phase": "5",
-      "depends_on": ["S26"],
+      "depends_on": [
+        "S26"
+      ],
       "user_demo": "WorkerProgressBar 显示 fake_serial vs parallel",
-      "green_checks": ["node studio/scripts/s20-worker-promotion-smoke.mjs"],
+      "green_checks": [
+        "node studio/scripts/s20-worker-promotion-smoke.mjs"
+      ],
       "reference_brief": "benchmarks/reference_briefs/S27-studio-scheduling-semantics.md"
     },
     {
       "id": "S28",
       "name": "Swarm main chain integration",
       "phase": "5",
-      "depends_on": ["S27"],
+      "depends_on": [
+        "S27"
+      ],
       "user_demo": "phase5c 闸门 + maintainer bundle",
-      "green_checks": ["python scripts/swarm_integration_check.py --root ."],
+      "green_checks": [
+        "python scripts/swarm_integration_check.py --root ."
+      ],
       "reference_brief": "benchmarks/reference_briefs/S28-swarm-main-chain-integration.md"
     },
     {
       "id": "S29",
       "name": "Phase 5 wave3 signoff",
       "phase": "5",
-      "depends_on": ["S28"],
+      "depends_on": [
+        "S28"
+      ],
       "user_demo": "Layer0/1 证据同 run 可审计",
       "green_checks": [
         "python scripts/swarm_integration_check.py --root .",
@@ -352,7 +436,9 @@
       "id": "S30",
       "name": "Execute policy passthrough",
       "phase": "5",
-      "depends_on": ["S29"],
+      "depends_on": [
+        "S29"
+      ],
       "user_demo": "execute subagent 路径写入 swarm_execution_plans + policy 驱动 spawn hints",
       "green_checks": [
         "pytest tests/integration/test_execute_swarm_policy_passthrough.py -q"
@@ -363,7 +449,9 @@
       "id": "S31",
       "name": "Swarm scenario gate",
       "phase": "5",
-      "depends_on": ["S30"],
+      "depends_on": [
+        "S30"
+      ],
       "user_demo": "统一场景审计 + swarm_holistic_check 脉搏",
       "green_checks": [
         "python scripts/swarm_holistic_check.py --root . --skip-studio",
@@ -375,7 +463,9 @@
       "id": "S32",
       "name": "Gray DecisionPoint rollback",
       "phase": "5",
-      "depends_on": ["S31"],
+      "depends_on": [
+        "S31"
+      ],
       "user_demo": "maintainer gray DecisionPoint + isolated probe + rollback drill",
       "green_checks": [
         "pytest tests/integration/test_phase5e_gray_decision_gate.py -q"
@@ -386,7 +476,9 @@
       "id": "S33",
       "name": "Beta friction convergence",
       "phase": "4",
-      "depends_on": ["S32"],
+      "depends_on": [
+        "S32"
+      ],
       "user_demo": "Studio replan→continue + friction contract",
       "green_checks": [
         "pytest tests/unit/test_friction_contract.py -q",
@@ -398,7 +490,9 @@
       "id": "S34",
       "name": "Production gray + dual worker case",
       "phase": "5",
-      "depends_on": ["S33"],
+      "depends_on": [
+        "S33"
+      ],
       "user_demo": "phase5f 就绪评估 + dual_disjoint_files real case 契约；CLI parallel_writes 仍默认 off",
       "green_checks": [
         "pytest tests/unit/test_swarm_production_gray.py -q",
@@ -411,7 +505,9 @@
       "id": "S35",
       "name": "Design Intelligence pilot",
       "phase": "6",
-      "depends_on": ["S34"],
+      "depends_on": [
+        "S34"
+      ],
       "user_demo": "research_type 进 plan 契约 + Phase 6 入口闸门（pilot）",
       "green_checks": [
         "pytest tests/integration/test_phase6_design_intel_gate.py -q",
@@ -423,7 +519,9 @@
       "id": "S36",
       "name": "Design Intel research bridge",
       "phase": "6",
-      "depends_on": ["S35"],
+      "depends_on": [
+        "S35"
+      ],
       "user_demo": "/research --type 与 plan research_type 对齐；research_report 进 plan 上下文",
       "green_checks": [
         "pytest tests/integration/test_phase6b_design_intel_research_gate.py -q",
@@ -435,7 +533,9 @@
       "id": "S37",
       "name": "Long horizon completion contract",
       "phase": "6",
-      "depends_on": ["S36"],
+      "depends_on": [
+        "S36"
+      ],
       "user_demo": "accept 后 slice 完成判定 + status long_horizon 投影",
       "green_checks": [
         "pytest tests/integration/test_phase6c_long_horizon_completion_gate.py -q",
@@ -447,7 +547,9 @@
       "id": "S38",
       "name": "North Star goal queue",
       "phase": "6",
-      "depends_on": ["S37"],
+      "depends_on": [
+        "S37"
+      ],
       "user_demo": "goal_queue 从 milestones seed；accept 后 Continue 提示",
       "green_checks": [
         "pytest tests/integration/test_phase6d_goal_queue_gate.py -q",
@@ -459,7 +561,9 @@
       "id": "S39",
       "name": "Supervised goal loop",
       "phase": "6",
-      "depends_on": ["S38"],
+      "depends_on": [
+        "S38"
+      ],
       "user_demo": "--toward-north-star --max-slices N + kill file",
       "green_checks": [
         "pytest tests/integration/test_phase6e_supervised_goal_loop_gate.py -q"
@@ -470,7 +574,9 @@
       "id": "S40",
       "name": "Local background run",
       "phase": "6",
-      "depends_on": ["S39"],
+      "depends_on": [
+        "S39"
+      ],
       "user_demo": "本地 subprocess durable run + Studio 徽章",
       "green_checks": [
         "pytest tests/integration/test_phase6f_local_background_run_gate.py -q"
@@ -481,7 +587,9 @@
       "id": "S41",
       "name": "ML slice completion judge",
       "phase": "8",
-      "depends_on": ["S40"],
+      "depends_on": [
+        "S40"
+      ],
       "user_demo": "North Star policy enable_model_judge；accept 后 model veto 写入 slice_completion_eval",
       "green_checks": [
         "pytest tests/integration/test_phase8a_slice_completion_judge_gate.py -q",
@@ -493,7 +601,9 @@
       "id": "S42",
       "name": "Long horizon handoff compact",
       "phase": "8",
-      "depends_on": ["S41"],
+      "depends_on": [
+        "S41"
+      ],
       "user_demo": "accept 后 long_horizon_handoff.json；status handoff_compact 投影",
       "green_checks": [
         "pytest tests/integration/test_phase8b_long_horizon_handoff_gate.py -q"
@@ -504,7 +614,9 @@
       "id": "S43",
       "name": "Remote background adapter",
       "phase": "8",
-      "depends_on": ["S42"],
+      "depends_on": [
+        "S42"
+      ],
       "user_demo": "background start --remote 登记 deferred stub",
       "green_checks": [
         "pytest tests/integration/test_phase8c_remote_background_adapter_gate.py -q"
@@ -515,7 +627,9 @@
       "id": "S44",
       "name": "Phase 8 band signoff",
       "phase": "8",
-      "depends_on": ["S43"],
+      "depends_on": [
+        "S43"
+      ],
       "user_demo": "phase8_maintainer_smoke 全波段绿",
       "green_checks": [
         "python scripts/phase8_maintainer_smoke.py --root ."
@@ -526,7 +640,9 @@
       "id": "S51",
       "name": "Turn Rewind 入口",
       "phase": "Maint-F1",
-      "depends_on": ["S44"],
+      "depends_on": [
+        "S44"
+      ],
       "user_demo": "Thread turn Rewind → 确认 → runtime resume/replan",
       "green_checks": [
         "cd studio && npm run build",
@@ -538,7 +654,9 @@
       "id": "S52",
       "name": "Tool 输出 ClampedOutput",
       "phase": "Maint-F1",
-      "depends_on": ["S51"],
+      "depends_on": [
+        "S51"
+      ],
       "user_demo": "tool stdout 限高 + copy + Verbose 展开",
       "green_checks": [
         "cd studio && npm run build",
@@ -550,7 +668,9 @@
       "id": "S53",
       "name": "Studio 对标对标签字",
       "phase": "Maint-F1",
-      "depends_on": ["S52"],
+      "depends_on": [
+        "S52"
+      ],
       "user_demo": "parity signoff + 三源文档一致",
       "green_checks": [
         "pytest tests/unit/test_documentation_contracts.py -q",
@@ -562,7 +682,9 @@
       "id": "S54",
       "name": "F2 Beta friction 基线",
       "phase": "Maint-F2",
-      "depends_on": ["S53"],
+      "depends_on": [
+        "S53"
+      ],
       "user_demo": "friction 分桶 + 试跑清单含 S48–S52",
       "green_checks": [
         "python scripts/beta_friction_aggregate.py --root .",
@@ -574,7 +696,9 @@
       "id": "S55",
       "name": "Harness friction II",
       "phase": "Maint-F2+Triple",
-      "depends_on": ["S54"],
+      "depends_on": [
+        "S54"
+      ],
       "user_demo": "决策卡引导 + triple_track_pulse",
       "green_checks": [
         "python scripts/triple_track_pulse.py --root . --skip-b6",
@@ -588,7 +712,9 @@
       "id": "S56",
       "name": "Beta 任务包脉搏",
       "phase": "Maint-F2+Triple",
-      "depends_on": ["S54"],
+      "depends_on": [
+        "S54"
+      ],
       "user_demo": "beta_task_pack_check + 任务 2/3 材料",
       "green_checks": [
         "python scripts/beta_task_pack_check.py --root .",
@@ -600,7 +726,10 @@
       "id": "S57",
       "name": "Harness accept 回归 + B6 复验",
       "phase": "Maint-F2+Triple",
-      "depends_on": ["S55", "S56"],
+      "depends_on": [
+        "S55",
+        "S56"
+      ],
       "user_demo": "asteria accept 主路径 + B6 friction 绿",
       "green_checks": [
         "pytest tests/unit/test_accept_command.py -q",
@@ -613,7 +742,9 @@
       "id": "S61",
       "name": "Runtime orchestration alignment R0-R5",
       "phase": "Orchestration",
-      "depends_on": ["S57"],
+      "depends_on": [
+        "S57"
+      ],
       "user_demo": "risk tier, prompt discipline, dual transport, and validation contract aligned",
       "green_checks": [
         "pytest tests/unit/test_documentation_contracts.py -q"
@@ -624,7 +755,9 @@
       "id": "S62-S63",
       "name": "Strong route and spawn decision convergence",
       "phase": "Orchestration",
-      "depends_on": ["S61"],
+      "depends_on": [
+        "S61"
+      ],
       "user_demo": "real-model route and spawn evaluation signed off",
       "green_checks": [
         "python scripts/orchestration_s63_signoff_pulse.py --root ."
@@ -635,7 +768,9 @@
       "id": "S64-S69",
       "name": "Parallel gray and L3 orchestration band",
       "phase": "Orchestration",
-      "depends_on": ["S62-S63"],
+      "depends_on": [
+        "S62-S63"
+      ],
       "user_demo": "isolated parallel gray, dynamic runner, live execution, monitor, and verifier",
       "green_checks": [
         "pytest tests/unit/test_orchestration_parallel_gray.py tests/unit/test_orchestration_dynamic_runner.py -q"
@@ -646,7 +781,9 @@
       "id": "S70-S71",
       "name": "L3 ingress and Thread workflow visibility",
       "phase": "Orchestration",
-      "depends_on": ["S64-S69"],
+      "depends_on": [
+        "S64-S69"
+      ],
       "user_demo": "strong ingress and compact Thread workflow projection",
       "green_checks": [
         "pytest tests/unit/test_orchestration_dynamic_ingress.py -q",
@@ -658,7 +795,9 @@
       "id": "S72",
       "name": "L3 execution and live provider",
       "phase": "Orchestration",
-      "depends_on": ["S70-S71"],
+      "depends_on": [
+        "S70-S71"
+      ],
       "user_demo": "orchestration run command and optional live provider touch",
       "green_checks": [
         "python scripts/orchestration_s72_signoff_pulse.py --root ."
@@ -669,7 +808,9 @@
       "id": "S73",
       "name": "Beta parallel writes opt-in and ingress 100%",
       "phase": "Orchestration",
-      "depends_on": ["S72"],
+      "depends_on": [
+        "S72"
+      ],
       "user_demo": "workspace-scoped explicit opt-in with template default unchanged",
       "green_checks": [
         "python scripts/orchestration_s73_signoff_pulse.py --root ."
@@ -680,7 +821,9 @@
       "id": "S74",
       "name": "Post-S73 Beta convergence",
       "phase": "Post-S73 Beta convergence",
-      "depends_on": ["S73"],
+      "depends_on": [
+        "S73"
+      ],
       "user_demo": "latest main path is green and 3-5 real Beta tasks produce reproducible product evidence",
       "green_checks": [
         "python scripts/steady_iteration_check.py --root . --skip-b6 --skip-wheel",

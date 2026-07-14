@@ -51,6 +51,10 @@ def test_sanitize_defaults_to_process_environ(monkeypatch) -> None:
 
 def test_sanitize_does_not_mutate_source() -> None:
     env = {"AGENT_MODEL_API_KEY": "sk", "PATH": "/bin"}
+    before = dict(os.environ)
     sanitize_subprocess_env(env)
     assert env == {"AGENT_MODEL_API_KEY": "sk", "PATH": "/bin"}
-    assert "AGENT_MODEL_API_KEY" not in os.environ or True  # sanity: no accidental global mutation
+    # The real invariant: sanitizing a dict must not touch the process environment. This used to read
+    # `assert "AGENT_MODEL_API_KEY" not in os.environ or True` — vacuous (and it had to be, since a
+    # developer with real provider keys exported DOES have that variable set).
+    assert dict(os.environ) == before

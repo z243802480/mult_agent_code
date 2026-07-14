@@ -78,7 +78,17 @@ def test_gateway_routes_mcp_tool_to_adapter(tmp_path: Path) -> None:
     assert len(invocations) == 1
     assert invocations[0]["server_name"] == "everything"
     assert invocations[0]["tool_name"] == "echo"
-    assert not (tmp_path / "tool_observations.jsonl").exists() or True  # local-tool path untouched
+    # This line used to read `assert not (tmp_path / "tool_observations.jsonl").exists() or True`,
+    # i.e. vacuous — and for good reason: the file DOES exist. An MCP result rides the shared
+    # observation stream like any other tool result (that is how the loop sees it at all). What must
+    # NOT happen is it being recorded as a LOCAL tool — losing the mcp__ name and the server/tool
+    # provenance. Assert that, instead of asserting an absence that was never true.
+    observations = JsonlStore(context.validator).read_all(
+        tmp_path / "tool_observations.jsonl", "tool_observation"
+    )
+    assert len(observations) == 1
+    assert observations[0]["tool_name"] == "mcp__everything__echo"
+    assert observations[0]["observation"]["data"]["server"] == "everything"
 
 
 def test_gateway_mcp_denied_when_not_in_task_contract(tmp_path: Path) -> None:

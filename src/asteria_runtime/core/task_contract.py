@@ -5,25 +5,38 @@ from pathlib import Path
 
 
 def looks_like_file_path(value: str) -> bool:
-    """Is this entry a concrete relative FILE the runtime can check on disk — as opposed to a prose
+    """Is this entry a concrete FILE the runtime can hold a task to — as opposed to a prose
     placeholder ("implementation artifact", "the new module") or a directory scope ("src/")?
 
     Single source of truth for every deterministic boundary that asks "did the expected file appear".
-    It is a STRUCTURAL test — no whitespace, and either a separator or a filename extension — because
-    the planner writes these entries in free text and no fixed vocabulary can enumerate them. The
-    contract used to filter with a hardcoded denylist of four exact strings instead, so
-    "implementation artifacts" (merely the plural) was treated as a FILE that must change, and a task
-    that did all its work and verified it was still judged "expected changed files were not modified".
+    Two structural rules, and deliberately no third:
 
-    A directory scope is not a deliverable: the model may legitimately write anywhere within it, so
-    demanding that "src/" itself "exist as a changed file" would fail every task that used one.
+    * **whitespace → prose.** The planner writes these entries in free text and no fixed vocabulary
+      can enumerate them; a denylist of four exact strings (what this replaced) let the mere plural
+      "implementation artifacts" through as a FILE that must change, failing tasks that did all their
+      work. Real paths do not contain spaces here.
+    * **trailing separator → directory scope, not a deliverable.** The model may legitimately write
+      anywhere inside it, so demanding that "src/" itself "exist as a changed file" fails every task.
+
+    **It does NOT require an extension.** Requiring one (the first cut of this function did) silently
+    demotes `Makefile` / `Dockerfile` / `LICENSE` to "prose": the completion gate then stops enforcing
+    them, and — worse — `write_scope` falls back to this list, so a task whose only deliverable is a
+    Makefile gets an EMPTY write scope and cannot write anything at all. Under-enforcement here breaks
+    the task outright; over-enforcement only costs the model another bounded round.
+
+    A BARE token (no separator, no extension) is a filename only if it is ASCII — the `Makefile` /
+    `Dockerfile` convention. Chinese prose carries no whitespace to give itself away ("更新后的文档"),
+    so whitespace alone cannot separate it from a filename; a real Chinese path in this repo always
+    has a separator or an extension (`docs/zh/研发总计划.md`) and is still recognized.
     """
     text = value.strip()
     if not text or any(ch.isspace() for ch in text):
         return False
     if text.endswith("/") or text.endswith("\\"):
         return False
-    return ("/" in text) or ("\\" in text) or ("." in Path(text).name)
+    if ("/" in text) or ("\\" in text) or ("." in Path(text).name):
+        return True
+    return text.isascii()
 
 
 TASK_KINDS = {

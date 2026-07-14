@@ -15,11 +15,11 @@
     "sandbox_profile_id": { "type": "string" },
     "backend": {
       "type": "string",
-      "enum": ["single_workspace", "temp_workspace", "git_worktree", "container", "remote_worker"]
+      "enum": ["single_workspace", "temp_workspace", "git_worktree"]
     },
     "workspace_policy": {
       "type": "string",
-      "enum": ["controlled_patch", "isolated_copy", "worktree", "container_mount", "remote"]
+      "enum": ["controlled_patch", "isolated_copy", "worktree"]
     },
     "cleanup_policy": {
       "type": "string",

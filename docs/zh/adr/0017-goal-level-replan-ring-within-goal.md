@@ -1,6 +1,7 @@
 # ADR-0017 · Goal 级 replan 环闭合 = 目标内重分解，非 scope 扩张
 
-- 状态：Proposed（2026-07-05）——**设计立场仍 Proposed，代码已落地于 `agent_loop.auto_replan_goal` flag 后（默认关·可逆），收敛 bug 已修（研发总计划 changelog 1.2.19）。翻默认开=独立自主性 DecisionPoint，未拍板前维持 Proposed。**
+- 状态：Accepted（2026-07-05 提出 → **2026-07-13 翻默认开**）——代码落地于 `agent_loop.auto_replan_goal` flag 后，**默认已随权限档绑定**（`run_command.py:1703` → `autonomy_rings_default_on()`：`auto`/`reviewed_auto` 默认 **ON**，`ask_everything` 默认 OFF；显式 flag 仍可覆盖，逐字节可回退）。收敛 bug 已修（changelog 1.2.19）。
+  - ⚠️ **本行曾长期说谎**：写着「默认关·翻默认开=独立 DecisionPoint，未拍板前维持 Proposed」，而用户已于 2026-07-13 拍板并落地（changelog 1.2.31/1.2.33/1.2.38）。ADR 是设计权威，状态行滞后会让接手人以为环还没接上——2026-07-15 整体复核时修正。
 - 关联：[[0010]] 开放 Agent Loop · [[0015]] 连续 Session 是产品架构 · [[0016]] 认知归模型/边界归状态 · S78 repair 环 · S79 task-level replan 环
 - 授权：用户 2026-07-05「授权你解锁推进」+「继续吧」（承 2026-07-04 解冻，记忆 `freeze-lifted-autonomous-loop`）
 
