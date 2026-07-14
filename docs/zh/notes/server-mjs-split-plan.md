@@ -200,3 +200,32 @@ export function createChatAnswer({
 5. Tier1 不写任何内存 singleton（liveJobs/pendingJobs/sseClients/workspace/runtimeRoot 均只读），注入 appendEvent+sessionPath 即覆盖全部写路径。
 
 验证 smoke：chat-lifecycle / chat-fallback / chat-stream-final / side-chat / composer-side-ask / intent-routing / plan-output（注意 side-chat/plan-output 为 origin/main 预存基线失败，stash 对比）。
+
+---
+
+## ②m 收尾:清掉拆分照出来的死子树(2026-07-14 · `0836679`)
+
+拆完后 lint 报 `finalTextFor` 无人调用。**它不是拆分产生的新孤儿**——`git log -S` 查到其唯一调用点是
+**S74 / ADR-0012(`0b2296a`,6-28)**"主线程不再把回复改写成诊断报告"删掉的;整棵树自那时起就死了,
+只是淹在 46 条 warning 里没人看。删它 = 补做 S74 没做完的清理。
+
+**方法:不动点脚本,别手工追调用链**(scratchpad `deadtree.cjs`):反复找"函数体外零引用"的顶层函数 →
+删 → 重算,直到不再产生新孤儿。4 轮收敛,**19 个函数 / -333 行**(finalTextFor 只是树根,底下拖着
+`plan|run|reviewFinalTextForRun` / `withProcessDigest` / `userProgressDigestLines` /
+`cleanUserFacingRuntimeText` / `channelToEventType` 等)。
+
+**两条硬要求**:
+1. **引用扫描必须覆盖 `lib/` + `scripts/` + `src/`**,不能只扫 server.mjs——白盒 smoke 会 grep 符号名,
+   漏扫就会把 smoke 弄红。
+2. **删完看 lint 的 orphan import**:恰好孤立 `firstRuntimeText` 一个,反证切除完整(同 ②k 教训 b)。
+
+**server.mjs 2188 → 1857 行。拆分起点 5119,累计 −64%。**
+
+### ②l 的白盒 smoke 扫描不完整——补完
+②l 声称"扫了同类病",实际漏了 `s33-friction-contract-smoke`(grep `server.mjs` 找 `replan: "continue"`,
+而该能力 ②j 已搬进 `lib/run-detail-reader.mjs`)。已改用 `server-surface` 断言"后端表面"转绿。
+**完整判据:`grep -rn 'readFileSync(.*server\.mjs' scripts/`(含多行形式)——现已清零。**
+以后新增此类断言一律走 `scripts/server-surface.mjs`,别 grep 单个文件。
+
+### 剩余(另一条轴,未动)
+`execute` 层(`startRuntimeJob` 家族 · 缠 runtime-progress)。
