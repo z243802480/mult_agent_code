@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-import os
 from pathlib import Path
 import re
+import sys
 from typing import Any
 
 from asteria_runtime.storage.json_store import JsonStore
@@ -204,7 +204,7 @@ def _exclusive_file_lock(path: Path) -> Any:
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+b") as handle:
         handle.seek(0)
-        if os.name == "nt":
+        if sys.platform == "win32":
             import msvcrt
 
             msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)

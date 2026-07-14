@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -74,7 +75,7 @@ class StdioMcpSession:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
         )
 
     def call(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -104,7 +105,7 @@ class StdioMcpSession:
                 self._kill_process_tree()
 
     def _kill_process_tree(self) -> None:
-        if os.name == "nt":
+        if sys.platform == "win32":
             subprocess.run(
                 ["taskkill", "/PID", str(self._process.pid), "/T", "/F"],
                 stdout=subprocess.DEVNULL,

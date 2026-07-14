@@ -63,7 +63,7 @@ def run_with_heartbeat(
 
     command = list(args)
     popen_kwargs: dict[str, Any] = {}
-    if os.name == "nt":
+    if sys.platform == "win32":
         popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         popen_kwargs["start_new_session"] = True
@@ -194,7 +194,7 @@ def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
     if process.poll() is not None:
         return
     try:
-        if os.name == "nt":
+        if sys.platform == "win32":
             subprocess.run(
                 ["taskkill", "/PID", str(process.pid), "/T", "/F"],
                 stdout=subprocess.DEVNULL,

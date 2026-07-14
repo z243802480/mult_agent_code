@@ -329,7 +329,7 @@ def start_local_background_run(
             stdout=log_handle,
             stderr=subprocess.STDOUT,
             start_new_session=os.name != "nt",
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
         )
     except OSError as exc:
         log_handle.write(f"spawn failed: {exc}\n")
