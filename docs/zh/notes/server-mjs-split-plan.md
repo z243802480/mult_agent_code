@@ -97,17 +97,33 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) { �
 
 ## 3. 推荐执行顺序（每步一刀或数刀·独立提交·真 smoke）
 
-> **进度（2026-07-09 续会话，②f–②j 已推送 origin/main，FF `15bc6d0`→`a9bcd3d`）**：
-> server.mjs 4419→**3468** 行；`lib/` 新增 run-io / event-bus / jobs / run-detail-reader 四模块。
-> 下一刀 = Layer 2 `chat-answer.mjs`（Tier 1，注入面见 §2；执行前用子代理测绘当前行号+注入契约，法同 run-detail-reader）。
+> **进度（2026-07-14 续会话）**：server.mjs **2837** 行（②k 拆完 chat Tier 1；起点 5119 → 已减 45%）；
+> `lib/` 现 8 模块。下一刀 = Layer 3 `chat-routes.mjs`（Tier 2 薄端点，见 §3 步骤 6）。
+>
+> **②k 实测校正（供下一刀复用）**：
+> - 待搬的 31 个函数在源里是**一整块连续区间**（3522 行版的 L1129–1801），不是散落——`git` 视角即一次干净切除，
+>   无需逐函数搬。切前用行号断言卡住首尾两行再 `splice`。
+> - **别手打代码**：`cleanAssistantText`/`repairMojibake`/`isLikelyGarbledAnswer` 里含 U+FFFD 与 latin1 区间的
+>   **原始字面控制字节**（`/[\x80-ÿ]/` 那类），Read 的显示对这些有损，手抄会在"修乱码"的函数里引入乱码。
+>   正确做法：脚本按字节切片 → 缩进 → 只做几处精确替换，并对易碎行做 new/old 逐字节比对。
+> - **orphan import 是切除完整性的免费证据**：搬完 lint 恰好报 6 个 unused import（readFileSync /
+>   outcomeAnswerContract / classifyChatRequest / hasAny / isRuntimeMetaQuestion / recentChatHistoryMessages），
+>   全部只被搬走的块用过——反证块外没有残留引用。
+> - **基线红必须证伪，不能假设**：本刀后 4 个 smoke 红（intent-routing / side-chat / plan-output /
+>   decision-guidance）。在 HEAD 上重跑，4 个**同样红且失败信息逐字相同**（连 `events=8` 都一致）→ 预存失败、非回归。
+>   §6 原只预告了 2 个，实为 4 个。
 
 1. ✅ **Layer 0 下沉纯工具**（②f `ef57166`）：`firstRuntimeText`→text-utils.mjs；`readJson`/`readJsonlTail`→`lib/run-io.mjs`；`latestDecisions`→run-evidence-transforms.mjs。
    - ✅ 顺带 §4 死代码（②g `a4c8426`）：删 resolveStudioExecutionRoute / modelRouteSummaryLine / latestRouteDecision（级联孤儿）。
 2. ✅ **Layer 1a `event-bus.mjs`**（②h `3981542`）：`sseClients`+`notifySSE`+`appendEvent` 工厂，注入 `getWorkspace`/`sessionPath`。**已解锁 chat Tier 2 前置。**
 3. ✅ **Layer 1b `jobs.mjs`**（②i `cce3e59`）：`liveJobs`+`pruneLiveJobs` 工厂（纯内存、无 workspace 捕获）。
 4. ✅ **Layer 2 `run-detail-reader.mjs`**（②j `fd641f2`）：readRunDetail + 14 helper 的 evidence 工厂，注入 `getWorkspace`/`python`/`moduleName`；5 名反向 down-import 回 server。server.mjs 再瘦 ~730 行。
-5. ⬜ **Layer 2 `chat-answer.mjs`**：Tier 1 干净块（依赖 Layer 0/1/2，均已就位）。注入面见 §2 Tier 1（~15 项，几乎全只读）。**下一刀。**
-6. ⬜ **Layer 3 `chat-routes.mjs`**：Tier 2 薄端点（依赖前面全部到位）。
+5. ✅ **Layer 2 `chat-answer.mjs`**（②k）：Tier 1 整块（L1129–1801 连续 + `CHAT_MODES`），server.mjs 3522→**2837**。
+   注入 11 项（`getWorkspace`/`getRuntimeRoot` live getter + python/chatBackend + appendEvent/sessionPath/
+   readRunDetail/overview/commandJson/runCommand/modelRouteSummary），只导出 `startChatJob` 驱动的 5 名。
+   顺带删 5 个全仓零引用的死常量（CHAT_INTRO/GREETING/HELP/ABOUT_CHAT/EVIDENCE）。
+   验证：lint 0 error·prettier 无改动·typecheck+build 绿·12 个真 smoke 绿（含 workspace-switcher 证 live getter 跟着切库）。
+6. ⬜ **Layer 3 `chat-routes.mjs`**：Tier 2 薄端点（依赖前面全部到位）。**下一刀。**
 
 execute 层（`startRuntimeJob` 家族）本轮**不动**——它是另一条轴，缠着 runtime-progress，值单独规划。
 
