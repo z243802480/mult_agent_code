@@ -93,6 +93,25 @@ const SUMMARY_PROJECTIONS: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [/^Updated (\S+)$/, (m) => `已更新 ${m[1]}`],
   [/^Wrote file: (\S+)$/, (m) => `已写入文件：${m[1]}`],
   [/^Running (.+)$/, (m) => `正在运行 ${m[1]}`],
+  // Plan-phase summaries the runtime emits in English (title is already projected above; the summary
+  // line was leaking English onto the Chinese thread — observed live on a real run).
+  [
+    /^Runtime bound this plan to the selected workspace and output scope\.?$/,
+    () => `已把本次计划绑定到当前工作区与输出范围。`,
+  ],
+  [
+    /^Permission mode is (.+?)\.?$/,
+    (m) => {
+      const mode = m[1].trim();
+      const label: Record<string, string> = {
+        auto: "全自动",
+        reviewed_auto: "自动编辑",
+        ask_everything: "逐步询问",
+        balanced: "平衡",
+      };
+      return `权限模式：${label[mode] ?? mode}`;
+    },
+  ],
 ];
 
 export function projectSummary(summary: string | null | undefined): string {
