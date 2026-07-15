@@ -203,6 +203,13 @@ export type SessionJob = {
 export type SessionJobsPayload = {
   ok: boolean;
   running: number;
+  /**
+   * The session has at least one job in the registry and none of them are still running — i.e. the
+   * run SETTLED (finished cleanly) rather than vanished. Used to suppress the false "已中断" flash
+   * during the completion race, where the job flips terminal a beat before its final event lands.
+   * Absent (older server / no job record) → treated as unknown, falling back to the debounced check.
+   */
+  settled?: boolean;
   jobs: SessionJob[];
 };
 

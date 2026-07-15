@@ -70,6 +70,9 @@ export function useSessionEvents(
   );
   const [jobsRunning, setJobsRunning] = useState<number | null>(null);
   const [staleChecks, setStaleChecks] = useState(0);
+  // A settled run (job terminal in the registry, none running) is finishing cleanly, not dead — this
+  // suppresses the false "已中断" flash during the completion race. See deriveRunState.
+  const [settled, setSettled] = useState(false);
 
   useEffect(() => {
     if (!activeSession || !eventsLive) {
@@ -84,6 +87,7 @@ export function useSessionEvents(
         if (cancelled) return;
         const running = typeof payload.running === "number" ? payload.running : 0;
         setJobsRunning(running);
+        setSettled(Boolean(payload.settled));
         // Consecutive-miss counter, not a one-shot: a job that finishes normally drops out of the
         // running set a beat before its final event lands, and that beat must not read as death.
         setStaleChecks((seen) => (running > 0 ? 0 : seen + 1));
@@ -91,6 +95,7 @@ export function useSessionEvents(
         if (cancelled) return;
         // Could not ask ≠ the run died. Fall back to the event signal.
         setJobsRunning(null);
+        setSettled(false);
         setStaleChecks(0);
       }
     };
@@ -102,13 +107,14 @@ export function useSessionEvents(
     };
   }, [activeSession?.session_id, eventsLive]);
 
-  const runState = deriveRunState({ eventsLive, jobsRunning, staleChecks, waitingForUser });
+  const runState = deriveRunState({ eventsLive, jobsRunning, staleChecks, waitingForUser, settled });
   const isRunning = runState === "running";
   const interrupted = runState === "interrupted";
   const waiting = runState === "waiting";
 
   const resetRunProbe = useCallback(() => {
     setJobsRunning(null);
+    setSettled(false);
     setStaleChecks(0);
   }, []);
 

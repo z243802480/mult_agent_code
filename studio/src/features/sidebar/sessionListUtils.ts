@@ -74,12 +74,34 @@ export function groupSessionsByDate(
     .filter((group) => group.sessions.length > 0);
 }
 
+// Unpaired UTF-16 surrogates (a high surrogate not followed by a low one, or a low surrogate not
+// preceded by a high one). Valid astral characters — emoji, rare CJK — always come as a HIGH+LOW pair
+// and are preserved; only lone surrogates are matched. Legacy CLI sessions created from a mis-encoded
+// console carry these as Python surrogateescape bytes (\udc80–\udcff) serialized into session.json.
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
 export function cleanSessionTitle(value: string): string {
-  const text = value
+  // Sessions created from a mis-encoded console (a GBK terminal whose UTF-8 bytes were decoded with
+  // the wrong codepage) stored mojibake in session.json. Two shapes appear: (1) a good UTF-8 prefix
+  // with a mangled tail of lone surrogates / U+FFFD — e.g. "用一句话说明素数的定义�\udc80\udc82", where
+  // only the trailing "。" was lost; and (2) a wholly misdecoded string of stray diacritics — e.g.
+  // "ʵ��…", irrecoverable. U+FFFD and lone surrogates only ever come from a FAILED decode, so we strip
+  // them: shape (1) recovers its real Chinese cleanly; shape (2) collapses to the unnamed fallback.
+  // Studio-created sessions (BFF / browser, natively UTF-8) never hit this — this is a read-side guard
+  // for historical CLI data. Deeper cause is write-side (the CLI should pin UTF-8 when reading the goal).
+  // Strip first, then detect corruption by length delta — never `.test()` on a /g regex (its stateful
+  // lastIndex, on a module-level shared object, would corrupt alternate calls). `.replace(/g)` is stateless.
+  const stripped = value.replace(LONE_SURROGATE, "").replace(/�/g, "");
+  const hadCorruption = stripped.length !== value.length;
+  const text = stripped
     .replace(/\?{2,}/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  return text || "未命名会话";
+  if (!text) return "未命名会话";
+  // A decode failed AND nothing meaningful survived (no CJK ideograph, no ASCII word) → mojibake
+  // remnants, not a title. A title that still carries a real word is kept (partial salvage).
+  if (hadCorruption && !/[一-鿿]|[A-Za-z0-9]{2,}/.test(text)) return "未命名会话";
+  return text;
 }
 
 export function sessionInitial(title: string): string {

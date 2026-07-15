@@ -39,6 +39,35 @@ describe("deriveRunState", () => {
     ).toBe("interrupted");
   });
 
+  it("never reports interrupted for a SETTLED run, even past the debounce (completion race)", () => {
+    // THE FALSE-POSITIVE THIS FIXES: a cleanly-finished job flips terminal in the registry a beat
+    // before its final_answer event flushes to disk. In that window eventsLive is still true and
+    // jobsRunning is 0 — the debounced check would eventually mislabel it "已中断" (a crash). But the
+    // registry says the run SETTLED, not vanished, so it is finishing, not dead: report "running"
+    // (it flips to idle the instant the final event lands), never "interrupted".
+    expect(
+      deriveRunState({
+        eventsLive: true,
+        jobsRunning: 0,
+        staleChecks: STALE_CHECKS_BEFORE_DEAD,
+        settled: true,
+      }),
+    ).toBe("running");
+  });
+
+  it("still reports interrupted for a jobless registry (no settle evidence) past the debounce", () => {
+    // The distinction that keeps the fix honest: settled=false means there is NO job record at all
+    // (server restarted / pruned), which is a genuine lost-track — the interruption verdict stands.
+    expect(
+      deriveRunState({
+        eventsLive: true,
+        jobsRunning: 0,
+        staleChecks: STALE_CHECKS_BEFORE_DEAD,
+        settled: false,
+      }),
+    ).toBe("interrupted");
+  });
+
   it("reports waiting (not interrupted) when parked on a pending approval with no live job", () => {
     // THE BUG THIS FIXES: a run paused at an approval gate (e.g. the initial goal-start permission)
     // has no live subprocess, so the jobs-registry miss used to survive the debounce and label it

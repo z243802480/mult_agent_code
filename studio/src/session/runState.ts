@@ -35,6 +35,16 @@ export function deriveRunState(input: {
   /** How many consecutive probes have seen eventsLive && jobsRunning === 0. */
   staleChecks: number;
   /**
+   * The registry holds a job for this session and none are running — the run SETTLED (finished
+   * cleanly) rather than vanished. During the normal completion race a job flips terminal a beat
+   * before its final_answer event flushes to disk; in that window eventsLive is still true and
+   * jobsRunning is 0, which the debounced check would eventually mislabel "interrupted". A settled
+   * run is finishing, not dead, so we report "running" (it flips to idle the moment the final event
+   * lands) and NEVER "interrupted". Only a jobless registry (server restarted / pruned) is a genuine
+   * lost-track candidate. Absent (older server) → undefined, and the debounced check stands unchanged.
+   */
+  settled?: boolean;
+  /**
    * The loop is parked on a pending permission/decision gate, waiting for the user's input (e.g. the
    * initial goal-start approval, or a shell command that needs a one-off approval). This is a
    * DELIBERATE pause, not a dead process — so it must be reported as "waiting", never "interrupted"
@@ -44,10 +54,13 @@ export function deriveRunState(input: {
    */
   waitingForUser?: boolean;
 }): RunState {
-  const { eventsLive, jobsRunning, staleChecks, waitingForUser = false } = input;
+  const { eventsLive, jobsRunning, staleChecks, waitingForUser = false, settled = false } = input;
   if (!eventsLive) return "idle";
   if (waitingForUser) return "waiting";
   if (jobsRunning === null) return "running"; // unknown registry: trust the events, never fabricate death
   if (jobsRunning > 0) return "running";
+  // jobsRunning === 0: the run either settled cleanly (job terminal in the registry, final event a
+  // beat behind) or lost track (no job record at all). Only the latter can be an interruption.
+  if (settled) return "running"; // finishing — flips to idle when the final event lands, never "已中断"
   return staleChecks >= STALE_CHECKS_BEFORE_DEAD ? "interrupted" : "running";
 }

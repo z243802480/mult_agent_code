@@ -1,8 +1,20 @@
 import React from "react";
 import type { AnyRecord } from "../types";
+import { statusLabel } from "./Shared";
 
-function asRecord(value: unknown): AnyRecord {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as AnyRecord) : {};
+// Scheduling mode of a delegated worker. Backend keeps these English; the Chinese UI localizes them.
+const SCHEDULING_MODE_LABELS: Record<string, string> = {
+  parallel: "并行",
+  concurrent: "并发",
+  sequential: "串行",
+  serial: "串行",
+  isolated: "隔离",
+};
+
+export function schedulingModeLabel(mode: string): string {
+  const value = mode.trim();
+  if (!value) return "";
+  return SCHEDULING_MODE_LABELS[value] ?? value;
 }
 
 function asArray(value: unknown): unknown[] {
@@ -101,13 +113,13 @@ export function WorkerProgressBar({
               worker.worker_invocation_id ?? worker.worker_id ?? `worker-${index + 1}`,
             );
             const status = String(worker.result_status ?? worker.status ?? "unknown");
-            const mode = String(worker.scheduling_mode ?? "").trim();
+            const mode = schedulingModeLabel(String(worker.scheduling_mode ?? ""));
             return (
               <li key={id}>
                 <span>{id}</span>
-                <span>{String(worker.task_id ?? "task")}</span>
+                <span>{String(worker.task_id ?? "任务")}</span>
                 {mode && <span>{mode}</span>}
-                <span>{status}</span>
+                <span>{statusLabel(status)}</span>
               </li>
             );
           })}

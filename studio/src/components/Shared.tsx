@@ -1,6 +1,6 @@
 import React from "react";
 import { CheckCircle2, XCircle } from "lucide-react";
-import type { StudioEvent, OverviewPayload } from "../types";
+import type { OverviewPayload } from "../types";
 
 export function Metric({ label, value, tone }: { label: string; value: string; tone: string }) {
   return (
@@ -18,10 +18,32 @@ const STATUS_LABELS: Record<string, string> = {
   failed: "失败",
   blocked: "受阻",
   waiting_user: "待你处理",
+  // Worker/step statuses that reach Status via inspector panels (worker topology, workflow monitor)
+  // which cast past the StudioEvent["status"] type. Before these were mapped, an unlabeled value fell
+  // through to the raw English enum — an English word in a Chinese UI. Map every realistic value.
+  success: "成功",
+  pending: "等待中",
+  in_progress: "进行中",
+  cancelled: "已取消",
+  canceled: "已取消",
+  error: "错误",
+  skipped: "已跳过",
+  timeout: "超时",
+  ok: "正常",
+  done: "已完成",
+  unknown: "未知",
 };
 
-export function Status({ status }: { status: StudioEvent["status"] }) {
-  return <span className={`status ${status}`}>{STATUS_LABELS[status] ?? status}</span>;
+// Localize a worker/step/event status enum. Falls back to a neutral Chinese label rather than leaking
+// the raw English enum — losing granularity on a never-seen value beats an English word in a Chinese UI.
+export function statusLabel(status: string): string {
+  return STATUS_LABELS[status] ?? "未知";
+}
+
+// Accept a plain string: the inspector panels legitimately carry worker/step statuses beyond the
+// StudioEvent["status"] union (they cast to reach here). The className keeps the raw token for styling.
+export function Status({ status }: { status: string }) {
+  return <span className={`status ${status}`}>{statusLabel(status)}</span>;
 }
 
 export function Banner({ text, tone }: { text: string; tone: "good" | "bad" }) {

@@ -29,6 +29,21 @@ function formatEventTime(value: unknown): string {
   return date.toLocaleTimeString();
 }
 
+// Model tier an expert ran on. Backend keeps these English (strong/standard/…); the Chinese UI
+// localizes the chip so it reads "标准档", not "standard 档". Unknown values fall back to a raw label.
+const MODEL_TIER_LABELS: Record<string, string> = {
+  strong: "强档",
+  standard: "标准档",
+  medium: "中档",
+  cheap: "经济档",
+  weak: "轻档",
+  unknown: "未知档",
+};
+
+export function tierLabel(tier: string): string {
+  return MODEL_TIER_LABELS[tier] ?? `${tier} 档`;
+}
+
 // What an expert delegation actually did, read off the runtime's own cards (B4). `concurrent` is a
 // FACT the runtime stamps on every card of a fan-out batch — never inferred from card ordering, so a
 // serial delegation (no batch) simply shows no parallel chip.
@@ -212,7 +227,7 @@ export function NarrativeStep({
                 {sub.batchSize > 0 ? `并行 · ${sub.batchSize} 位专家` : "并行"}
               </span>
             )}
-            {sub.tier && <span className="capabilityChip">{sub.tier} 档</span>}
+            {sub.tier && <span className="capabilityChip">{tierLabel(sub.tier)}</span>}
             {sub.changedFiles.length > 0 && (
               <span className="capabilityChip">{sub.changedFiles.length} 个文件</span>
             )}

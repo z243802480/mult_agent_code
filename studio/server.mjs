@@ -611,9 +611,16 @@ function sessionJobsPayload(sessionId) {
       mode: job.mode || null,
       run_id: job.run_id || null,
     }));
+  const running = jobs.filter((job) => job.status === "running").length;
   return {
     ok: true,
-    running: jobs.filter((job) => job.status === "running").length,
+    running,
+    // A run whose job has reached a terminal status in the registry has SETTLED — the final event may
+    // still be a beat behind flushing to disk, but the process did NOT die unexpectedly. The client
+    // uses this to avoid crying "已中断" during the normal completion race (the job flips terminal a
+    // beat before its final_answer event lands). Absent any job record (server restarted / pruned past
+    // the grace window), settled is false and the client falls back to the debounced interruption check.
+    settled: jobs.length > 0 && running === 0,
     jobs,
   };
 }
