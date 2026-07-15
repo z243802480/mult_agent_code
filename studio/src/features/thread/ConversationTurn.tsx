@@ -5,6 +5,7 @@ import { NarrativeStep } from "../../components/NarrativeStep";
 import { PermissionCard } from "../../components/PermissionCard";
 import { ClampedOutput } from "../../components/ClampedOutput";
 import { AggregateDiffChip } from "../../components/AggregateDiffChip";
+import { InlineFileDiff } from "./InlineFileDiff";
 import { extractFileChangesFromSteps, aggregateFileChangeStats } from "../../fileChanges";
 import { LiveStream } from "./LiveStream";
 import { ToolCallCard } from "./ToolCallCard";
@@ -221,8 +222,9 @@ function TurnMiddle({
       )}
       {fileStats.files > 0 && (
         <div className="turnFileRowWrap">
-          {/* One "N files changed → review" entry point, not a scattered per-file list — changed
-              files are reviewed in the consolidated Changes pane (Cursor / Copilot pattern). */}
+          {/* Summary chip (review ALL at once in the consolidated Changes pane — Cursor / Copilot),
+              followed by per-file rows each expandable to its diff INLINE — read the edit right here
+              without a trip to the Inspector (the Claude Code / Cursor-in-chat affordance). */}
           <AggregateDiffChip
             files={fileStats.files}
             additions={fileStats.additions}
@@ -231,6 +233,17 @@ function TurnMiddle({
               turnIndex && onAggregateDiffClick ? () => onAggregateDiffClick(turnIndex) : undefined
             }
           />
+          <div className="turnInlineDiffs">
+            {fileChanges.map((change) => (
+              <InlineFileDiff
+                key={change.path}
+                path={change.path}
+                additions={change.additions}
+                deletions={change.deletions}
+                operation={change.operation}
+              />
+            ))}
+          </div>
         </div>
       )}
       {decisionSteps.length > 0 && (
@@ -644,11 +657,7 @@ export function ConversationTurn({
         </div>
       )}
       {verifiedPass && (
-        <div
-          className="turnVerifiedBadge"
-          role="note"
-          title="记录的测试/检查均已跑绿"
-        >
+        <div className="turnVerifiedBadge" role="note" title="记录的测试/检查均已跑绿">
           <Check size={12} />
           <span>已验证</span>
         </div>

@@ -81,6 +81,7 @@ describe("answer-led turns drop redundant narration prose (density: say it once)
     } as unknown as NarrativeStepType;
   }
 
+  type TurnProps = React.ComponentProps<typeof ConversationTurn>;
   const baseProps = {
     selected: null,
     onSelect: () => {},
@@ -88,26 +89,27 @@ describe("answer-led turns drop redundant narration prose (density: say it once)
     isLast: false,
     isRunning: false,
     expandSignal: null,
-  } as unknown as Record<string, unknown>;
+  } as unknown as Omit<TurnProps, "steps">;
+
+  const render = (steps: NarrativeStepType[]) =>
+    renderToStaticMarkup(React.createElement(ConversationTurn, { ...baseProps, steps }));
 
   const NARRATION = "创建 factorial 实现文件并运行 pytest 验证";
   const ANSWER = "我已实现 factorial 并通过全部测试";
 
   it("hides the per-step narration when the turn led with a final answer", () => {
-    const steps = [step("goal", "写 factorial"), step("narration", NARRATION), step("final", ANSWER)];
-    const html = renderToStaticMarkup(
-      React.createElement(ConversationTurn, { ...baseProps, steps }),
-    );
+    const html = render([
+      step("goal", "写 factorial"),
+      step("narration", NARRATION),
+      step("final", ANSWER),
+    ]);
     // The answer (the model's completed voice) stays; the narration restating it is dropped.
     expect(html).toContain(ANSWER);
     expect(html).not.toContain(NARRATION);
   });
 
   it("keeps the narration when there is NO final answer to supersede it", () => {
-    const steps = [step("goal", "写 factorial"), step("narration", NARRATION)];
-    const html = renderToStaticMarkup(
-      React.createElement(ConversationTurn, { ...baseProps, steps }),
-    );
+    const html = render([step("goal", "写 factorial"), step("narration", NARRATION)]);
     expect(html).toContain(NARRATION);
   });
 });

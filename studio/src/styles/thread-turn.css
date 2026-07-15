@@ -993,6 +993,76 @@
   cursor: default;
 }
 
+/* Per-file inline diff rows (Claude Code / Cursor-in-chat): read the edit where it happened. */
+.turnInlineDiffs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+.inlineFileDiff {
+  border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.18));
+  border-radius: var(--radius-sm, 5px);
+  overflow: hidden;
+  background: var(--surface-subtle, rgba(128, 128, 128, 0.03));
+}
+.inlineFileDiffHead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 5px 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text, inherit);
+}
+.inlineFileDiffHead:hover {
+  background: var(--surface-hover, rgba(128, 128, 128, 0.07));
+}
+.inlineFileDiffHead .chevron {
+  flex: none;
+  color: var(--text-muted);
+  transition: transform 0.12s ease;
+}
+.inlineFileDiffHead .chevron.open {
+  transform: rotate(90deg);
+}
+.inlineFileDiffOp {
+  flex: none;
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--surface-subtle, rgba(128, 128, 128, 0.1));
+}
+.inlineFileDiffPath {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.inlineFileDiffDelta {
+  flex: none;
+  display: inline-flex;
+  gap: 6px;
+  font-size: 11px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.inlineFileDiffBody {
+  border-top: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.14));
+  max-height: 360px;
+  overflow: auto;
+  padding: 2px 0;
+}
+.inlineFileDiffBody .muted {
+  padding: 8px 10px;
+  margin: 0;
+}
+
 .turnFinal.failed {
   background: var(--bad-subtle);
   border-left: 2px solid var(--bad);
