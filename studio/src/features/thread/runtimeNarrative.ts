@@ -130,7 +130,10 @@ export function turnCorrectnessVerdict(
   return null;
 }
 
-export function runVerificationHint(runDetail: RunDetailPayload | null): string {
+export function runVerificationHint(
+  runDetail: RunDetailPayload | null,
+  steps: { events: StudioEvent[] }[] = [],
+): string {
   const finalSummary = asRecord(runDetail?.final_report_summary);
   if (!Object.keys(finalSummary).length) return "";
   const run = asRecord(runDetail?.run);
@@ -140,7 +143,13 @@ export function runVerificationHint(runDetail: RunDetailPayload | null): string 
   // codes) as a `verification` progress event. When it passed, the work IS verified — don't nag the
   // user to run Review. When it explicitly failed, say so. Only fall through to the review-status
   // heuristic when no executable verdict was recorded (nothing runnable ran).
-  const verdict = latestCorrectnessVerdict(runDetail);
+  //
+  // Read the verdict TURN-scoped, exactly like the green "验证通过" badge (ConversationTurn): a resumed
+  // turn that did no verification of its own must not inherit an earlier turn's run-global pass and
+  // thereby suppress this note — otherwise such a turn shows neither the badge nor the nag and reads
+  // as "done and verified" with zero verification evidence. Fall through to the heuristic when this
+  // turn recorded no verdict.
+  const verdict = turnCorrectnessVerdict(steps);
   if (verdict === "pass") return "";
   if (verdict === "fail") {
     return "验证未通过——记录的测试/检查失败了。接受前请先查看。";

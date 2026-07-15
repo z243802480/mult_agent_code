@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable
 import json
@@ -124,7 +124,22 @@ def _explicit_mode_route(
     capability_id = mapping.get(mode, "chat_answer")
     capability = catalog.get(capability_id)
     if capability is None or not capability.available:
-        return _conservative_fallback(catalog)
+        # The user's explicit mode is unavailable in the CURRENT workspace state (e.g. "resume" with
+        # no in-progress run, "review"/"accept" before the run is ready). Fall back to a safe readonly
+        # route, but attribute it to the real cause. Reusing _conservative_fallback here would record
+        # "Strong orchestration router unavailable" — a lie that sends anyone reading
+        # orchestration_routes.jsonl to debug model/provider health instead of the workspace state.
+        blocked_reason = (
+            capability.unavailable_reason
+            if capability is not None and capability.unavailable_reason
+            else "not available in the current workspace state"
+        )
+        fallback = _conservative_fallback(catalog)
+        return replace(
+            fallback,
+            reason=f"Explicit mode `{mode}` is {blocked_reason}; falling back to {fallback.capability_id}.",
+            source="explicit_unavailable_fallback",
+        )
     return OrchestrationRouteResult(
         capability_id=capability.capability_id,
         studio_mode=capability.studio_mode,

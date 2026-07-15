@@ -820,17 +820,28 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options 
       return;
     }
     rememberJobRunId(jobId, extractRunId(stdout) || extractRunId(stderr));
-    job.status = code === 0 ? "completed" : "failed";
-    liveJobs.set(jobId, job);
     const completedRunId = job.run_id || extractRunId(stdout) || extractRunId(stderr);
+    const userProgressRows = completedRunId ? await readRunUserProgress(completedRunId) : [];
+    const mainFinal = latestMainFinalEvent(userProgressRows);
+    // A zero exit code only means the process did not crash — NOT that the goal was met. The `run`
+    // CLI returns 0 for blocked / paused / unverified runs too (it prints the recap and returns
+    // without keying the exit code off run status). The runtime's own conclusion event carries the
+    // real terminal status (run_command.py emits it as `status=run_status`); trust that over the exit
+    // code so a blocked or paused run is never stamped "completed" on the jobs badge or the tool_end.
+    const runTerminalStatus = String(mainFinal?.status || "").toLowerCase();
+    const processFailed = code !== 0;
+    const runIncomplete =
+      !processFailed && runTerminalStatus !== "" && runTerminalStatus !== "completed";
+    job.status = processFailed ? "failed" : runIncomplete ? runTerminalStatus : "completed";
+    liveJobs.set(jobId, job);
+    const needsAttention = processFailed || runIncomplete;
     void appendEvent(sessionId, {
       type: "tool_end",
       status: job.status,
-      title: code === 0 ? "Processing completed" : "Processing needs attention",
-      summary:
-        code === 0
-          ? "Processing completed; preparing the result."
-          : "The task needs attention; preparing the reason and next step.",
+      title: needsAttention ? "Processing needs attention" : "Processing completed",
+      summary: needsAttention
+        ? "The task needs attention; preparing the reason and next step."
+        : "Processing completed; preparing the result.",
       command,
       display_level: "inspector",
       run_id: completedRunId || undefined,
@@ -839,8 +850,6 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options 
 ${stderr}`
         : stdout.slice(-4000),
     });
-    const userProgressRows = completedRunId ? await readRunUserProgress(completedRunId) : [];
-    const mainFinal = latestMainFinalEvent(userProgressRows);
     if (mainFinal) {
       const mapped = userProgressToStudioEvent(mainFinal, sessionId, completedRunId || "");
       // Keep the namespaced event_id (see live-tail note above) so this persisted final dedups
@@ -852,6 +861,9 @@ ${stderr}`
     } else {
       // ADR-0012: when the runtime emitted no main-thread conversational final, do NOT synthesize the
       // diagnostic report as the reply. Show an honest short line and point to the Inspector for detail.
+      // And with no conclusion event we have no run status either — a bare exit-0 is NOT proof the goal
+      // was met, so the copy must not assert "Result prepared / completed". Say the run finished and
+      // point to the Inspector; the truthful verdict, if any, lives there.
       const honest =
         code === 0
           ? "Finished. Open the Inspector to review what changed and the verification details."
@@ -860,10 +872,10 @@ ${stderr}`
       void appendEvent(sessionId, {
         type: code === 0 ? "final_answer" : "error",
         status: code === 0 ? "completed" : "failed",
-        title: code === 0 ? "Result" : "Needs attention",
+        title: code === 0 ? "Finished" : "Needs attention",
         summary:
           code === 0
-            ? "Result prepared."
+            ? "The run finished — open the Inspector for what changed and verification."
             : "The task needs attention; here is the reason and suggestion.",
         phase: code === 0 ? "result" : "review",
         display_level: "main",

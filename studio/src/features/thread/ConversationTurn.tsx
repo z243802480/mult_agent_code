@@ -491,7 +491,7 @@ export function ConversationTurn({
   // Honesty: /run reports lifecycle "completed" but does not inline-run review, so qualify the
   // conclusion with a plain "done but not yet verified" note when the run is unverified.
   const unverifiedHint =
-    responseStep && isLast && !isRunning ? runVerificationHint(runDetail ?? null) : "";
+    responseStep && isLast && !isRunning ? runVerificationHint(runDetail ?? null, steps) : "";
   // Symmetry: when the /run loop recorded a passing executable verdict, affirm it explicitly. A bare
   // "completed" with the nag merely suppressed leaves the user unsure verification even happened —
   // the positive badge closes the "completed ≠ verified" gap honestly.

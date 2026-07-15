@@ -1401,6 +1401,13 @@ class ExecuteCommand:
             status = "blocked"
             exit_reason = "max_rounds"
             summary = "模型驱动循环撞上迭代保险丝（可 resume），本轮尚未收尾。"
+            # Don't let "ran out of rounds" hide WHY it isn't done. If the completion contract also has
+            # a hard violation (e.g. verification still failing), name it — otherwise the user resumes
+            # believing a few more rounds will finish work that is actually blocked on a failing check.
+            # exit_reason stays "max_rounds" so the soft-fuse still offers resume; only the note gets
+            # honest about the real cause.
+            if contract.violations:
+                summary += "（未满足的完成契约：" + "；".join(contract.violations) + "）"
         else:
             status = "blocked"
             exit_reason = "tool_failed"

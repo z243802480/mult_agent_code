@@ -107,6 +107,10 @@ export function createChatRoutes({
       route.reason = orchestrated.reason || route.reason;
       route.source = orchestrated.source || route.source;
       route.capability_id = orchestrated.capability_id || null;
+      // Confidence describes the FINAL decision. Leaving the base router's confidence here (e.g. the
+      // "medium" of a run guess) would let the recomputed audit report a confidence that belongs to
+      // the mode the override just discarded — the same stale-snapshot shape this override guards.
+      route.confidence = orchestrated.confidence || "high";
       if (chatHandoff) {
         route.chat_execute_handoff = true;
         route.reason = orchestrated.reason
