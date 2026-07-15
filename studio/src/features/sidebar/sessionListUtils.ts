@@ -80,27 +80,44 @@ export function groupSessionsByDate(
 // console carry these as Python surrogateescape bytes (\udc80–\udcff) serialized into session.json.
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
 
+// Letters from scripts unrelated to a Chinese/English title — Latin-ext & IPA, spacing modifiers,
+// Greek/Coptic, Cyrillic, Armenian, Hebrew, Arabic. When a UTF-8 goal is wholesale-misdecoded through
+// the wrong codepage, the bytes that DON'T become U+FFFD scatter into these blocks. A genuine title
+// never mixes them into Chinese, so two or more surviving here is a reliable "this is debris" signal.
+const STRAY_SCRIPT = /[À-ɏʰ-˿Ͱ-ۿ]/g;
+
 export function cleanSessionTitle(value: string): string {
   // Sessions created from a mis-encoded console (a GBK terminal whose UTF-8 bytes were decoded with
   // the wrong codepage) stored mojibake in session.json. Two shapes appear: (1) a good UTF-8 prefix
   // with a mangled tail of lone surrogates / U+FFFD — e.g. "用一句话说明素数的定义�\udc80\udc82", where
-  // only the trailing "。" was lost; and (2) a wholly misdecoded string of stray diacritics — e.g.
-  // "ʵ��…", irrecoverable. U+FFFD and lone surrogates only ever come from a FAILED decode, so we strip
-  // them: shape (1) recovers its real Chinese cleanly; shape (2) collapses to the unnamed fallback.
-  // Studio-created sessions (BFF / browser, natively UTF-8) never hit this — this is a read-side guard
-  // for historical CLI data. Deeper cause is write-side (the CLI should pin UTF-8 when reading the goal).
-  // Strip first, then detect corruption by length delta — never `.test()` on a /g regex (its stateful
-  // lastIndex, on a module-level shared object, would corrupt alternate calls). `.replace(/g)` is stateless.
+  // only the trailing "。" was lost; and (2) a wholly misdecoded string — e.g. the real
+  // "…回答:1+1等于几?" landing as "��仰�ش�:1+1�…", where the U+FFFD strip
+  // still leaves a stray ideograph ("仰") plus scattered IPA/Cyrillic/Arabic letters. U+FFFD and lone
+  // surrogates only ever come from a FAILED decode, so we strip them: shape (1) recovers its Chinese
+  // cleanly; shape (2) must collapse to the unnamed fallback. Studio-created sessions (BFF / browser,
+  // natively UTF-8) never hit this — verified end-to-end: a Chinese title POSTed via fetch round-trips
+  // byte-perfect. This is a read-side guard for historical CLI/curl data; the deeper write-side cause
+  // is the CLI decoding a non-UTF-8 console goal, out of the browser path.
+  // Strip first — never `.test()`/`.exec()` a shared /g regex for a boolean (its stateful lastIndex
+  // would corrupt alternate calls); `.replace()` and `.match()` don't carry lastIndex across calls.
   const stripped = value.replace(LONE_SURROGATE, "").replace(/�/g, "");
-  const hadCorruption = stripped.length !== value.length;
+  const removed = value.length - stripped.length;
   const text = stripped
     .replace(/\?{2,}/g, " ")
     .replace(/\s+/g, " ")
     .trim();
   if (!text) return "未命名会话";
-  // A decode failed AND nothing meaningful survived (no CJK ideograph, no ASCII word) → mojibake
-  // remnants, not a title. A title that still carries a real word is kept (partial salvage).
-  if (hadCorruption && !/[一-鿿]|[A-Za-z0-9]{2,}/.test(text)) return "未命名会话";
+  // No decode failure → a genuine title (this is the path every Studio/browser session takes).
+  if (removed === 0) return text;
+  // A decode DID fail. Decide salvage vs fallback by WHAT survived, not by how much was lost — a long
+  // valid Chinese prefix minus its trailing char is worth keeping, but a wholesale misdecode leaves
+  // only debris: a couple of bytes that happened to land on valid codepoints. Fall back when nothing
+  // readable (CJK ideograph / ASCII word char) survived, or when 2+ stray foreign-script letters did
+  // — the fingerprint of shape (2) that the old "any CJK survived?" check let through (a coincidental
+  // "仰" kept the whole wreck on screen).
+  const readable = (text.match(/[一-鿿A-Za-z0-9]/g) || []).length;
+  const stray = (text.match(STRAY_SCRIPT) || []).length;
+  if (readable === 0 || stray >= 2) return "未命名会话";
   return text;
 }
 
@@ -111,7 +128,13 @@ export function sessionInitial(title: string): string {
 }
 
 export function sessionPreview(session: StudioSession): string {
-  return String(session.goal_preview ?? "").trim();
+  const raw = String(session.goal_preview ?? "").trim();
+  if (!raw) return "";
+  // goal_preview is mojibake-prone the same way title is (both come from the same goal text). Run it
+  // through the same guard so a corrupted preview doesn't leak debris into the subtitle / tooltip /
+  // accessible name — when it cleans to the unnamed fallback, show nothing rather than the wreck.
+  const cleaned = cleanSessionTitle(raw);
+  return cleaned === "未命名会话" ? "" : cleaned;
 }
 
 export function sessionHint(session: StudioSession, title: string, preview: string): string {
