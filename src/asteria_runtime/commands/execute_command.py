@@ -28,7 +28,12 @@ from asteria_runtime.core.model_driven_turn import (
     TurnEvent,
     run_model_driven_turn,
 )
-from asteria_runtime.core.run_control import clear_pause, pause_reason, pause_requested
+from asteria_runtime.core.run_control import (
+    clear_pause,
+    pause_reason,
+    pause_requested,
+    take_steer,
+)
 from asteria_runtime.core.agent_run_graph import AgentRunGraphBuilder
 from asteria_runtime.core.agent_harness import load_harness_observations, load_raw_tool_observations
 from asteria_runtime.core.agent_loop_run_summary import (
@@ -449,6 +454,16 @@ class ExecuteCommand:
         return bool(
             agent_loop.get("auto_repair", autonomy_rings_default_on(policy.get("permission_mode")))
         )
+
+    def _mid_run_steer_enabled(self, policy: dict) -> bool:
+        # ADR-0029 ①: whether a user instruction dropped into the run dir (steer.request) is injected
+        # at the next turn boundary. Default OFF — behaviour is byte-identical to today when disabled
+        # (the signal is simply never read, so the Studio queue-for-after path stands). This is NOT an
+        # autonomy ring (it delivers the user's OWN words, no self-driving), so it does not bind to the
+        # permission mode; it is an explicit opt-in flag.
+        raw_agent_loop = policy.get("agent_loop")
+        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
+        return bool(agent_loop.get("mid_run_steer", False))
 
     def _max_repair_attempts_per_task(self, policy: dict) -> int:
         budgets = resolve_budget_limits(policy)
@@ -1304,6 +1319,14 @@ class ExecuteCommand:
             pause_requested=(
                 (lambda: pause_requested(context.root / ".asteria" / "runs" / str(context.run_id)))
                 if context.run_id
+                else None
+            ),
+            # 中途 steer（ADR-0029 ①）：与 pause 同一投递语义——外部进程（Studio / CLI）把用户指令写进
+            # run 目录，运行中的 loop 只在回合边界读并清、经 messages.append(role="user") 注入。回调注入，
+            # 循环不碰文件系统。flag 默认关时不注入 → 逐字节同今日（steer.request 不被读，前端排队照旧）。
+            take_steer=(
+                (lambda: take_steer(context.root / ".asteria" / "runs" / str(context.run_id)))
+                if (context.run_id and self._mid_run_steer_enabled(context.policy))
                 else None
             ),
             # Cost attribution (B7): the worker tree counts a task's model calls by matching

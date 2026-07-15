@@ -75,7 +75,7 @@ class ChatClient(Protocol):
 class TurnEvent:
     """一步循环产生的可观察事件（narration/工具观察/完成/保险丝/人审暂停），供上层投影到主线程。"""
 
-    kind: str  # "narration" | "tool_observation" | "final" | "fuse" | "paused"
+    kind: str  # "narration" | "tool_observation" | "final" | "fuse" | "paused" | "steer"
     iteration: int
     text: str = ""
     observations: list[ToolObservation] = field(default_factory=list)
@@ -125,6 +125,7 @@ def run_model_driven_turn(
     hook: Callable[[str, dict], TurnControl] | None = None,
     approval_gate: Callable[[list[dict]], Any] | None = None,
     pause_requested: Callable[[], bool] | None = None,
+    take_steer: Callable[[], list[str]] | None = None,
     call_attribution: dict[str, Any] | None = None,
 ) -> ModelDrivenTurnResult:
     """跑一条模型驱动的循环，直到模型收尾或撞上保险丝。
@@ -176,6 +177,15 @@ def run_model_driven_turn(
                 observations=all_observations,
                 pending_decision=None,  # 用户暂停 ≠ 待人批决策
             )
+        # 用户中途转向（steer, ADR-0029 ①）：把用户在运行中说的话，作为一条 user-turn 上下文喂给模型
+        # 下一次输入——与下面 turn_start hook 完全同一条注入通路（messages.append role="user"）。
+        # ADR-0016：注入的是**用户原话**，模型自己决定怎么采纳（认知归模型）；harness 只在**回合边界**
+        # 投递（边界归 harness），绝不解析语义、不合成 next_action、不 mid-tool-batch。读并清由回调完成，
+        # 循环不碰文件系统（与 pause 同）。未注入回调时行为逐字节不变。
+        if take_steer is not None:
+            for instruction in take_steer():
+                messages.append(ChatMessage(role="user", content=instruction))
+                emit(TurnEvent(kind="steer", iteration=iteration, text=instruction))
         # turn_start control hook: the methodology glue may inject a reminder (available skills +
         # current todo + "verify before finishing") as the model's next input. Density is the hook's
         # call (tunable by tier); the loop just injects whatever it returns. Boundary, not cognition.

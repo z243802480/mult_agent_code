@@ -851,6 +851,16 @@ def build_parser() -> argparse.ArgumentParser:
     pause_parser.add_argument("--root", default=".", help="Workspace root path")
     add_session_id_argument(pause_parser, "Session id; defaults to current session")
 
+    steer_parser = subcommands.add_parser(
+        "steer",
+        aliases=["/steer"],
+        help="Hand a running run a new instruction; it picks it up at its next turn boundary and carries on",
+        epilog=SLASH_ALIAS_HELP,
+    )
+    steer_parser.add_argument("instruction", help="What to tell the running run (its own words)")
+    steer_parser.add_argument("--root", default=".", help="Workspace root path")
+    add_session_id_argument(steer_parser, "Session id; defaults to current session")
+
     resume_parser = subcommands.add_parser(
         "resume",
         aliases=["/resume"],
@@ -2032,6 +2042,28 @@ def _run_cli() -> None:
         # 我们绝不半跑一批工具。如果它已经结束了,信号就只是躺在那儿,由 resume 清掉。
         print(f"Pause requested for {run_id}. It will stop at the next turn boundary.")
         print("Resume with `asteria resume` — completed work is kept.")
+        return
+
+    if command == "steer":
+        from asteria_runtime.core.run_control import request_steer
+        from asteria_runtime.storage.run_store import RunStore
+        from asteria_runtime.storage.schema_validator import SchemaValidator
+
+        agent_dir = Path(args.root) / ".asteria"
+        run_store = RunStore(
+            agent_dir, SchemaValidator(Path(__file__).resolve().parents[2] / "schemas")
+        )
+        run_id = args.session_id or run_store.current_session_id()
+        if not run_id:
+            print("No run found. Run `asteria run \"goal\"` first.")
+            raise SystemExit(1)
+        if request_steer(run_store.run_dir(run_id), args.instruction) is None:
+            print("Nothing to steer with — the instruction was empty.")
+            raise SystemExit(1)
+        # 诚实措辞:这是一条给运行中 run 的**补充指令**,在下一个回合边界(上一批工具跑完之后)才会
+        # 被带给模型——绝不打断正在跑的一批工具。生效需 `agent_loop.mid_run_steer` 开;关着时信号只是
+        # 躺在那儿。是否采纳由模型自己决定(ADR-0016:注入用户原话,认知归模型)。
+        print(f"Steer queued for {run_id}. The run will see it at its next turn boundary.")
         return
 
     if command == "resume":

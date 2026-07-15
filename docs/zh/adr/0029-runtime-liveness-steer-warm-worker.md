@@ -1,6 +1,6 @@
 # ADR-0029 · Runtime 活起来 = 中途 steer(turn 边界注入)+ warm worker(消冷启)
 
-- 状态：**Partially Accepted（2026-07-15）。机制②(warm worker) 已落地**（changelog 1.2.71·flag `ASTERIA_STUDIO_WARM_WORKER`·默认 OFF·冷路回落·studio_worker.py + server.mjs `finalizeRuntimeJob`/`dispatchWarmRun`·benchmark 均值 320ms/run 省·worker 4 单测 + 跨进程 wire 验）。**机制①(steer)仍 Proposed**——触 ADR-0016 认知环，**尚未获授权实现**。
+- 状态：**Partially Accepted（2026-07-15）。机制②(warm worker) 已落地**（changelog 1.2.71·flag `ASTERIA_STUDIO_WARM_WORKER`·默认 OFF·冷路回落·studio_worker.py + server.mjs `finalizeRuntimeJob`/`dispatchWarmRun`·benchmark 均值 320ms/run 省·worker 4 单测 + 跨进程 wire 验）。**机制①(steer) 后端环 + CLI 已落地**（用户 2026-07-15 授权触环·changelog 1.2.72·`run_control.request_steer/take_steer` + `model_driven_turn` turn 边界注入 + `execute_command` flag 门控 `agent_loop.mid_run_steer`[默认 OFF] + `asteria steer` 命令·9 测证 turn 边界/读并清/flag 关逐字节不变）。**Studio BFF+Composer 现在插话 UI 待接（slice 2）。**
 - 关联：[[0016]] 认知归模型/边界归 harness · [[0027]] 软保险丝续跑环(同为 turn 边界护栏族) · 记忆 `low-burden-set-and-forget-ux` · `claude-code-parity-teardown`（前端对标拆解·#3 即时感物理天花板）· `mainarea-is-agent-loop-view`
 - 授权：用户 2026-07-15 选「两条并行」= 授权**起草本提案**(纯文档)。**触环实现(机制①)待本 ADR 审定后单独授权**；warm worker(机制②)在环外，审定后即可落地。
 
