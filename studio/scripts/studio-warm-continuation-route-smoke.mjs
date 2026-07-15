@@ -1,5 +1,13 @@
 /**
- * Studio warm continuation route smoke — accepted workspace should map follow-up run → continue-session.
+ * Studio warm-workspace routing smoke — a NEW goal in an accepted workspace must start a FRESH run,
+ * NOT hijack the previous task via the old `--continue-session` shortcut.
+ *
+ * This smoke used to assert the opposite (`command.includes("--continue-session")`). That shortcut
+ * skipped GoalSpec/Plan and reused the last task's scope, so an unrelated new goal got misrouted into
+ * the finished task and thrashed/blocked — the exact bug that was later fixed (chat-routes.mjs
+ * orchestrationCommandFor / resolveStudioExecutionRouteFallback: a completed/accepted run is idle, so
+ * a new message is a new goal planned cold). The smoke now guards the FIX instead of the defect.
+ * (Genuinely in-progress runs still resume via the separate "resume" path — not exercised here.)
  */
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
@@ -64,17 +72,22 @@ try {
   );
   const command = toolStart?.command || [];
   assert(
-    command.includes("--continue-session"),
-    `expected warm route, got ${JSON.stringify(command)}`,
+    command.includes("run"),
+    `a new goal should start a fresh run, got ${JSON.stringify(command)}`,
+  );
+  assert(
+    !command.includes("--continue-session"),
+    `a new goal must NOT hijack the finished task via --continue-session, got ${JSON.stringify(command)}`,
+  );
+  assert(
+    command[command.length - 1] === "给 greet_cli 增加 --quiet 参数并补测试",
+    `the fresh run must carry the new goal verbatim, got ${JSON.stringify(command)}`,
   );
 
   const routeEvent = events.find((event) => event.type === "intent_route");
-  assert(
-    /continue-session|跳过.*plan|warm/i.test(String(routeEvent?.summary || "")),
-    "route reason should mention warm continuation",
-  );
+  assert(Boolean(routeEvent), "an intent_route audit event should be emitted");
 
-  console.log("Studio warm continuation route smoke passed");
+  console.log("Studio warm-workspace fresh-run route smoke passed");
 } finally {
   server.kill("SIGTERM");
   await new Promise((resolve) => setTimeout(resolve, 200));

@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:smokes": "node scripts/run-smokes.mjs",
+    "test:smokes:all": "node scripts/run-smokes.mjs --with-model",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,css}\"",

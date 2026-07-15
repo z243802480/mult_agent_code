@@ -70,6 +70,13 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      # The ~33 hermetic Studio smokes (scripts/run-smokes.mjs). They used to exist but never run in
+      # CI, so the chronically-red ones rotted unnoticed. The runner also fails if any smoke on disk is
+      # unclassified, so a new one can't silently escape coverage. Real-model smokes are held out here
+      # (no provider key in CI) and run via `npm run test:smokes:all` with a key.
+      - name: Studio smokes
+        run: npm run test:smokes
+
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 

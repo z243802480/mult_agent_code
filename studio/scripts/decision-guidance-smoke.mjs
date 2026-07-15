@@ -12,15 +12,21 @@ const runtime = readFileSync(
   "utf8",
 );
 
+// Assert the structural decision-routing keys — the kinds, option ids and exit reasons that decide
+// WHICH hint fires — not the human copy of the hints themselves. The list used to include English
+// sentences ("Allow the expanded scope", "A step failed", "Approve this command once"); those went
+// red the instant the hints were localized to Chinese, a pure false alarm since the routing was
+// untouched. Structural identifiers are locale-independent and are what actually must survive.
 const required = [
   "preferredDecisionOptionId",
   "decisionHint",
   "pendingDecisionSummary",
   "runtimeNextStepSummary",
   "review_contract",
-  "Allow the expanded scope",
-  "A step failed",
-  "Approve this command once",
+  "execution_policy_approval",
+  "approve_once",
+  "runtime_request",
+  "replan_decision",
   "repair_limit",
   "replan_budget_exhausted",
 ];

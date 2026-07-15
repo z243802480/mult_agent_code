@@ -14,7 +14,10 @@ const app = readFileSync(path.join(root, "src/App.tsx"), "utf8");
 const thread = readFileSync(path.join(root, "src/features/thread/Thread.tsx"), "utf8");
 
 assert.match(keyboard, /Semicolon|key === ";"/, "useStudioKeyboard must bind Ctrl+;");
-assert.match(sideChat, /Quick ask/, "SideChatPanel must expose quick ask UI");
+// Assert the structural dock class, not the visible label. This used to read /Quick ask/, which
+// went red the moment the UI was localized (the copy is now "快速提问") even though nothing about the
+// side-chat wiring broke — a false alarm. The className is what the rest of the surface targets.
+assert.match(sideChat, /sideChatDock/, "SideChatPanel must render the side-chat dock");
 assert.match(sideUtils, /display_level === "side"/, "side chat events must use display_level side");
 assert.match(server, /channel === "side"/, "server must route side channel to off-thread chat");
 assert.match(app, /sendSideAsk/, "App must wire side ask send");
