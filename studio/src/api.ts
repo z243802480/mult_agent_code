@@ -125,6 +125,15 @@ export const api = {
     requestJson<AnyRecord>(`/api/studio/sessions/${encodeURIComponent(sessionId)}/pause`, {
       method: "POST",
     }),
+  // Steer ≠ Pause: don't stop the run — hand it a new instruction it picks up at its next turn
+  // boundary and carries on (ADR-0029 ①). Only offered when the server reports mid_run_steer enabled.
+  steerSession: (sessionId: string, instruction: string) =>
+    requestJson<AnyRecord>(`/api/studio/sessions/${encodeURIComponent(sessionId)}/steer`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ instruction }),
+    }),
+  health: () => requestJson<{ ok: boolean; mid_run_steer?: boolean }>("/api/health"),
   // The job registry is the AUTHORITY on whether work is still running (the event log only says
   // what was written, not whether the process is alive). See useRunState.
   sessionJobs: (sessionId: string) =>

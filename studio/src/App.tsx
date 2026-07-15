@@ -61,6 +61,16 @@ export function App() {
     bootstrap.setSessions,
   );
 
+  // ADR-0029 ①: whether the server has mid-run steer enabled. Gates the Composer's "insert now"
+  // behaviour so we only promise mid-run delivery when the runtime will actually honour it.
+  const [midRunSteer, setMidRunSteer] = useState(false);
+  useEffect(() => {
+    api
+      .health()
+      .then((h) => setMidRunSteer(Boolean(h?.mid_run_steer)))
+      .catch(() => setMidRunSteer(false));
+  }, []);
+
   const runEvidence = useRunEvidence(sessionEvents.events, () => {
     void reviewRef.current?.refreshGitStatus();
   });
@@ -422,6 +432,8 @@ export function App() {
           runStateKnown={sessionEvents.runStateKnown}
           onStop={sessionEvents.stopRun}
           onPause={sessionEvents.pauseRun}
+          onSteer={sessionEvents.steerRun}
+          midRunSteer={midRunSteer}
           files={bootstrap.files}
         />
       </main>

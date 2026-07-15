@@ -107,7 +107,13 @@ export function useSessionEvents(
     };
   }, [activeSession?.session_id, eventsLive]);
 
-  const runState = deriveRunState({ eventsLive, jobsRunning, staleChecks, waitingForUser, settled });
+  const runState = deriveRunState({
+    eventsLive,
+    jobsRunning,
+    staleChecks,
+    waitingForUser,
+    settled,
+  });
   const isRunning = runState === "running";
   const interrupted = runState === "interrupted";
   const waiting = runState === "waiting";
@@ -204,6 +210,22 @@ export function useSessionEvents(
     }
   }
 
+  async function steerRun(instruction: string) {
+    if (!activeSession) return;
+    try {
+      const result = await api.steerSession(activeSession.session_id, instruction);
+      if (result?.ok) {
+        // Honest wording: like pause, this is delivered at a turn boundary, not this instant. The
+        // running step finishes first; the model sees the instruction on its next turn.
+        toast.success("已发给运行中的任务——它会在下一轮开始时收到。");
+      } else {
+        toast.error(String(result?.error || "无法发送——请重试。"));
+      }
+    } catch {
+      toast.error("无法发送——请重试。");
+    }
+  }
+
   async function runRuntimeAction(nextAction: string): Promise<AnyRecord> {
     if (!activeSession) return { ok: false };
     let result: AnyRecord;
@@ -295,6 +317,7 @@ export function useSessionEvents(
     permitJob,
     stopRun,
     pauseRun,
+    steerRun,
     runRuntimeAction,
     resolveDecision,
     answerDecision,

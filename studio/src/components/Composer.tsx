@@ -81,6 +81,8 @@ export function Composer({
   runStateKnown = true,
   onStop,
   onPause,
+  onSteer,
+  midRunSteer = false,
   files = [],
   sessionId,
 }: {
@@ -102,6 +104,10 @@ export function Composer({
   onStop?: () => Promise<void> | void;
   /** Cooperative pause: the run stops at its next turn boundary and can be resumed. */
   onPause?: () => Promise<void> | void;
+  /** Mid-run steer (ADR-0029 ①): deliver this message to the running run at its next turn boundary. */
+  onSteer?: (message: string) => Promise<void> | void;
+  /** True when the server has mid-run steer enabled — gates the "insert now" behaviour honestly. */
+  midRunSteer?: boolean;
   files?: WorkspaceFile[];
   /** Scopes the persisted queue so lined-up messages belong to the session they were typed in. */
   sessionId?: string;
@@ -190,9 +196,23 @@ export function Composer({
     event.preventDefault();
     const text = message.trim();
     if (!text) return;
-    // Run in flight (main thread): enqueue instead of sending, so the user can line up the next
-    // instruction without waiting. Side-ask questions are off-thread and send immediately.
+    // Run in flight (main thread). Two honest options depending on the server capability:
+    //  - mid-run steer ON: deliver the message to the running run NOW (it picks it up at its next
+    //    turn boundary and carries on) — the mainstream "type while it works" behaviour.
+    //  - OFF (default): queue it and auto-send after the run ends. We never claim to inject mid-step
+    //    when the runtime can't honour it.
+    // Side-ask questions are off-thread and always send immediately.
     if (isRunning && !sideAsk) {
+      if (midRunSteer && onSteer) {
+        setMessage("");
+        setSending(true);
+        try {
+          await onSteer(text);
+        } finally {
+          setSending(false);
+        }
+        return;
+      }
       setQueue((q) => [...q, text]);
       setMessage("");
       return;
@@ -271,7 +291,9 @@ export function Composer({
   const placeholder = sideAsk
     ? "快速提问 — 不占主线程，带会话上下文（Enter 发送）…"
     : isRunning
-      ? "排一条后续消息…（运行结束后发送 · Esc 停止）"
+      ? midRunSteer && onSteer
+        ? "插一句给运行中的任务…（下一轮生效 · Esc 停止）"
+        : "排一条后续消息…（运行结束后发送 · Esc 停止）"
       : MODE_PLACEHOLDERS[mode];
   const slashOpen = message.trim() === "/" || /^\/[a-z]*$/i.test(message.trim());
   const slashQuery = message.trim().toLowerCase();

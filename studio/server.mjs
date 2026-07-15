@@ -158,7 +158,14 @@ createServer(async (request, response) => {
 
 async function handleApi(request, response, url) {
   if (request.method === "GET" && url.pathname === "/api/health") {
-    sendJson(response, 200, { ok: true, workspace, runtimeRoot, python, moduleName });
+    sendJson(response, 200, {
+      ok: true,
+      workspace,
+      runtimeRoot,
+      python,
+      moduleName,
+      mid_run_steer: MID_RUN_STEER_ENABLED,
+    });
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/studio/sessions") {
@@ -286,6 +293,12 @@ async function handleApi(request, response, url) {
   if (request.method === "POST" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/stop$/)) {
     const sessionId = decodeURIComponent(url.pathname.split("/").at(-2) || "");
     sendJson(response, 200, stopSessionJobs(sessionId));
+    return;
+  }
+  if (request.method === "POST" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/steer$/)) {
+    const sessionId = decodeURIComponent(url.pathname.split("/").at(-2) || "");
+    const body = await readRequestJson(request);
+    sendJson(response, 200, await steerSessionRun(sessionId, body?.instruction));
     return;
   }
   if (
@@ -690,6 +703,56 @@ async function pauseSessionRun(sessionId) {
   return { ok: true, paused, at: "next turn boundary" };
 }
 
+// ADR-0029 ①: hand a running run a new instruction. Same run-dir targeting as pause (a live job's
+// run_id is null until it finishes, so fall back to the workspace's current run). We APPEND a JSON
+// line so several steers queue and drain in order — matching run_control.take_steer's parser — and
+// echo the instruction into the thread as the user's own message so they see it landed. The runtime
+// only reads it when agent_loop.mid_run_steer is on (set by applyAutonomyForTier when enabled).
+async function steerSessionRun(sessionId, instruction) {
+  if (!MID_RUN_STEER_ENABLED) return { ok: false, error: "mid-run steer is disabled" };
+  if (!isSafeId(sessionId)) return { ok: false, error: "invalid session id" };
+  const text = String(instruction || "").trim();
+  if (!text) return { ok: false, error: "empty instruction" };
+  const running = [...liveJobs.values()].filter(
+    (job) => job.session_id === sessionId && job.status === "running",
+  );
+  if (!running.length) return { ok: false, error: "no running job to steer" };
+  const runIds = new Set(running.map((job) => job.run_id).filter(Boolean));
+  if (!runIds.size) {
+    const current = await currentRunId();
+    if (current) runIds.add(current);
+  }
+  if (!runIds.size) {
+    return { ok: false, error: "run has not started yet — nothing to steer" };
+  }
+  const steered = [];
+  for (const runId of runIds) {
+    if (!isSafeId(runId)) continue;
+    const runDir = path.join(workspace, ".asteria", "runs", String(runId));
+    try {
+      await fs.mkdir(runDir, { recursive: true });
+      await fs.appendFile(
+        path.join(runDir, "steer.request"),
+        JSON.stringify({ instruction: text }) + "\n",
+        "utf8",
+      );
+      steered.push(runId);
+    } catch {}
+  }
+  if (!steered.length) return { ok: false, error: "could not write the steer signal" };
+  // Echo the steer into the thread as the user's own turn (same shape as a normal send) so the
+  // instruction is visible immediately, not only once the model happens to reference it.
+  await appendEvent(sessionId, {
+    type: "user_message",
+    status: "completed",
+    title: "User",
+    summary: text,
+    content_delta: text,
+    data: { mid_run_steer: true },
+  });
+  return { ok: true, steered, at: "next turn boundary" };
+}
+
 function stopSessionJobs(sessionId) {
   if (!isSafeId(sessionId)) return { ok: false, error: "invalid session id" };
   const running = [...liveJobs.values()].filter(
@@ -732,13 +795,17 @@ async function applyAutonomyForTier(permissionTier) {
     if (
       loop.auto_repair === autonomous &&
       loop.auto_replan === autonomous &&
-      loop.auto_replan_goal === autonomous
+      loop.auto_replan_goal === autonomous &&
+      loop.mid_run_steer === MID_RUN_STEER_ENABLED
     ) {
       return autonomous; // already in the desired state — skip the rewrite
     }
     loop.auto_repair = autonomous;
     loop.auto_replan = autonomous;
     loop.auto_replan_goal = autonomous;
+    // ADR-0029 ①: enable the runtime's mid-run steer read only when the BFF feature flag is on;
+    // otherwise leave it explicitly off so a running run ignores steer.request (today's behaviour).
+    loop.mid_run_steer = MID_RUN_STEER_ENABLED;
     policy.agent_loop = loop;
     await fs.writeFile(policyPath, `${JSON.stringify(policy, null, 2)}\n`, "utf8");
     return autonomous;
@@ -757,6 +824,13 @@ async function applyAutonomyForTier(permissionTier) {
 const WARM_WORKER_ENABLED =
   process.env.ASTERIA_STUDIO_WARM_WORKER === "1" ||
   String(process.env.ASTERIA_STUDIO_WARM_WORKER || "").toLowerCase() === "true";
+// ADR-0029 ①: mid-run steer. When on, a message typed during a run is delivered to the running agent
+// at its next turn boundary (via steer.request → the spine's take_steer read) instead of being queued
+// for after the run. Off by default: the Composer keeps its honest queue-for-after behaviour and the
+// runtime never reads the signal, so this cannot change today's behaviour unless explicitly enabled.
+const MID_RUN_STEER_ENABLED =
+  process.env.ASTERIA_STUDIO_MID_RUN_STEER === "1" ||
+  String(process.env.ASTERIA_STUDIO_MID_RUN_STEER || "").toLowerCase() === "true";
 const WARM_CONTROL_PREFIX = "@@ASTERIA_WORKER@@ ";
 const WARM_WORKER_MAX_RUNS = 50; // recycle after N runs so any slow per-run leak stays bounded
 let warmWorker = null; // { child, pid, ready, busy, runCount, active, buf }
