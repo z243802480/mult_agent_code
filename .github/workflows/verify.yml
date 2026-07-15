@@ -54,9 +54,13 @@ jobs:
         with:
           python-version: "3.11"
 
+      # Install the dev extras, not just the runtime: a few Python-shelling smokes reuse test
+      # fixtures (e.g. tests.integration.test_plan_command.FakePlanClient), which import pytest.
+      # With a bare `-e .` those smokes die on ModuleNotFoundError: pytest in CI while passing
+      # locally where pytest is already present.
       - name: Install Asteria runtime
         working-directory: .
-        run: python -m pip install -e .
+        run: python -m pip install -e ".[dev]"
 
       - name: Lint
         run: npm run lint
