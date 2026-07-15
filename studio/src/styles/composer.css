@@ -196,14 +196,14 @@
 }
 
 .composerStop {
-  background: var(--danger, #c0392b);
-  border-color: var(--danger, #c0392b);
-  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--accent-fg);
 }
 
 .composerStop:hover:not(:disabled) {
-  background: var(--danger-hover, #a93226);
-  border-color: var(--danger-hover, #a93226);
+  background: var(--danger-hover);
+  border-color: var(--danger-hover);
 }
 
 /* Pause is the recoverable action, so it is the QUIET one — a neutral secondary button next to the

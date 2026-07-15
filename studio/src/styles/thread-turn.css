@@ -11,14 +11,14 @@
 /* B1: failed-turn marker — a quiet danger accent on the turn's leading edge so errors are scannable
    in a long scrollback without shouting. issueFlash briefly pulses the turn the navigator lands on. */
 .conversationTurn.failed {
-  border-left: 2px solid var(--danger, #d94f4f);
+  border-left: 2px solid var(--danger);
   padding-left: 10px;
   margin-left: -12px;
 }
 
 @keyframes issueFlashPulse {
   0% {
-    background: color-mix(in srgb, var(--danger, #d94f4f) 16%, transparent);
+    background: color-mix(in srgb, var(--danger) 16%, transparent);
   }
   100% {
     background: transparent;
@@ -35,10 +35,10 @@
 .issueNav {
   align-items: center;
   align-self: flex-end;
-  background: color-mix(in srgb, var(--danger, #d94f4f) 12%, var(--surface, #fff));
-  border: 1px solid color-mix(in srgb, var(--danger, #d94f4f) 40%, transparent);
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface, #fff));
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
   border-radius: var(--radius-pill);
-  color: var(--danger, #d94f4f);
+  color: var(--danger);
   cursor: pointer;
   display: inline-flex;
   font-size: 12px;
@@ -51,7 +51,7 @@
 }
 
 .issueNav:hover {
-  background: color-mix(in srgb, var(--danger, #d94f4f) 20%, var(--surface, #fff));
+  background: color-mix(in srgb, var(--danger) 20%, var(--surface, #fff));
 }
 
 .threadProcessControls {

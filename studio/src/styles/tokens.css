@@ -46,6 +46,15 @@
   --ok-text: #5fcf8e;
   --warn: #e6b364;
   --bad: #ef7a73;
+  /* Destructive-action red (Stop button, failed-turn marker, issue navigator). Distinct from --bad
+     (soft error-state coral): a stronger, more saturated red conventional for destructive controls.
+     It was referenced app-wide as `var(--danger, …)` but never defined, so two different fallback
+     reds (#c0392b, #d94f4f) painted for the same token — defining it once removes that drift. Canonical
+     value is the darker #c0392b: white text on it clears WCAG AA (5.4:1, vs #d94f4f's failing 4.1:1),
+     and it is also used AS text (issueNav) on near-white where darker likewise wins. Theme-blind on
+     purpose (matches the prior undefined-fallback behavior, which did not vary by theme). */
+  --danger: #c0392b;
+  --danger-hover: #a93226;
   --ok-subtle: rgba(95, 207, 142, 0.13);
   --ok-border: rgba(95, 207, 142, 0.28);
   --warn-subtle: rgba(230, 179, 100, 0.13);
