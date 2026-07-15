@@ -307,6 +307,64 @@ button.aggregateDiffChip {
   color: var(--bad);
 }
 
+/* B10-a context budget snapshot: dedupe savings / compaction guidance / peak pressure. A quiet
+   evidence strip, not an alarm — accent-toned, only rendered when it has something actionable. */
+.contextBudgetSnapshot {
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+}
+
+.contextBudgetHeader {
+  align-items: baseline;
+  color: var(--text-secondary);
+  display: flex;
+  font-size: 11px;
+  gap: 8px;
+}
+
+.contextBudgetHeader strong {
+  color: var(--text-primary);
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.contextBudgetHeader strong.health-warn {
+  color: var(--warn);
+}
+
+.contextBudgetHeader strong.health-bad {
+  color: var(--bad);
+}
+
+.contextBudgetHeader em {
+  color: var(--text-muted);
+  font-style: normal;
+}
+
+.contextBudgetFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.contextBudgetFact {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  padding: 2px 8px;
+}
+
+.contextBudgetFact.warn {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
 .contextPanelToggle {
   align-items: center;
   background: transparent;

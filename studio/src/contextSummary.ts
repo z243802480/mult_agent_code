@@ -66,6 +66,81 @@ export function contextWindowSummary(
   };
 }
 
+export type ContextBudgetSnapshot = {
+  estimatedTokens: number;
+  windowTokens: number;
+  ratio: number;
+  status: string;
+  compactionThreshold: number;
+  hardStopThreshold: number;
+  duplicateTokens: number;
+  duplicateRefs: number;
+  topSections: ContextSection[];
+  compaction: { action: string; status: string; delta: number } | null;
+  peak: { ratio: number; status: string; taskId: string } | null;
+  taskId: string;
+  taskCount: number;
+};
+
+// B10-a: project the runtime's persisted per-task context budget (context_budget_snapshots.jsonl,
+// surfaced by run-detail-reader.buildContextBudget) into the Inspector's Context tab. This is the
+// authoritative budget the loop actually measured — richer than the run-level cost_report rollup the
+// usage bar reads: it carries dedupe savings (how many tokens are duplicated context that compaction
+// could reclaim), the compaction boundary the runtime computed, and the peak pressure across tasks.
+// Pure surfacing of existing evidence — no thresholds invented here. Returns null when absent.
+export function contextBudgetSnapshot(
+  runDetail: RunDetailPayload | null,
+): ContextBudgetSnapshot | null {
+  const budget = asRecord((runDetail as AnyRecord | null)?.context_budget);
+  if (!budget.available) return null;
+  const latest = asRecord(budget.latest);
+  const rawSections = Array.isArray(latest.top_sections) ? latest.top_sections : [];
+  const topSections = rawSections
+    .map((item) => {
+      const record = asRecord(item);
+      return {
+        id: String(record.name ?? ""),
+        label: contextSectionLabel(String(record.name ?? "")),
+        value: Number(record.tokens ?? 0),
+      };
+    })
+    .filter((item) => item.value > 0);
+  const total = topSections.reduce((sum, item) => sum + item.value, 0);
+  const compactBoundary = asRecord(latest.compact_boundary);
+  const peakRecord = asRecord(budget.peak);
+  return {
+    estimatedTokens: Number(latest.estimated_tokens ?? 0),
+    windowTokens: Number(latest.window_tokens ?? 0),
+    ratio: Number(latest.ratio ?? 0),
+    status: String(latest.pressure_status ?? ""),
+    compactionThreshold: Number(latest.compaction_threshold ?? 0),
+    hardStopThreshold: Number(latest.hard_stop_threshold ?? 0),
+    duplicateTokens: Number(latest.duplicate_estimated_tokens ?? 0),
+    duplicateRefs: Number(latest.duplicate_ref_count ?? 0),
+    topSections: topSections.map((item) => ({
+      ...item,
+      ratio: total > 0 ? item.value / total : 0,
+    })),
+    compaction:
+      Object.keys(compactBoundary).length && String(compactBoundary.status ?? "")
+        ? {
+            action: String(compactBoundary.recommended_action ?? ""),
+            status: String(compactBoundary.status ?? ""),
+            delta: Number(compactBoundary.estimated_tokens_delta ?? 0),
+          }
+        : null,
+    peak: Object.keys(peakRecord).length
+      ? {
+          ratio: Number(peakRecord.ratio ?? 0),
+          status: String(peakRecord.pressure_status ?? ""),
+          taskId: String(peakRecord.task_id ?? ""),
+        }
+      : null,
+    taskId: String(latest.task_id ?? ""),
+    taskCount: Number(budget.count ?? 0),
+  };
+}
+
 export function formatUsage(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return "0";
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;

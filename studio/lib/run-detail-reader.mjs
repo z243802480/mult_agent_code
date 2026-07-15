@@ -758,6 +758,58 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) {
     return mapped;
   }
 
+  // B10-a context budget snapshot. The runtime already computes and persists a full per-task budget
+  // (context_budget_snapshots.jsonl: estimated tokens vs the 200k window, the 0.75 compaction / 0.9
+  // hard-stop thresholds, per-section token breakdown, dedupe savings, compaction boundary) — but none
+  // of it was ever read, so the Inspector could not show how much context each task actually carried.
+  // This projects it into a compact, glanceable summary: the LATEST snapshot (the current budget) plus
+  // the PEAK pressure seen across the run (the moment closest to compaction). It is a pure surfacing of
+  // existing evidence — no thresholds or verdicts are invented here.
+  function buildContextBudget(rows) {
+    const snapshots = (Array.isArray(rows) ? rows : []).filter(
+      (row) => row && typeof row === "object",
+    );
+    if (!snapshots.length) return { available: false };
+    const project = (row) => {
+      const sections = row.sections && typeof row.sections === "object" ? row.sections : {};
+      const topSections = Object.entries(sections)
+        .map(([name, tokens]) => ({ name, tokens: Number(tokens) || 0 }))
+        .sort((a, b) => b.tokens - a.tokens)
+        .slice(0, 6);
+      return {
+        task_id: row.task_id ?? null,
+        scope: row.scope ?? null,
+        estimated_tokens: Number(row.estimated_tokens) || 0,
+        window_tokens: Number(row.context_window_tokens) || 0,
+        ratio: Number(row.context_window_ratio) || 0,
+        pressure_status: String(row.pressure_status || "within_budget"),
+        compaction_threshold: Number(row.compaction_threshold) || 0,
+        hard_stop_threshold: Number(row.hard_stop_threshold) || 0,
+        duplicate_estimated_tokens: Number(row.duplicate_estimated_tokens) || 0,
+        duplicate_ref_count: Number(row.duplicate_ref_count) || 0,
+        top_sections: topSections,
+        compact_boundary:
+          row.compact_boundary && typeof row.compact_boundary === "object"
+            ? {
+                status: String(row.compact_boundary.status || ""),
+                recommended_action: String(row.compact_boundary.recommended_action || ""),
+                estimated_tokens_delta: Number(row.compact_boundary.estimated_tokens_delta) || 0,
+              }
+            : null,
+      };
+    };
+    const projected = snapshots.map(project);
+    const peak = projected.reduce((worst, cur) => (cur.ratio > worst.ratio ? cur : worst));
+    return {
+      available: true,
+      count: projected.length,
+      latest: projected[projected.length - 1],
+      peak,
+      snapshots: projected,
+      evidence_refs: ["context_budget_snapshots.jsonl"],
+    };
+  }
+
   async function listRunEvidenceFiles(runDir, runId) {
     let entries = [];
     try {
@@ -858,6 +910,11 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) {
     );
     payload.promotion_preview = redact(buildPromotionPreview(payload));
     payload.worker_tree = redact(await buildWorkerTree(runDir, payload.agent_run_graph || {}));
+    payload.context_budget = redact(
+      buildContextBudget(
+        await readJsonlTail(path.join(runDir, "context_budget_snapshots.jsonl"), 80),
+      ),
+    );
     const workflowStateRows = await readJsonlTail(
       path.join(runDir, "orchestration_runner_state.jsonl"),
       120,
