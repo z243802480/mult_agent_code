@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import type { NarrativeStep as NarrativeStepType } from "../../types";
 import { extractFileChangesFromSteps, aggregateFileChangeStats } from "../../fileChanges";
@@ -21,6 +21,40 @@ const PHASE_LABELS: Record<string, string> = {
   repair: "执行中",
   error: "出错",
 };
+
+// Earliest event wall-clock (ms) across the live steps — the honest "work started" anchor for the
+// elapsed clock. Uses server-stamped created_at (not client mount time) so it survives a remount
+// mid-run instead of resetting to 0s. Returns undefined when no step carries a parseable timestamp.
+export function earliestEventMs(steps: NarrativeStepType[]): number | undefined {
+  let earliest: number | undefined;
+  for (const step of steps) {
+    for (const event of step.events) {
+      const ms = Date.parse(event.created_at ?? "");
+      if (!Number.isNaN(ms) && (earliest === undefined || ms < earliest)) earliest = ms;
+    }
+  }
+  return earliest;
+}
+
+// Compact elapsed label for the live phase row (Claude Code shows "(15s)" on the working line): a
+// quiet "still moving" signal that reassures during a long, event-less model call. Sub-minute reads
+// "12s"; a minute or more folds to "3m07s" so the number stays short.
+export function formatRunElapsed(seconds: number): string {
+  const whole = Math.max(0, Math.floor(seconds));
+  if (whole < 60) return `${whole}s`;
+  const mins = Math.floor(whole / 60);
+  const secs = whole % 60;
+  return `${mins}m${String(secs).padStart(2, "0")}s`;
+}
+
+function LiveElapsed({ startedAt }: { startedAt: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return <small className="liveElapsed">{formatRunElapsed((now - startedAt) / 1000)}</small>;
+}
 
 export type LiveStreamProps = {
   steps: NarrativeStepType[];
@@ -45,6 +79,7 @@ export function LiveStream({
   viewMode = "focus",
 }: LiveStreamProps) {
   const expandOutput = viewMode === "verbose";
+  const startedAt = earliestEventMs(steps);
   const activeStep = steps.at(-1);
   const phaseLabel = activeStep ? (PHASE_LABELS[activeStep.kind] ?? activeStep.label) : "处理中";
   const isWaiting = activeStep?.status === "waiting_user";
@@ -107,6 +142,7 @@ export function LiveStream({
         {activeStep?.title && activeStep.title !== phaseLabel && (
           <span className="livePhaseTitle">{activeStep.title}</span>
         )}
+        {startedAt !== undefined && <LiveElapsed startedAt={startedAt} />}
       </div>
 
       {toolSteps.length > 0 && (

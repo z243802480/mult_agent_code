@@ -521,9 +521,17 @@ function phaseForMode(mode) {
  * While a subprocess is live, tail the current run's user_progress.jsonl every 1.2s
  * and emit new entries as SSE events.  Returns a stop function.
  */
+// Immediacy budget: the FIRST look is soon (subprocess cold-start still dominates, but every
+// 100ms shaved off the first runtime line is felt), then we poll briskly. A brisk poll would
+// re-read a growing file each tick, so we gate the read on a size change (one stat/tick) — idle
+// ticks cost a stat, not a full re-read, and the seq-dedup below is still the correctness belt.
+const TAIL_FIRST_DELAY_MS = 300;
+const TAIL_POLL_MS = 500;
+
 function tailUserProgress(sessionId, jobId) {
   let stopped = false;
   let lastSeq = 0;
+  let lastSize = -1;
   let runDir = null;
 
   async function poll() {
@@ -569,6 +577,14 @@ function tailUserProgress(sessionId, jobId) {
       const progressPath = path.join(runDir, "user_progress.jsonl");
       if (existsSync(progressPath)) {
         try {
+          // Skip the read entirely when nothing was appended since the last tick — lets us poll at
+          // 500ms without paying a full re-read on every idle tick during a quiet model call.
+          const { size } = await fs.stat(progressPath);
+          if (size === lastSize) {
+            if (!stopped) setTimeout(poll, TAIL_POLL_MS);
+            return;
+          }
+          lastSize = size;
           const lines = (await fs.readFile(progressPath, "utf8")).split(/\r?\n/).filter(Boolean);
           for (const line of lines) {
             try {
@@ -592,11 +608,11 @@ function tailUserProgress(sessionId, jobId) {
       }
     }
 
-    if (!stopped) setTimeout(poll, 1200);
+    if (!stopped) setTimeout(poll, TAIL_POLL_MS);
   }
 
-  // Brief delay so the subprocess has time to start writing
-  setTimeout(poll, 1200);
+  // Brief delay so the subprocess has time to start writing, then look soon.
+  setTimeout(poll, TAIL_FIRST_DELAY_MS);
   return () => {
     stopped = true;
   };

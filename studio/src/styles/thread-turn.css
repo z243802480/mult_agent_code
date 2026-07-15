@@ -433,6 +433,16 @@
   white-space: nowrap;
 }
 
+/* Elapsed clock on the live phase row — a quiet "still moving" signal during long model calls.
+   Muted + tabular so the ticking digits don't jump or shout. Pushed to the row's end. */
+.liveElapsed {
+  color: var(--text-tertiary, var(--text-secondary));
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 /* Tool call chips — inline record of tools invoked */
 .liveToolRow {
   display: flex;
