@@ -5,6 +5,7 @@ import { ClampedOutput } from "../../components/ClampedOutput";
 
 const TOOL_STATUS_LABEL: Record<string, string> = {
   running: "运行中",
+  queued: "排队中",
   completed: "完成",
   failed: "失败",
   blocked: "阻塞",
@@ -35,7 +36,9 @@ export function ToolCallCard({
   const hasOutput = Boolean(showOutput && output);
   const [open, setOpen] = useState(false);
   const status = String(step.status ?? "");
-  const statusLabel = TOOL_STATUS_LABEL[status] ?? status;
+  // Map to a Chinese label; an unmapped/unknown status shows nothing rather than leaking the raw
+  // English enum ("queued"/"cancelled"/…) into the thread (statusLabel is gated on truthiness below).
+  const statusLabel = TOOL_STATUS_LABEL[status] ?? "";
 
   return (
     <div className={`toolCard ${status}`}>

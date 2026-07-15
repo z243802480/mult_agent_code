@@ -285,15 +285,16 @@ function ChatStreamPreview({ step }: { step: NarrativeStepType }) {
   // Honest streaming: render the real content_delta exactly as events land. No client-side
   // typewriter — perceived latency tracks the runtime transport, not an artificial timer.
   const text = cleanReasoning(step.events.map((item) => item.content_delta || "").join(""));
-  const modelId = event?.model_name
-    ? `${event.model_provider || "model"}/${event.model_name}`
-    : event?.model_provider || "model";
+  void event;
   return (
     <div className="chatStreamPreview">
+      {/* The assistant is streaming its reply. Label it with the assistant voice ("Asteria"), NOT
+          "思考中" (this is the answer streaming, not reasoning) and NOT the raw provider/model id —
+          the completed answer (TurnFinal) deliberately hides the model identity, so the live header
+          must match. The model id stays available in the Inspector. */}
       <div className="chatStreamHeader">
         <Loader2 size={13} className="spinning" />
-        <strong>思考中</strong>
-        {modelId && <span>{modelId}</span>}
+        <strong>Asteria</strong>
       </div>
       {text ? (
         <div className="streamTextWrap">
@@ -411,10 +412,15 @@ export function PendingTurn({
     return () => window.clearInterval(timer);
   }, [startedAt]);
 
-  // Main thread shows one calm loading phrase regardless of internal routing mode.
-  // (mode is retained for callers; the user-facing copy is uniform.)
-  void mode;
-  const phase = "思考中…";
+  // Reflect the mode the user deliberately chose so a plan/run/chat request confirms it registered,
+  // instead of every request reading the same "思考中…". "auto" stays "思考中…" because the routing is
+  // genuinely undecided until the model classifies the intent — claiming a phase there would be a lie.
+  const PENDING_PHASE: Record<string, string> = {
+    chat: "对话中…",
+    plan: "规划中…",
+    run: "执行中…",
+  };
+  const phase = PENDING_PHASE[String(mode)] ?? "思考中…";
 
   return (
     <div className="conversationTurn pendingTurn">

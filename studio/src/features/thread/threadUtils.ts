@@ -34,12 +34,15 @@ export function textOrFallback(value: unknown, fallback: string): string {
   return text || fallback;
 }
 
+// De-jargon a backend exit-reason string for the (Chinese) next-step bar. The replacements must be
+// Chinese — this is the fallback path for an unmapped exit_reason (RuntimeSnapshot.userFacingStateLabel),
+// so English replacements would leak straight into the Chinese UI.
 export function stripBackendWording(value: string): string {
   return String(value || "")
-    .replace(/\bprovider route blocked\b/gi, "model connection interrupted")
-    .replace(/\bmodel-check\b/gi, "connection check")
-    .replace(/\bgate-status\b/gi, "diagnostics")
-    .replace(/\bruntime_progress\b/gi, "progress")
-    .replace(/\buser_progress\.jsonl\b/gi, "progress log")
+    .replace(/\bprovider route blocked\b/gi, "模型连接中断")
+    .replace(/\bmodel-check\b/gi, "连接检查")
+    .replace(/\bgate-status\b/gi, "诊断")
+    .replace(/\bruntime_progress\b/gi, "进度")
+    .replace(/\buser_progress\.jsonl\b/gi, "进度日志")
     .trim();
 }
