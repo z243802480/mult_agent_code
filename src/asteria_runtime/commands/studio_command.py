@@ -61,6 +61,7 @@ class StudioCommand:
         backend_only: bool = False,
         skip_install: bool = False,
         open_browser: bool = True,
+        build: bool = False,
     ) -> None:
         self.root = root.resolve()
         self.runtime_root = (runtime_root or self.root).resolve()
@@ -71,10 +72,13 @@ class StudioCommand:
         self.backend_only = backend_only
         self.skip_install = skip_install
         self.open_browser = open_browser
+        self.build = build
 
     def preview(self) -> StudioLaunchResult:
         self._validate()
-        bundled_ui = self._uses_bundled_ui()
+        # --build produces studio/dist, so the API server will serve the UI itself — a single-port
+        # launch with no dev server. Reflect that intent here so --json reports it before the build runs.
+        bundled_ui = self._uses_bundled_ui() or self.build
         api_url = f"http://127.0.0.1:{self.api_port}"
         ui_url = api_url if bundled_ui or self.backend_only else f"http://127.0.0.1:{self.ui_port}"
         return StudioLaunchResult(
@@ -90,6 +94,12 @@ class StudioCommand:
 
     def run(self) -> StudioLaunchResult:
         self._validate()
+        if self.build:
+            # Build the UI up front so the API server serves it from one port (no dev server). A failed
+            # build raises here and aborts the launch — we never fall through to serving a stale/absent UI.
+            if not self.skip_install:
+                self._ensure_node_modules()
+            self._build_ui()
         bundled_ui = self._uses_bundled_ui()
         if not self.skip_install and not bundled_ui:
             self._ensure_node_modules()
@@ -132,6 +142,19 @@ class StudioCommand:
             )
         subprocess.run(
             [npm, "install"],
+            cwd=self.studio_dir,
+            check=True,
+        )
+
+    def _build_ui(self) -> None:
+        npm = shutil.which("npm")
+        if not npm:
+            raise RuntimeError(
+                "npm is required to build the Studio UI. "
+                "Use the GitHub Release Beta pack (prebuilt UI) or install Node.js/npm."
+            )
+        subprocess.run(
+            [npm, "run", "build"],
             cwd=self.studio_dir,
             check=True,
         )

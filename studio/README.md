@@ -191,27 +191,47 @@ Studio depends on the Runtime emitting the right event fields. For the best expe
 
 ## Start
 
+One command builds the UI, starts a single server that serves **both** the UI and the API on one
+port, and opens your browser to it. No dev server, no second port, no localhost number to remember —
+this is the way to hand Studio to a teammate.
+
 ```powershell
 cd studio
-npm install
-
-# API + UI together
-npm run start:studio
-
-# Or separately:
-npm run server -- --workspace F:\mult_agent_code
-npm run dev
+npm run start:studio -- -Workspace C:\path\to\your\project
+# → builds studio/dist on first run, starts http://127.0.0.1:8787, opens the browser
 ```
 
-Open: `http://127.0.0.1:5174`
+Requirements on the machine: **Node.js** (server + build) and **Python** (the runtime the server
+shells out to) — both are needed regardless of mode, since this is a local-first harness.
+
+Switches (pass after `--`):
+
+| Switch | Effect |
+| --- | --- |
+| `-Workspace <path>` | Project folder Studio operates on (defaults to the repo root). |
+| `-Rebuild` | Force a fresh `npm run build` even if `studio/dist` already exists. |
+| `-NoOpen` | Don't auto-open the browser (still prints the URL). |
+| `-Dev` | Developer mode: run the Vite dev server (HMR) on port 5174 for live-reloading edits. |
+
+### Developer mode
+
+While editing the frontend, use `-Dev` so changes hot-reload instead of requiring a rebuild:
+
+```powershell
+npm run start:studio -- -Dev            # Vite dev (HMR) on 5174, API on 8787
+# equivalently, the two processes by hand:
+npm run server -- --workspace C:\path\to\your\project   # API on 8787
+npm run dev                                             # Vite dev on 5174
+```
 
 ## Build
 
+The production build is produced automatically by `start:studio`. To build/inspect it by hand:
+
 ```powershell
 npm run typecheck
-npm run build
-# Static UI served by API server on port 8787
-npm run server -- --workspace F:\mult_agent_code
+npm run build          # → studio/dist (static UI)
+npm run server -- --workspace C:\path\to\your\project   # serves dist/ + API on 8787
 ```
 
 ---

@@ -1523,6 +1523,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Do not open the browser automatically",
     )
+    studio_parser.add_argument(
+        "--build",
+        action="store_true",
+        help="Build the UI (npm run build) first, then serve UI + API from one port (no dev server)",
+    )
     studio_parser.add_argument("--json", action="store_true", help="Print launch config JSON and exit")
     workspaces_parser = subcommands.add_parser(
         "workspaces",
@@ -2359,6 +2364,7 @@ def _run_cli() -> None:
             backend_only=args.backend_only,
             skip_install=args.skip_install,
             open_browser=not args.no_open,
+            build=args.build,
         )
         if args.json:
             preview = studio_command.preview()
