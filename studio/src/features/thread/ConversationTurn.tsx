@@ -276,6 +276,28 @@ function TurnMiddle({
   );
 }
 
+// The run has started but the first step hasn't landed yet. A bare spinner reads as a dead/hung UI on a
+// slow first token (the model can take tens of seconds to plan) — so once the wait is noticeable, show a
+// live elapsed counter. It's honest ("we're waiting, here's how long"), not a fabricated progress bar.
+function StartingIndicator() {
+  const [elapsed, setElapsed] = useState(0);
+  const startedRef = React.useRef(Date.now());
+  useEffect(() => {
+    const tick = () =>
+      setElapsed(Math.max(0, Math.floor((Date.now() - startedRef.current) / 1000)));
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return (
+    <div className="turnRunning">
+      <Loader2 size={14} className="spinning" />
+      <span>启动中…</span>
+      {elapsed >= 3 && <small className="turnRunningElapsed">{elapsed}s</small>}
+    </div>
+  );
+}
+
 function ChatStreamPreview({ step }: { step: NarrativeStepType }) {
   const event = step.events.at(-1) || step.events[0];
   // Honest streaming: render the real content_delta exactly as events land. No client-side
@@ -562,10 +584,7 @@ export function ConversationTurn({
       )}
       {turnRunning ? (
         rawMiddleSteps.length === 0 ? (
-          <div className="turnRunning">
-            <Loader2 size={14} className="spinning" />
-            <span>启动中…</span>
-          </div>
+          <StartingIndicator />
         ) : rawMiddleSteps.length === 1 && isModelThinkingStep(rawMiddleSteps[0], "chat") ? (
           <ChatStreamPreview step={rawMiddleSteps[0]} />
         ) : (

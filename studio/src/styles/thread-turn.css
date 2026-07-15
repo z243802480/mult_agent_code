@@ -330,6 +330,12 @@
   padding: 4px 8px;
 }
 
+/* Honest wait counter on a slow first token — muted, secondary to the spinner + label. */
+.turnRunningElapsed {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .turnWaiting {
   align-items: center;
   background: var(--surface-1);
