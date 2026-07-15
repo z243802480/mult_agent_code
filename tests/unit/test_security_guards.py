@@ -430,6 +430,51 @@ def test_shell_guard_blocks_wrapped_and_qualified_destructive(command: str) -> N
         guard.validate(command)
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git clean -f",
+        "git clean -fd",
+        "git clean -fdx",
+        "git clean -d -f",
+        "git clean --force",
+    ],
+)
+def test_shell_guard_blocks_git_clean_force(command: str) -> None:
+    """Live red-team finding: `git clean -f...` deletes untracked (and with -x ignored) files — a
+    two-token verb the word/leader denylists miss because `git` is benign on its own."""
+    guard = ShellGuard(_base_permissions(allow_shell_operators=True))
+    with pytest.raises(ShellPolicyError):
+        guard.validate(command)
+
+
+def test_shell_guard_allows_git_clean_dry_run_and_porcelain() -> None:
+    """The git-clean guard requires a force flag, so a harmless dry-run and ordinary porcelain pass."""
+    guard = ShellGuard(_base_permissions(allow_shell_operators=True))
+    guard.validate("git clean -n")
+    guard.validate("git status")
+    guard.validate("git commit -m done")
+    guard.validate("git add .")
+
+
+def test_shell_guard_blocks_redirect_into_git_dir() -> None:
+    """Live red-team finding: `> .git/config` is a direct write to git internals (plant a hook /
+    hijack a remote). The general command scan keeps .git out to avoid blocking porcelain, but an
+    explicit redirect target has no porcelain ambiguity, so it must be denied for ALL protected dirs."""
+    guard = ShellGuard(_base_permissions(), [".env", "secrets/", ".git/", ".asteria/"])
+    for command in (
+        "echo x > .git/config",
+        "echo x >> .git/hooks/pre-commit",
+        "echo x > .asteria/policies.json",
+        "echo x > secrets/token.json",
+    ):
+        with pytest.raises(ShellPolicyError):
+            guard.validate(command)
+    # Ordinary redirects to non-protected files stay allowed.
+    guard.validate("echo done > out.txt")
+    guard.validate("python build.py >> build.log")
+
+
 def test_shell_guard_no_false_positive_on_urls_in_messages_and_dev_tools() -> None:
     """The hardening must not flag benign dev flows that merely mention risky words."""
     guard = ShellGuard(_base_permissions(allow_shell_operators=True), _REDTEAM_PROTECTED)

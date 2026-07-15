@@ -53,6 +53,10 @@ class ShellGuard:
         r"\bremove-item\b",
         r"\brmdir\b",
         r"\.(unlink|rm|rmdir)sync\s*\(",
+        # `git clean -f...` deletes untracked (and with -x ignored) files — a two-token verb the
+        # word/leader denylists miss because `git` itself is benign. Require a force flag so a
+        # harmless `git clean -n` dry-run is not blocked.
+        r"\bgit\s+clean\b.*-[a-z]*f",
     )
     # Network egress commands (segment leaders). Gated on allow_network so the shell tool no
     # longer bypasses the default-off network posture that previously only covered research.
@@ -272,7 +276,33 @@ class ShellGuard:
         # An output redirect is a write; block redirects that clobber protected/secret files.
         if not self.permissions.get("allow_secret_file_read", False) and self._matches_secret(cleaned):
             return False
+        # A redirect target is an EXPLICIT write location. The general command scan keeps .git OUT (to
+        # avoid blocking ordinary git porcelain that references .git implicitly), but `> .git/config`
+        # is a direct write to git internals — planting a hook or hijacking a remote — with no
+        # porcelain ambiguity. So the redirect check spans ALL protected dirs, .git included.
+        if self._redirect_into_protected_dir(cleaned):
+            return False
         return True
+
+    def _redirect_into_protected_dir(self, target: str) -> bool:
+        token = target.replace("\\", "/")
+        while token.startswith("./"):
+            token = token[2:]
+        token = "/".join(part.rstrip(" .") for part in token.split("/")).lower()
+        if not token:
+            return False
+        for raw_pattern in self.protected_paths:
+            pattern = raw_pattern.replace("\\", "/").lower()
+            if not pattern.endswith("/"):
+                continue
+            directory = pattern.rstrip("/")
+            if (
+                token == directory
+                or token.startswith(directory + "/")
+                or f"/{directory}/" in f"/{token}/"
+            ):
+                return True
+        return False
 
     def _tokens(self, command: str) -> list[str]:
         padded = self._pad_separators(command)
