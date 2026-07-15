@@ -514,6 +514,18 @@
   background: var(--surface-2);
   overflow: hidden;
 }
+/* B10-b: a nested sub-expert (an expert the lead's expert itself delegated to) is indented and
+   left-accented so the delegation tree is legible instead of a flat list. */
+.subagentRow.isNested {
+  border-left: 2px solid var(--accent-subtle);
+}
+/* Lineage chip on a nested expert: "↳ <parent role>" — who delegated this expert. */
+.subagentLineage {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
 .subagentRowHead {
   display: flex;
   align-items: center;

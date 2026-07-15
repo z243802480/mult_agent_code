@@ -18,10 +18,24 @@ interface ExpertRow {
   changedFiles: string[];
   modelTier: string;
   concurrent: boolean;
+  // Lineage/depth (B10-b — "experts into the worker tree"). The runtime already encodes the parent
+  // edge on every dispatch/result card: data.task_id is the delegator, data.child_task_id is this
+  // expert (formatted `<parent>-sub-NN`, one `-sub-` per recursion level). depth counts those levels;
+  // parentTaskId is the delegator; parentRole is filled in when the delegator is ITSELF an expert (a
+  // nested sub-expert) so the panel can nest it under its parent instead of showing a flat list.
+  depth: number;
+  parentTaskId: string;
+  parentRole: string;
   // What it cost (B7). Model calls were unattributed until the model-call log started carrying the
   // task_id that spent each one, so an expert's spend was invisible.
   cost: { model_calls: number; input_tokens: number; output_tokens: number } | null;
   transcript: StudioEvent[];
+}
+
+// Recursion depth from the child task id: `task-0001-sub-01` → 1, `task-0001-sub-01-sub-02` → 2.
+// Matches the runtime's `f"{task_id}-sub-{child_index:02d}"` id scheme (execute_command._prepare_child).
+export function expertDepth(childTaskId: string): number {
+  return (String(childTaskId).match(/-sub-/g) || []).length;
 }
 
 function asCost(value: unknown): ExpertRow["cost"] {
@@ -85,6 +99,9 @@ export function buildExpertRows(events: StudioEvent[]): ExpertRow[] {
         changedFiles: [],
         modelTier: "",
         concurrent: false,
+        depth: expertDepth(childId),
+        parentTaskId: String(data.task_id ?? ""),
+        parentRole: "",
         cost: null,
         transcript: [],
       };
@@ -114,6 +131,14 @@ export function buildExpertRows(events: StudioEvent[]): ExpertRow[] {
     if (!data.subagent_role) continue;
     const row = byChild.get(String(data.task_id ?? ""));
     if (row) row.transcript.push(event);
+  }
+
+  // Pass 3: resolve each expert's parent ROLE when the delegator is itself an expert (a nested
+  // sub-expert), so the panel can label the lineage ("↳ 由 reviewer 委派") instead of a bare task id.
+  // A top-level expert's parent is a lead task (not in byChild) → parentRole stays "".
+  for (const row of byChild.values()) {
+    const parent = byChild.get(row.parentTaskId);
+    if (parent) row.parentRole = parent.role;
   }
 
   return order.map((id) => byChild.get(id)!).filter(Boolean);
@@ -168,13 +193,22 @@ export function SubagentPanel({ events }: { events: StudioEvent[] }) {
             {rows.map((row) => {
               const open = openId === row.childTaskId;
               return (
-                <div key={row.childTaskId} className="subagentRow">
+                <div
+                  key={row.childTaskId}
+                  className={`subagentRow ${row.depth > 1 ? "isNested" : ""}`}
+                  style={row.depth > 1 ? { marginLeft: (row.depth - 1) * 16 } : undefined}
+                >
                   <button
                     type="button"
                     className="subagentRowHead"
                     aria-expanded={open}
                     onClick={() => setOpenId(open ? null : row.childTaskId)}
                   >
+                    {row.parentRole && (
+                      <span className="subagentLineage" title={`由 ${row.parentRole} 委派`}>
+                        ↳ {row.parentRole}
+                      </span>
+                    )}
                     <span className={`subagentDot ${group.className}`} aria-hidden />
                     <span className="subagentRole">{row.role}</span>
                     <span className="subagentStatusText" title={row.statusLine}>
