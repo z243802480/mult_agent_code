@@ -4,10 +4,12 @@ import path from "node:path";
 /**
  * The Node backend's whole source surface: server.mjs plus every module it was split into.
  *
- * White-box smokes assert that a capability exists in the backend by grepping its source. Pointing
- * those assertions at server.mjs alone couples them to *which file* the code happens to live in, so
- * every extraction into lib/ silently rots them — `compact:` moved out in the run-detail cut and the
- * s45-parity assertion went stale on main without anyone noticing. Grep the surface, not the file.
+ * White-box smokes grep this for a wiring SYMBOL to prove it still EXISTS in the source — an
+ * anti-rename canary, not a behavior test (a passing grep does not prove the capability runs; that
+ * needs a black-box smoke). Pointing the grep at server.mjs alone couples it to *which file* the code
+ * happens to live in, so every extraction into lib/ silently rots it — `compact:` moved out in the
+ * run-detail cut and the s45-parity assertion went stale on main without anyone noticing. Grep the
+ * whole surface, not the file, so a move doesn't read as a deletion.
  */
 export function readServerSurface(root) {
   const libDir = path.join(root, "lib");

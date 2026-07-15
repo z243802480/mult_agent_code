@@ -1,3 +1,6 @@
+// White-box source-presence guard (anti-rename canary) — NOT a behavior test. Each assertion only
+// proves a side-ask wiring symbol still exists in the source; green does NOT prove the composer
+// side-ask flow works at runtime (that needs a black-box smoke driving the Composer/server).
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -11,12 +14,12 @@ const sideChatHook = readFileSync(path.join(root, "src/hooks/useSideChat.ts"), "
 const app = readFileSync(path.join(root, "src/App.tsx"), "utf8");
 const server = readServerSurface(root);
 
-assert.match(composer, /composerSideAskToggle/, "Composer must expose quick ask toggle");
-assert.match(composer, /onSideAsk/, "Composer must route side ask sends");
-assert.match(composer, /\/ask/, "Composer must support /ask slash");
-assert.match(composer, /sideAskMode/, "Composer must style side ask mode");
-assert.match(sideChatHook, /composerSideAsk/, "useSideChat must persist composer side ask");
-assert.match(app, /composerSideAsk/, "App must wire composer side ask");
-assert.match(server, /sideAskContextHint/, "server must enrich side ask with session context");
+assert.match(composer, /composerSideAskToggle/, "`composerSideAskToggle` present in Composer.tsx");
+assert.match(composer, /onSideAsk/, "`onSideAsk` present in Composer.tsx");
+assert.match(composer, /\/ask/, "`/ask` slash present in Composer.tsx");
+assert.match(composer, /sideAskMode/, "`sideAskMode` present in Composer.tsx");
+assert.match(sideChatHook, /composerSideAsk/, "`composerSideAsk` present in useSideChat.ts");
+assert.match(app, /composerSideAsk/, "`composerSideAsk` present in App.tsx");
+assert.match(server, /sideAskContextHint/, "`sideAskContextHint` present in server surface");
 
-console.log("composer-side-ask smoke passed");
+console.log("composer-side-ask source-presence smoke passed");

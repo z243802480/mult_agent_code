@@ -1,3 +1,6 @@
+// White-box source-presence guard (anti-rename canary) — NOT a behavior test. Each assertion only
+// proves a side-chat wiring symbol still exists in the source; green does NOT prove side chat works at
+// runtime (that needs a black-box smoke driving the panel/server).
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -13,14 +16,26 @@ const server = readServerSurface(root);
 const app = readFileSync(path.join(root, "src/App.tsx"), "utf8");
 const thread = readFileSync(path.join(root, "src/features/thread/Thread.tsx"), "utf8");
 
-assert.match(keyboard, /Semicolon|key === ";"/, "useStudioKeyboard must bind Ctrl+;");
+assert.match(
+  keyboard,
+  /Semicolon|key === ";"/,
+  "`Semicolon` Ctrl+; binding present in useStudioKeyboard.ts",
+);
 // Assert the structural dock class, not the visible label. This used to read /Quick ask/, which
 // went red the moment the UI was localized (the copy is now "快速提问") even though nothing about the
 // side-chat wiring broke — a false alarm. The className is what the rest of the surface targets.
-assert.match(sideChat, /sideChatDock/, "SideChatPanel must render the side-chat dock");
-assert.match(sideUtils, /display_level === "side"/, "side chat events must use display_level side");
-assert.match(server, /channel === "side"/, "server must route side channel to off-thread chat");
-assert.match(app, /sendSideAsk/, "App must wire side ask send");
-assert.match(thread, /display_level === "main"/, "Thread must keep side chat off main narrative");
+assert.match(sideChat, /sideChatDock/, "`sideChatDock` class present in SideChatPanel.tsx");
+assert.match(
+  sideUtils,
+  /display_level === "side"/,
+  '`display_level === "side"` present in sideChatUtils.ts',
+);
+assert.match(server, /channel === "side"/, '`channel === "side"` present in server surface');
+assert.match(app, /sendSideAsk/, "`sendSideAsk` present in App.tsx");
+assert.match(
+  thread,
+  /display_level === "main"/,
+  '`display_level === "main"` present in Thread.tsx',
+);
 
-console.log("side-chat smoke passed");
+console.log("side-chat source-presence smoke passed");
