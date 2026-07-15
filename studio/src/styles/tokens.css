@@ -39,9 +39,15 @@
 
   /* ── Status ──────────────────────────────────────────────────── */
   --ok: #5fcf8e;
+  /* Success green for TEXT. --ok is tuned for borders/fills (a bright accent); as small text on a
+     surface it fell below WCAG AA (3.1–3.5:1). Keep the bright accent for strokes/backgrounds and use
+     this contrast-safe variant for `color:`. On dark surfaces the bright green already clears AA, so
+     dark reuses it; the light theme darkens it (see the light block) to clear 4.5:1 on white/chips. */
+  --ok-text: #5fcf8e;
   --warn: #e6b364;
   --bad: #ef7a73;
   --ok-subtle: rgba(95, 207, 142, 0.13);
+  --ok-border: rgba(95, 207, 142, 0.28);
   --warn-subtle: rgba(230, 179, 100, 0.13);
   --bad-subtle: rgba(239, 122, 115, 0.13);
 
@@ -156,9 +162,14 @@
   --accent-border: rgba(31, 116, 201, 0.28);
 
   --ok: #1f9d57;
+  /* Darker success green for text — clears 4.5:1 on white (5.4:1) and on the green-tinted active
+     diff-scope tab (--ok-subtle bg, the tightest case at 4.7:1), where the brighter --ok (#1f9d57)
+     only reached ~3.1–3.5:1. Measured against the real rendered backgrounds in the light theme. */
+  --ok-text: #177a34;
   --warn: #b3781d;
   --bad: #d0473f;
   --ok-subtle: rgba(31, 157, 87, 0.11);
+  --ok-border: rgba(26, 127, 55, 0.28);
   --warn-subtle: rgba(179, 120, 29, 0.12);
   --bad-subtle: rgba(208, 71, 63, 0.11);
 

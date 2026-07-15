@@ -134,7 +134,7 @@
 
 .permissionCard.resolved.allow {
   border-color: var(--ok);
-  color: var(--ok);
+  color: var(--ok-text);
 }
 
 .permissionCard.resolved.deny {

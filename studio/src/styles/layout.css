@@ -415,5 +415,5 @@ h2 {
 .banner.good {
   background: var(--ok-subtle);
   border-color: var(--ok);
-  color: var(--ok);
+  color: var(--ok-text);
 }

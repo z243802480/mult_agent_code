@@ -143,7 +143,7 @@
   align-items: center;
   background: var(--ok-subtle);
   border-radius: var(--radius-sm);
-  color: var(--ok);
+  color: var(--ok-text);
   display: inline-flex;
   flex-shrink: 0;
   font-size: 10px;
@@ -268,7 +268,7 @@
 
 .viewModeButton.view-focus {
   border-color: var(--ok);
-  color: var(--ok);
+  color: var(--ok-text);
 }
 
 .viewModeButton.view-verbose {
@@ -297,7 +297,7 @@
 .diffFocusButton.active {
   background: var(--ok-subtle);
   border-color: var(--ok);
-  color: var(--ok);
+  color: var(--ok-text);
 }
 
 /* B3: the diffFocus pane width is driven by the .appShell.diffFocus.panelOpen grid

@@ -44,7 +44,7 @@
   flex-shrink: 0;
 }
 .toast.success .toastIcon {
-  color: var(--ok);
+  color: var(--ok-text);
 }
 .toast.error .toastIcon {
   color: var(--bad);

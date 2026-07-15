@@ -370,7 +370,7 @@
 
 .status.completed {
   background: var(--ok-subtle);
-  color: var(--ok);
+  color: var(--ok-text);
 }
 
 .status.running,

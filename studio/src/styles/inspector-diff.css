@@ -68,7 +68,7 @@
   color: var(--warn);
 }
 .gitChangeBadge.status-added {
-  color: var(--ok);
+  color: var(--ok-text);
 }
 .gitChangeBadge.status-deleted {
   color: var(--bad);
@@ -106,7 +106,7 @@
 .diffScopeTab.active {
   background: var(--ok-subtle);
   border-color: var(--ok);
-  color: var(--ok);
+  color: var(--ok-text);
 }
 
 .diffScopeCount {
@@ -185,7 +185,7 @@
 }
 
 .diffPreviewRow.kind-add .diffLineText {
-  color: var(--ok);
+  color: var(--ok-text);
 }
 
 .diffPreviewRow.kind-del {
@@ -246,7 +246,7 @@
   background: var(--ok-subtle);
   border: 1px solid var(--ok);
   border-radius: var(--radius-sm);
-  color: var(--ok);
+  color: var(--ok-text);
   display: inline-flex;
   font-size: 11px;
   gap: 6px;
@@ -449,7 +449,7 @@ button.aggregateDiffChip {
 .diffLayoutTabs button.active {
   background: var(--ok-subtle);
   border-color: var(--ok);
-  color: var(--ok);
+  color: var(--ok-text);
 }
 
 .diffSplitTable {
@@ -655,7 +655,7 @@ button.aggregateDiffChip {
   background: var(--ok-subtle);
   border: 1px solid var(--ok);
   border-radius: var(--radius-pill);
-  color: var(--ok);
+  color: var(--ok-text);
   font-size: 10px;
   font-style: normal;
   padding: 1px 6px;

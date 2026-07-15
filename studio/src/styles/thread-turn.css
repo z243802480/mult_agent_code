@@ -260,7 +260,7 @@
 
 .contextHealth.good {
   background: var(--ok-subtle);
-  color: var(--ok);
+  color: var(--ok-text);
 }
 
 .contextHealth.warn {
@@ -465,7 +465,7 @@
 .liveToolChip.completed {
   background: var(--ok-subtle);
   border-color: var(--ok);
-  color: var(--ok);
+  color: var(--ok-text);
 }
 
 .liveToolChip.failed {
@@ -578,7 +578,7 @@
 }
 
 .toolCardStatus.completed {
-  color: var(--ok);
+  color: var(--ok-text);
 }
 .toolCardStatus.failed {
   color: var(--bad);
@@ -699,7 +699,7 @@
   background: var(--ok-subtle);
   border: 1px solid var(--ok);
   border-radius: var(--radius-sm);
-  color: var(--ok);
+  color: var(--ok-text);
   display: inline-flex;
   font-size: 11px;
   gap: 4px;
@@ -746,7 +746,7 @@
   background: var(--ok-subtle);
   border: 1px solid var(--ok);
   border-radius: var(--radius-control);
-  color: var(--ok);
+  color: var(--ok-text);
   cursor: pointer;
   font-size: 11px;
   padding: 3px 10px;
@@ -837,7 +837,7 @@
 }
 
 .deltaAdd {
-  color: var(--ok);
+  color: var(--ok-text);
 }
 
 .deltaDel {
@@ -889,7 +889,7 @@
 .liveFileAction.accept:focus-visible:not(:disabled) {
   background: var(--ok-subtle);
   border-color: var(--ok);
-  color: var(--ok);
+  color: var(--ok-text);
   outline: none;
 }
 
@@ -991,14 +991,14 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--good, #1a7f37);
+  color: var(--ok-text);
   font-size: 11px;
   font-weight: 500;
   line-height: 1;
   margin: 6px 0 0;
   padding: 3px 8px;
-  border: 1px solid var(--good-border, rgba(26, 127, 55, 0.28));
-  background: var(--good-subtle, rgba(26, 127, 55, 0.09));
+  border: 1px solid var(--ok-border);
+  background: var(--ok-subtle);
   border-radius: 999px;
   cursor: default;
 }

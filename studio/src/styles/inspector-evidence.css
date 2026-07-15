@@ -935,7 +935,7 @@
 }
 
 .settingsRowMeta.good {
-  color: var(--ok);
+  color: var(--ok-text);
 }
 
 .settingsRowMeta.warn {
@@ -985,7 +985,7 @@
 }
 
 .vmTally .pass {
-  color: var(--ok);
+  color: var(--ok-text);
 }
 .vmTally .fail {
   color: var(--bad);
@@ -1045,7 +1045,7 @@
 }
 
 .vmIcon.pass {
-  color: var(--ok);
+  color: var(--ok-text);
 }
 .vmIcon.fail {
   color: var(--bad);
@@ -1072,7 +1072,7 @@
 
 .vmStatus.pass {
   background: var(--ok-subtle);
-  color: var(--ok);
+  color: var(--ok-text);
 }
 .vmStatus.fail {
   background: var(--bad-subtle);
@@ -1115,7 +1115,7 @@
   border-color: var(--ok-subtle);
 }
 .lqBadge.ok strong {
-  color: var(--ok);
+  color: var(--ok-text);
 }
 .lqBadge.warn {
   border-color: var(--warn-subtle);
