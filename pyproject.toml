@@ -7,6 +7,13 @@ name = "asteria-runtime"
 version = "0.2.0a2"
 description = "Local-first multi-agent autonomous development runtime"
 license = { file = "LICENSE" }
+# Proprietary / internal-use (see LICENSE). "Private :: Do Not Upload" makes twine/PyPI REJECT any
+# accidental `twine upload` of this closed pre-release code — a hard guard, not just documentation.
+classifiers = [
+  "License :: Other/Proprietary License",
+  "Private :: Do Not Upload",
+  "Development Status :: 3 - Alpha",
+]
 requires-python = ">=3.11"
 dependencies = [
   "tzdata; platform_system == 'Windows'"

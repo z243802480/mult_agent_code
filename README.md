@@ -264,3 +264,10 @@ Default local endpoints:
 - `localai`: `http://localhost:8080/v1`
 
 See [docs/zh/开发指南.md](docs/zh/开发指南.md) for the Chinese development guide.
+
+## License
+
+**Proprietary / internal-use — this is NOT open-source.** Asteria is closed pre-release ("internal
+beta") software: use, run, modify, and build it for the authoring team's own internal purposes; do
+not redistribute, publish, sublicense, or sell it or any substantial portion of its source without
+prior written permission. Full terms in [LICENSE](LICENSE).
