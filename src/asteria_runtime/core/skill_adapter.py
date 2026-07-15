@@ -345,7 +345,11 @@ class SkillAdapter:
                             summary=str(item.get("summary") or ""),
                         )
                     )
-        ok = bool(payload.get("ok", True))
+        # Fail-closed on a missing `ok`, like the rest of the stack (acceptance/gate/evidence all use
+        # get("ok", False)). A skill handler that omits `ok` has not reported success — defaulting to
+        # True would let a half-finished / malformed skill result read as "completed". Builtin handlers
+        # set ok explicitly, so this only tightens the contract for real (process/MCP) executors.
+        ok = bool(payload.get("ok", False))
         return SkillInvocationResult(
             ok=ok,
             summary=str(payload.get("summary") or f"Skill completed: {skill_name}"),

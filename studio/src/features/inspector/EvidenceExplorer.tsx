@@ -660,7 +660,9 @@ reason=${String(latestRoute.reason ?? "未记录路由原因。")}`}</pre>
 }
 
 function progressToStudioEvent(item: AnyRecord, runId: unknown): StudioEvent {
-  const status = String(item.status ?? "completed") as StudioEvent["status"];
+  // A progress row with no recorded status is unknown, not "completed" — defaulting to completed
+  // renders an in-flight/unknown step with a green finished badge in the Inspector.
+  const status = String(item.status ?? "running") as StudioEvent["status"];
   const phase = String(item.phase ?? item.channel ?? "execute");
   return {
     event_id: String(item.event_id ?? `runtime-progress-${Date.now()}`),

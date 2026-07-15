@@ -27,7 +27,12 @@ function verifierStatusFromRecord(record) {
   if (variables.verifier_passed === false || variables.adversarial_ok === false) return "failed";
   if (swarm.verifier_status) return String(swarm.verifier_status);
   if (record.kind === "verifier_fanout" || record.kind === "adversarial_review") {
-    return record.status === "completed" ? "passed" : "failed";
+    // "completed" means the verifier fanout RAN, not that verification PASSED — the verdict lives in
+    // variables.verifier_passed / adversarial_ok (handled above). With no verdict recorded, don't
+    // fabricate "passed" from mere completion (the merge sibling likewise falls back to neutral, not
+    // passed); only an explicit failure is reported as failed.
+    if (record.status === "failed") return "failed";
+    return "pending";
   }
   return null;
 }

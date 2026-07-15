@@ -7,7 +7,6 @@ from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
-from asteria_runtime.storage.schema_validator import SchemaValidationError
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.utils.time import now_iso
@@ -242,12 +241,14 @@ class CompactCommand:
         return runs[-1].name if runs else None
 
     def _read_optional_json(self, path: Path | None, schema_name: str) -> dict:
+        # "Optional" = tolerate an ABSENT file (returns {}). It must NOT also swallow a present-but-
+        # corrupt/schema-invalid file: doing so let a damaged task_plan.json read as {} → the snapshot
+        # then claimed active_tasks=[] and a resuming agent believed the work was done. The jsonl
+        # sibling already fails closed on corruption; match it so corruption surfaces instead of
+        # silently becoming "nothing to do".
         if path is None or not path.exists():
             return {}
-        try:
-            return self.store.read(path, schema_name)
-        except SchemaValidationError:
-            return {}
+        return self.store.read(path, schema_name)
 
     def _read_optional_jsonl(self, path: Path | None, schema_name: str) -> list[dict]:
         if path is None or not path.exists():

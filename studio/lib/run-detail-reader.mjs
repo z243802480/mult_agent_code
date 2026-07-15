@@ -704,6 +704,27 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) {
       "",
     );
     if (!nextCommand) {
+      // Guard against a false "Done": nextCommand also goes empty when the evidence files are
+      // unreadable (readJson swallows a corrupt/half-written file to {}), not only when a run truly
+      // finished. The run's own status is the source of truth for whether it actually ended — a
+      // running / blocked / paused run must never be shown as "Done / idle" just because its summary
+      // files were empty or failed to parse.
+      const runStatus = String(
+        (payload.run || {}).status ?? finalSummary.run_status ?? "",
+      ).toLowerCase();
+      if (/run|block|paus/.test(runStatus)) {
+        const attention = /block|paus/.test(runStatus);
+        return {
+          kind: "continue",
+          label: attention ? "Needs attention" : "In progress",
+          next_command: "",
+          requires_permission: false,
+          status: runStatus,
+          decision_count: 0,
+          source: "run.status",
+          evidence_refs: ["run.json"],
+        };
+      }
       return {
         kind: "done",
         label: "Done",

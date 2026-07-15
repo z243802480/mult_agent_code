@@ -48,12 +48,33 @@ def test_studio_command_validates_server_script(tmp_path: Path) -> None:
         raise AssertionError("expected missing server.mjs to fail validation")
 
 
-def test_studio_command_skips_install_when_node_modules_present() -> None:
-    studio_dir = resolve_studio_dir()
-    if not studio_dir.is_dir():
-        return
-    command = StudioCommand(Path("."), studio_dir=studio_dir, skip_install=False)
-    node_modules = studio_dir / "node_modules"
-    if not node_modules.is_dir():
-        return
+def test_studio_command_skips_install_when_node_modules_present(tmp_path, monkeypatch) -> None:
+    """node_modules 存在时必须真的跳过安装。原测试零断言、且靠真实 studio 目录双早退空转——在任何
+    没有 node_modules 的环境(含 CI)里彻底 no-op,改一行安装逻辑都不会让它变红。"""
+    studio_dir = tmp_path / "studio"
+    (studio_dir / "node_modules").mkdir(parents=True)
+    calls: list = []
+    monkeypatch.setattr(
+        "asteria_runtime.commands.studio_command.subprocess.run",
+        lambda *a, **k: calls.append(a),
+    )
+    command = StudioCommand(tmp_path, studio_dir=studio_dir, skip_install=False)
     command._ensure_node_modules()
+    assert calls == [], "node_modules 已存在时不应发起 npm install"
+
+
+def test_studio_command_installs_when_node_modules_missing(tmp_path, monkeypatch) -> None:
+    """反向:node_modules 缺失时必须发起一次 npm install(锁死上一条不是因为压根没跑安装路径)。"""
+    studio_dir = tmp_path / "studio"
+    studio_dir.mkdir(parents=True)  # 没有 node_modules
+    calls: list = []
+    monkeypatch.setattr(
+        "asteria_runtime.commands.studio_command.shutil.which", lambda _name: "npm"
+    )
+    monkeypatch.setattr(
+        "asteria_runtime.commands.studio_command.subprocess.run",
+        lambda *a, **k: calls.append(a),
+    )
+    command = StudioCommand(tmp_path, studio_dir=studio_dir, skip_install=False)
+    command._ensure_node_modules()
+    assert len(calls) == 1, "node_modules 缺失时应发起一次 npm install"
