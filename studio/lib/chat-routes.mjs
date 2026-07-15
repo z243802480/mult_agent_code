@@ -80,7 +80,6 @@ export function createChatRoutes({
     }
 
     const route = routeUserIntent(goal, requestedMode, permission);
-    const audit = intentAuditFor(goal, requestedMode, permission, route);
     let mode = route.mode;
     let executionRoute = null;
 
@@ -93,7 +92,15 @@ export function createChatRoutes({
     // default carries no signal, so it must NOT override the base intent — otherwise
     // every conversational (chat) or plan-first message in a fresh workspace gets
     // clobbered into a runtime run. Honor orchestration only when it brings a signal.
-    if (orchestrated && orchestrationHasRouteSignal(orchestrated)) {
+    //
+    // AND: a guardrail that deliberately kept an explicit plan-of-content in chat
+    // (routeUserIntent line ~103: "Plan a travel itinerary" → chat) must not be undone by the
+    // orchestration layer merely echoing the raw requested mode back (source "explicit_mode").
+    // routeUserIntent already weighed the explicit mode and chose chat on purpose; the echo is not
+    // new signal. Without this guard the message ran a real `asteria plan` job while the audit still
+    // read "answered in chat" — a lying audit event plus a nonsensical run on a non-coding request.
+    const guardrailKeptInChat = route.mode === "chat" && orchestrated?.source === "explicit_mode";
+    if (orchestrated && orchestrationHasRouteSignal(orchestrated) && !guardrailKeptInChat) {
       mode = orchestrated.mode;
       executionRoute = orchestrated;
       route.mode = mode;
@@ -107,6 +114,11 @@ export function createChatRoutes({
           : "Strong route re-evaluated after recent chat context.";
       }
     }
+
+    // Compute the audit from the FINAL route, after any orchestration override — an audit built from
+    // the pre-override route reports selected_mode=chat while a plan/run job actually starts. The
+    // audit is the honest record of what happened; it must reflect the route the dispatcher uses.
+    const audit = intentAuditFor(goal, requestedMode, permission, route);
 
     if (route.reason) {
       await appendEvent(activeSessionId, {

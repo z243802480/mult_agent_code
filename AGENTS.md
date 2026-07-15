@@ -18,7 +18,7 @@ CLI and Studio surface (not command-only UX).
 ```text
 执行计划唯一入口：docs/zh/研发总计划.md（当前状态见 §16 / §16.1）
 当前 ACTIVE_PHASE：大重塑 Part B（前端拉齐 + 诚实化收敛）（S77 的 P1 主体已闭合，见下）
-当前 ACTIVE_SLICE：B10（Part B 前端拉齐剩余：上下文预算快照 / 专家进 worker 树）。已落地 B4–B9（专家集群可见 / 护栏 hook / 模型 todo / 成本归属 / schema 防漂 / 完成闸判据）。权威定义见 研发总计划 §16 + changelog 1.2.30–1.2.45（本处为镜像·单一真源）
+当前 ACTIVE_SLICE：B10（Part B 前端拉齐剩余：上下文预算快照 / 专家进 worker 树）。已落地 B4–B9（专家集群可见 / 护栏 hook / 模型 todo / 成本归属 / schema 防漂 / 完成闸判据）。权威定义见 研发总计划 §16 + changelog 1.2.30–1.2.46（本处为镜像·单一真源）
 当前 Brief / 审计签字：docs/zh/reports/S77-commercial-readiness-audit-20260704.md（实现≈71%、市场化 37→利基 43-45）。⚠️ **该报告的 P1④「自主环未闭合」/ P1⑥「DebugAgent 占位」已过期**——三环+软保险丝第四环已闭合且随权限档默认开（changelog 1.2.31/1.2.33/1.2.38），`agents/debug_agent.py` 已删（RA7b）。读该报告须对照 changelog。
 执行顺序：Part B 前端拉齐剩余（上下文预算快照 / 专家进 worker 树）→ P0 沙箱（唯一剩余 P0·按内部发动机定位已降级）→ 利基 Beta
 冻结（仍有效）：新编排 Wave、任务批 disjoint-write 调度（task_graph 冻结点·需重建冲突检测）、无真实 friction 证据的 Studio 新功能、北极星/swarm/12-Agent、真 cloud VM background。
