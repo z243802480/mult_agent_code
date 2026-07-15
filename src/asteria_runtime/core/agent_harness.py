@@ -473,7 +473,11 @@ def observation_next_action_plan(observations: list[dict[str, Any]]) -> dict[str
     blockers: list[str] = []
     evidence_refs: list[str] = []
     seen: set[tuple[str, str, str]] = set()
-    failed = [observation for observation in observations if not observation.get("ok", True)]
+    # Fail-closed on a missing `ok`, like the rest of the stack. This is belt-and-suspenders — every
+    # real observation body carries `ok` (ToolObservation.to_dict always sets it; the tool_observation
+    # schema requires it) — but a failure DETECTOR must never default an unknown observation to
+    # "succeeded" and thereby hide it from diagnose/repair. Unknown → surfaced, not silently passed.
+    failed = [observation for observation in observations if not observation.get("ok", False)]
     for observation in failed:
         tool_name = str(observation.get("tool_name") or "unknown")
         next_hint = str(observation.get("next_hint") or "diagnose_then_repair_replan_ask_or_stop")

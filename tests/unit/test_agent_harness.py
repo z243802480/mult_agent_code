@@ -313,6 +313,21 @@ def test_observation_next_action_plan_exposes_blockers_and_evidence() -> None:
     }
 
 
+def test_observation_without_ok_is_treated_as_failed_not_silently_passed() -> None:
+    """A failure detector must fail-closed: an observation whose `ok` is missing (malformed/unknown)
+    must be surfaced for diagnose/repair, never defaulted to success and hidden. Real observations
+    always carry `ok`, so this only tightens the unknown edge."""
+    plan = observation_next_action_plan(
+        [{"tool_name": "run_command", "summary": "no ok field"}]
+    )
+    assert plan["failed_observation_count"] == 1
+    assert plan["blockers"] == ["run_command: no ok field"]
+
+    # A genuine success (ok=True) still stays out of the failed set.
+    passed = observation_next_action_plan([{"tool_name": "run_command", "ok": True}])
+    assert passed["failed_observation_count"] == 0
+
+
 def test_append_harness_observations_updates_runtime_context() -> None:
     result = ToolResult(ok=False, summary="tests failed", error="nonzero_exit")
     observation = observation_from_tool_result(tool_name="run_command", result=result)
