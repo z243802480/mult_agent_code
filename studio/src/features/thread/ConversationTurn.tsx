@@ -9,11 +9,7 @@ import { extractFileChangesFromSteps, aggregateFileChangeStats } from "../../fil
 import { LiveStream } from "./LiveStream";
 import { ToolCallCard } from "./ToolCallCard";
 import { TurnFinal } from "./TurnFinal";
-import {
-  runVerificationHint,
-  latestCorrectnessVerdict,
-  turnCorrectnessVerdict,
-} from "./runtimeNarrative";
+import { runVerificationHint, turnCorrectnessVerdict, turnVerifiedBadge } from "./runtimeNarrative";
 import {
   cleanReasoning,
   THINKING_PLACEHOLDERS,
@@ -529,17 +525,15 @@ export function ConversationTurn({
     responseStep && isLast && !isRunning ? runVerificationHint(runDetail ?? null, steps) : "";
   // Symmetry: when the /run loop recorded a passing executable verdict, affirm it explicitly. A bare
   // "completed" with the nag merely suppressed leaves the user unsure verification even happened —
-  // the positive badge closes the "completed ≠ verified" gap honestly.
-  // Honesty gate: the badge fires only when the passing verdict belongs to THIS turn's own steps, not
-  // just the run-global latest. A turn that did no verification of its own (e.g. a resumed/replayed
-  // turn whose goal differs from the verified work) must never inherit an earlier pass and claim the
-  // new request "verified". Both must agree: run recorded a pass AND it lives in this turn.
-  const verifiedPass =
-    responseStep &&
-    isLast &&
-    !isRunning &&
-    latestCorrectnessVerdict(runDetail ?? null) === "pass" &&
-    turnCorrectnessVerdict(steps) === "pass";
+  // the positive badge closes the "completed ≠ verified" gap honestly. The last turn keeps the strict
+  // run-level+turn-level gate; earlier completed turns show their OWN passing verdict so a multi-turn
+  // run marks every verified turn, not only the latest (turnVerifiedBadge, honesty gate documented there).
+  const verifiedPass = turnVerifiedBadge({
+    isLast,
+    isRunning,
+    hasResponse: Boolean(responseStep),
+    turnVerdict: turnCorrectnessVerdict(steps),
+  });
 
   return (
     <div

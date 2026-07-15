@@ -130,6 +130,31 @@ export function turnCorrectnessVerdict(
   return null;
 }
 
+// Whether to show the green "验证通过" badge on a turn. The signal is this turn's OWN verified verdict
+// (turnCorrectnessVerdict reads only this turn's steps, so it can never inherit another turn's pass) —
+// the same discriminator the "not yet verified" nag (runVerificationHint) already uses, so the badge
+// and the nag are symmetric: a turn that verified green shows the badge and no nag; a turn that did no
+// verification of its own shows neither. This is per-turn by design, so a senior user reviewing a
+// multi-turn run sees which turns actually verified, not only the latest.
+//
+// It intentionally does NOT also require the run-GLOBAL verdict. That extra gate was redundant for
+// honesty (the turn-scoped verdict already prevents inheritance) and produced a false negative on a
+// follow-up turn that genuinely verified but whose run-detail linkage lagged: the nag was suppressed
+// (turn-scoped pass) yet the badge stayed hidden (run-global not aligned), leaving a verified turn with
+// NEITHER signal — the exact "completed ≠ verified" gap the badge exists to close (live is_even/is_odd
+// test, 2026-07-15). The last turn is still suppressed while it is actively streaming.
+export function turnVerifiedBadge(params: {
+  isLast: boolean;
+  isRunning: boolean;
+  hasResponse: boolean;
+  turnVerdict: "pass" | "fail" | "unrun" | null;
+}): boolean {
+  const { isLast, isRunning, hasResponse, turnVerdict } = params;
+  if (!hasResponse) return false;
+  if (isLast && isRunning) return false;
+  return turnVerdict === "pass";
+}
+
 export function runVerificationHint(
   runDetail: RunDetailPayload | null,
   steps: { events: StudioEvent[] }[] = [],
