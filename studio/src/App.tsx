@@ -295,6 +295,7 @@ export function App() {
         loading={bootstrap.loading}
         isRunning={sessionEvents.isRunning}
         interrupted={sessionEvents.interrupted}
+        waiting={sessionEvents.waiting}
         connectivity={sessionEvents.connectivity}
         changeCount={review.gitStatus?.change_count ?? review.gitStatus?.changes?.length ?? 0}
         branch={review.gitStatus?.branch}

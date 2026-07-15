@@ -207,6 +207,13 @@
   color: var(--warn);
 }
 
+/* Waiting on you: the loop is parked at an approval/decision gate. Accent-toned like "running" (this
+   is a live, resumable session — not a crash), but the dot is STILL: nothing is executing until you
+   act, and a pulsing dot would falsely read as "working". */
+.headerStatus.waiting {
+  color: var(--accent);
+}
+
 /* Connectivity pill — shown only when the event stream is not live (I2). Quiet warn/bad tokens. */
 .headerConnectivity {
   align-items: center;

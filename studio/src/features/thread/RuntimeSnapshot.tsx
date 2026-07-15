@@ -271,6 +271,7 @@ export function RuntimeSnapshot({
       canReview,
       canAccept,
       mainActionKind,
+      pendingPermission: Boolean(pendingPermission),
     }) ||
     textOrFallback(
       noteworthyExitReason(loop.exit_reason)

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AnyRecord, StudioEvent, StudioSession } from "../types";
 import { api, subscribeToEvents, type ConnectivityStatus } from "../api";
 import { isSessionLive } from "../narrative";
+import { latestActiveEvent } from "../features/thread/runtimeNarrative";
 import { mergeEventLists } from "./eventUtils";
 import { deriveRunState } from "./runState";
 import { toast } from "../components/toast";
@@ -60,6 +61,13 @@ export function useSessionEvents(
 
   // The event log is a hint; the server's job registry is the authority (see runState.ts).
   const eventsLive = useMemo(() => isSessionLive(events), [events]);
+  // The loop is parked on the user: the latest still-active signal is a permission/decision gate
+  // awaiting your approval (isSessionLive already treats waiting_user as live). This is a deliberate
+  // pause, so we report "waiting", not the warn-toned "interrupted" a jobs-registry miss would give.
+  const waitingForUser = useMemo(
+    () => latestActiveEvent(events)?.status === "waiting_user",
+    [events],
+  );
   const [jobsRunning, setJobsRunning] = useState<number | null>(null);
   const [staleChecks, setStaleChecks] = useState(0);
 
@@ -94,9 +102,10 @@ export function useSessionEvents(
     };
   }, [activeSession?.session_id, eventsLive]);
 
-  const runState = deriveRunState({ eventsLive, jobsRunning, staleChecks });
+  const runState = deriveRunState({ eventsLive, jobsRunning, staleChecks, waitingForUser });
   const isRunning = runState === "running";
   const interrupted = runState === "interrupted";
+  const waiting = runState === "waiting";
 
   const resetRunProbe = useCallback(() => {
     setJobsRunning(null);
@@ -271,6 +280,7 @@ export function useSessionEvents(
     pendingTurn,
     isRunning,
     interrupted,
+    waiting,
     runState,
     runStateKnown,
     connectivity,

@@ -27,6 +27,8 @@ type MissionPaneHeaderProps = {
   isRunning: boolean;
   /** Events look live but no job is alive — the run died (see runState.ts). */
   interrupted?: boolean;
+  /** The loop is parked on a pending approval/decision, awaiting your input (see runState.ts). */
+  waiting?: boolean;
   connectivity?: ConnectivityStatus;
   changeCount: number;
   branch?: string;
@@ -49,6 +51,7 @@ export function MissionPaneHeader({
   loading,
   isRunning,
   interrupted,
+  waiting,
   connectivity,
   changeCount,
   branch,
@@ -80,11 +83,19 @@ export function MissionPaneHeader({
           </span>
         )}
         <span
-          className={`headerStatus${isRunning ? " running" : ""}${interrupted ? " interrupted" : ""}`}
-          title={interrupted ? "运行已中断——执行进程已不在了" : isRunning ? "Agent 运行中" : "空闲"}
+          className={`headerStatus${isRunning ? " running" : ""}${waiting ? " waiting" : ""}${interrupted ? " interrupted" : ""}`}
+          title={
+            waiting
+              ? "已暂停——等待你的确认才能继续"
+              : interrupted
+                ? "运行已中断——执行进程已不在了"
+                : isRunning
+                  ? "Agent 运行中"
+                  : "空闲"
+          }
         >
           <span className="headerStatusDot" />
-          {interrupted ? "已中断" : isRunning ? "运行中" : "空闲"}
+          {waiting ? "待你确认" : interrupted ? "已中断" : isRunning ? "运行中" : "空闲"}
         </span>
         {connectivity && connectivity !== "live" && (
           <span

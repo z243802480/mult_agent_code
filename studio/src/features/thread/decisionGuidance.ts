@@ -71,11 +71,26 @@ export function runtimeNextStepSummary(params: {
   canReview: boolean;
   canAccept: boolean;
   mainActionKind: string;
+  pendingPermission?: boolean;
 }): string {
-  const { decisions, nextActionValue, nextLabel, loop, canReview, canAccept, mainActionKind } =
-    params;
+  const {
+    decisions,
+    nextActionValue,
+    nextLabel,
+    loop,
+    canReview,
+    canAccept,
+    mainActionKind,
+    pendingPermission = false,
+  } = params;
 
   if (decisions.length) return pendingDecisionSummary(decisions);
+  // The run is paused on a pending permission approval (e.g. the initial goal-start gate, or a shell
+  // command that needs a one-off approval). That blocks everything downstream, so it must be stated
+  // BEFORE the review/accept affordances — otherwise a run that has produced nothing yet reads as
+  // "ready to review the diff", which is the opposite of the truth. Matches the permission DecisionCard
+  // hint wording so the bar and the card agree.
+  if (pendingPermission) return "批准下面待处理的操作,智能体才能继续。";
   // Honest affordance, not a verdict: the frontend only knows the run reached an accept/review-able
   // state from a capability flag — it must not assert "Review passed" / "Task complete" (a verdict it
   // doesn't hold). State + next action only; any "passed" wording must come from a real runtime event.

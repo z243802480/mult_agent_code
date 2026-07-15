@@ -38,4 +38,26 @@ describe("deriveRunState", () => {
       }),
     ).toBe("interrupted");
   });
+
+  it("reports waiting (not interrupted) when parked on a pending approval with no live job", () => {
+    // THE BUG THIS FIXES: a run paused at an approval gate (e.g. the initial goal-start permission)
+    // has no live subprocess, so the jobs-registry miss used to survive the debounce and label it
+    // "已中断" — a crash — while the thread simultaneously showed "待你处理". A deliberate wait is not
+    // a death: waitingForUser is authoritative over the registry miss.
+    expect(
+      deriveRunState({
+        eventsLive: true,
+        jobsRunning: 0,
+        staleChecks: STALE_CHECKS_BEFORE_DEAD,
+        waitingForUser: true,
+      }),
+    ).toBe("waiting");
+  });
+
+  it("still reports idle when nothing is live, even if a stale waiting flag lingers", () => {
+    // Not-live wins: no active gate to wait on.
+    expect(
+      deriveRunState({ eventsLive: false, jobsRunning: 0, staleChecks: 0, waitingForUser: true }),
+    ).toBe("idle");
+  });
 });

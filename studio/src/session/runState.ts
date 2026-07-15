@@ -22,7 +22,7 @@
  *    consecutive probes counts.
  */
 
-export type RunState = "idle" | "running" | "interrupted";
+export type RunState = "idle" | "running" | "waiting" | "interrupted";
 
 /** Consecutive "events say live, registry says nothing is running" probes before we call it dead. */
 export const STALE_CHECKS_BEFORE_DEAD = 2;
@@ -34,9 +34,19 @@ export function deriveRunState(input: {
   jobsRunning: number | null;
   /** How many consecutive probes have seen eventsLive && jobsRunning === 0. */
   staleChecks: number;
+  /**
+   * The loop is parked on a pending permission/decision gate, waiting for the user's input (e.g. the
+   * initial goal-start approval, or a shell command that needs a one-off approval). This is a
+   * DELIBERATE pause, not a dead process — so it must be reported as "waiting", never "interrupted"
+   * (which is warn-toned and reads as a crash) and never "running" (there is no work in flight). It is
+   * authoritative over the jobs registry: a parked-for-you run may legitimately have no live subprocess
+   * (the pre-run gate hasn't spawned one yet), and that absence is not evidence of death here.
+   */
+  waitingForUser?: boolean;
 }): RunState {
-  const { eventsLive, jobsRunning, staleChecks } = input;
+  const { eventsLive, jobsRunning, staleChecks, waitingForUser = false } = input;
   if (!eventsLive) return "idle";
+  if (waitingForUser) return "waiting";
   if (jobsRunning === null) return "running"; // unknown registry: trust the events, never fabricate death
   if (jobsRunning > 0) return "running";
   return staleChecks >= STALE_CHECKS_BEFORE_DEAD ? "interrupted" : "running";
