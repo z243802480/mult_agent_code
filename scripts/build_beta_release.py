@@ -76,8 +76,20 @@ def _read_version(root: Path) -> str:
 
 
 def _build_wheel(root: Path, dist_dir: Path) -> None:
+    # Pass dist_dir through: without it build_package.py writes the wheel to its own default (root/dist)
+    # while _latest_wheel(dist_dir) looks in the requested dir, so a custom --dist-dir found no wheel and
+    # aborted the whole pack. Default runs (dist_dir == root/dist) are unchanged.
     subprocess.run(
-        [sys.executable, str(root / "scripts" / "build_package.py"), "--root", str(root), "--clean", "--no-deps"],
+        [
+            sys.executable,
+            str(root / "scripts" / "build_package.py"),
+            "--root",
+            str(root),
+            "--dist-dir",
+            str(dist_dir),
+            "--clean",
+            "--no-deps",
+        ],
         check=True,
     )
 
