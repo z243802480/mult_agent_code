@@ -975,18 +975,22 @@
   border-radius: 0 var(--radius-sm, 4px) var(--radius-sm, 4px) 0;
 }
 
-.turnVerifiedNote {
+/* A compact ✓ chip, not a sentence: the final answer already states the outcome, so verification is
+   an affordance (a badge you can hover for detail), not another line of prose restating it. */
+.turnVerifiedBadge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   color: var(--good, #1a7f37);
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
   margin: 6px 0 0;
-  padding: 4px 8px;
-  border-left: 2px solid var(--good, #1a7f37);
+  padding: 3px 8px;
+  border: 1px solid var(--good-border, rgba(26, 127, 55, 0.28));
   background: var(--good-subtle, rgba(26, 127, 55, 0.09));
-  border-radius: 0 var(--radius-sm, 4px) var(--radius-sm, 4px) 0;
+  border-radius: 999px;
+  cursor: default;
 }
 
 .turnFinal.failed {

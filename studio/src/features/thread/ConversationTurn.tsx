@@ -72,6 +72,7 @@ function TurnMiddle({
   compactDiff,
   showToolOutput = true,
   excludeFilePaths,
+  answerLed = false,
 }: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
@@ -92,6 +93,12 @@ function TurnMiddle({
   // output is always in the Inspector; the last/active turn keeps it inline.
   showToolOutput?: boolean;
   excludeFilePaths?: Set<string>;
+  // The turn led with the model's final answer (TurnFinal above). That answer IS the model's completed
+  // voice, so re-printing the per-step narration prose below it just restates the same outcome — the
+  // "said it 3-4 times" density complaint. When answer-led we drop the prominent narration block: it
+  // still streamed live (LiveStream) while the turn ran, and the raw prose stays in the Inspector. The
+  // terse tool/file cards carry the concrete journey, matching Claude Code's answer + folded-process view.
+  answerLed?: boolean;
 }) {
   const hasPendingPermission = steps.some((s) =>
     s.events.some((e) => e.type === "permission_request" && e.status === "waiting_user"),
@@ -198,7 +205,7 @@ function TurnMiddle({
 
   return (
     <div className="turnMiddle">
-      {narrationSteps.length > 0 && (
+      {narrationSteps.length > 0 && !answerLed && (
         <div className="turnNarration">
           {narrationSteps.map((step) => {
             const text = cleanReasoning(
@@ -626,6 +633,7 @@ export function ConversationTurn({
               compactDiff={compactDiff}
               showToolOutput={isLast}
               excludeFilePaths={excludeFilePaths}
+              answerLed={responseStep?.kind === "final"}
             />
           )}
         </>
@@ -636,9 +644,13 @@ export function ConversationTurn({
         </div>
       )}
       {verifiedPass && (
-        <div className="turnVerifiedNote" role="note">
+        <div
+          className="turnVerifiedBadge"
+          role="note"
+          title="记录的测试/检查均已跑绿"
+        >
           <Check size={12} />
-          <span>验证通过——记录的测试/检查均已跑绿。</span>
+          <span>已验证</span>
         </div>
       )}
       {responseStep && isLast && onSuggestedAction && !suppressSuggested && (

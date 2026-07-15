@@ -3,7 +3,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { NarrativeStep as NarrativeStepType } from "../../types";
 import { ToolCallCard } from "./ToolCallCard";
-import { PendingTurn } from "./ConversationTurn";
+import { PendingTurn, ConversationTurn } from "./ConversationTurn";
 
 function toolStep(status: string): NarrativeStepType {
   return {
@@ -65,5 +65,49 @@ describe("PendingTurn reflects the chosen mode", () => {
     expect(html).toContain("思考中");
     // The user's message still shows optimistically.
     expect(html).toContain("做点事");
+  });
+});
+
+describe("answer-led turns drop redundant narration prose (density: say it once)", () => {
+  function step(kind: string, text: string): NarrativeStepType {
+    return {
+      id: `s-${kind}`,
+      kind,
+      label: "",
+      title: "",
+      summary: text,
+      status: "completed",
+      events: [{ event_id: `e-${kind}`, content_delta: text, phase: "run" }],
+    } as unknown as NarrativeStepType;
+  }
+
+  const baseProps = {
+    selected: null,
+    onSelect: () => {},
+    onPermit: async () => {},
+    isLast: false,
+    isRunning: false,
+    expandSignal: null,
+  } as unknown as Record<string, unknown>;
+
+  const NARRATION = "创建 factorial 实现文件并运行 pytest 验证";
+  const ANSWER = "我已实现 factorial 并通过全部测试";
+
+  it("hides the per-step narration when the turn led with a final answer", () => {
+    const steps = [step("goal", "写 factorial"), step("narration", NARRATION), step("final", ANSWER)];
+    const html = renderToStaticMarkup(
+      React.createElement(ConversationTurn, { ...baseProps, steps }),
+    );
+    // The answer (the model's completed voice) stays; the narration restating it is dropped.
+    expect(html).toContain(ANSWER);
+    expect(html).not.toContain(NARRATION);
+  });
+
+  it("keeps the narration when there is NO final answer to supersede it", () => {
+    const steps = [step("goal", "写 factorial"), step("narration", NARRATION)];
+    const html = renderToStaticMarkup(
+      React.createElement(ConversationTurn, { ...baseProps, steps }),
+    );
+    expect(html).toContain(NARRATION);
   });
 });
