@@ -14,7 +14,12 @@ import {
   latestCorrectnessVerdict,
   turnCorrectnessVerdict,
 } from "./runtimeNarrative";
-import { cleanReasoning, THINKING_PLACEHOLDERS, dedupeAdjacentToolSteps } from "../../narrative";
+import {
+  cleanReasoning,
+  THINKING_PLACEHOLDERS,
+  dedupeAdjacentToolSteps,
+  splitToolCluster,
+} from "../../narrative";
 import { SuggestedActions } from "./SuggestedActions";
 import { TurnRewindButton } from "./TurnRewindButton";
 import {
@@ -26,6 +31,34 @@ import {
 import { formatEventTime } from "./threadUtils";
 
 export type ProcessExpandSignal = { mode: "expand" | "collapse"; id: number } | null;
+
+// The tool-card list, with older churn folded when a run is long (F2). Short/normal runs (≤ the
+// cluster limit) render every card exactly as before; a repair storm folds all but the most recent
+// cards behind one toggle, so the thread shows what just happened without a wall of near-identical
+// cards. Collapsed by default because the recent tail is the part worth reading.
+function ToolStepList({ steps, showOutput }: { steps: NarrativeStepType[]; showOutput: boolean }) {
+  const { earlier, recent } = splitToolCluster(steps);
+  const [showEarlier, setShowEarlier] = useState(false);
+  return (
+    <div className="turnToolCards">
+      {earlier.length > 0 && (
+        <button
+          type="button"
+          className={`toolClusterToggle ${showEarlier ? "open" : ""}`}
+          onClick={() => setShowEarlier((v) => !v)}
+        >
+          <ChevronRight size={12} className={`chevron ${showEarlier ? "open" : ""}`} />
+          <span>{showEarlier ? "收起更早的步骤" : `展开更早的 ${earlier.length} 步操作`}</span>
+        </button>
+      )}
+      {showEarlier &&
+        earlier.map((step) => <ToolCallCard key={step.id} step={step} showOutput={showOutput} />)}
+      {recent.map((step) => (
+        <ToolCallCard key={step.id} step={step} showOutput={showOutput} />
+      ))}
+    </div>
+  );
+}
 
 function TurnMiddle({
   steps,
@@ -205,11 +238,7 @@ function TurnMiddle({
         </div>
       )}
       {toolSteps.length > 0 && (
-        <div className="turnToolCards">
-          {toolSteps.map((step) => (
-            <ToolCallCard key={step.id} step={step} showOutput={showToolOutput && !compactDiff} />
-          ))}
-        </div>
+        <ToolStepList steps={toolSteps} showOutput={showToolOutput && !compactDiff} />
       )}
       {permissionSteps.map((step) => {
         const permStep = step.events.find(

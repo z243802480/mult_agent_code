@@ -1100,6 +1100,39 @@
   margin: 6px 0 0 28px;
 }
 
+/* F2: "expand the earlier N steps" toggle that folds a long run's older tool churn. Quiet muted pill,
+   same idiom as the process-detail badge — it's progressive disclosure, not a prominent action. */
+.toolClusterToggle {
+  align-items: center;
+  align-self: flex-start;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 5px;
+  padding: 2px 6px;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+.toolClusterToggle:hover,
+.toolClusterToggle.open {
+  background: var(--surface-1);
+  color: var(--text-secondary);
+}
+
+.toolClusterToggle .chevron {
+  transition: transform var(--dur-reveal) var(--ease);
+}
+
+.toolClusterToggle .chevron.open {
+  transform: rotate(90deg);
+}
+
 /* The model's own per-step message (ADR-0021): real LLM prose shown as the model speaking, above the
    process cards. Styled as conversational text (not a chip/label) so the panel reads as the model
    talking to the user, then acting. */

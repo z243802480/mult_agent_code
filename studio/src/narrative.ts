@@ -538,6 +538,27 @@ export function dedupeAdjacentToolSteps(steps: NarrativeStep[]): NarrativeStep[]
   return out;
 }
 
+// A long run — especially a repair storm (write → test → rewrite → test …) — produces a wall of tool
+// cards that dedupeAdjacentToolSteps can't collapse (the commands alternate, so no two are strictly
+// adjacent-identical). Mainstream agent UIs (Claude Code, Cursor) keep the RECENT steps visible and
+// fold the older churn one click away, so the thread stays readable without hiding what just happened.
+// Collapse only kicks in past a threshold, so short/normal runs render exactly as before.
+export const TOOL_CLUSTER_LIMIT = 8; // only collapse when there are MORE tool cards than this
+export const TOOL_CLUSTER_TAIL = 5; // always keep this many most-recent cards expanded
+
+// Split a tool-step list into the older steps to fold away and the recent steps to always show.
+// Below the limit nothing folds (earlier is empty). Pure + exported so the split is unit-tested and
+// the component just renders the two buckets.
+export function splitToolCluster<T>(
+  steps: T[],
+  limit: number = TOOL_CLUSTER_LIMIT,
+  tail: number = TOOL_CLUSTER_TAIL,
+): { earlier: T[]; recent: T[] } {
+  if (steps.length <= limit) return { earlier: [], recent: steps };
+  const cut = steps.length - tail;
+  return { earlier: steps.slice(0, cut), recent: steps.slice(cut) };
+}
+
 export function firstText(...items: unknown[]): string {
   for (const item of items) {
     const text = String(item ?? "").trim();
