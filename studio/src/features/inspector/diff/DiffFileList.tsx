@@ -11,6 +11,19 @@ const STATUS_LABEL: Record<string, string> = {
   changed: "~",
 };
 
+// Localize the "git unavailable" reason for the Chinese Changes pane. The BFF (studio/lib/git.mjs)
+// returns the reason in English (e.g. "not a git repository") — the most common one, when the
+// workspace was never `git init`-ed, was leaking English into the pane. A genuine git stderr (git
+// installed but failing) is diagnostic and rare, so it passes through as-is.
+export function gitUnavailableText(reason: string | null | undefined): string {
+  const value = String(reason ?? "").trim();
+  if (!value) return "该工作区不支持 Git。";
+  if (/not a git repository/i.test(value)) {
+    return "当前工作区还不是 Git 仓库——改动审查需要先在此目录执行 git init。";
+  }
+  return value;
+}
+
 export function DiffFileList({
   gitStatus,
   activeScope,
@@ -27,7 +40,7 @@ export function DiffFileList({
   }
 
   if (!gitStatus.available) {
-    return <p className="muted">{gitStatus.reason ?? "该工作区不支持 Git。"}</p>;
+    return <p className="muted">{gitUnavailableText(gitStatus.reason)}</p>;
   }
 
   return (

@@ -228,14 +228,22 @@ export function Thread({
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Auto-follow only while pinned to the bottom (read via ref to avoid a scroll↔state feedback loop).
+  // Auto-follow the live edge while pinned to the bottom (gate read via ref to avoid a scroll↔state
+  // feedback loop). We jump INSTANTLY and SYNCHRONOUSLY rather than via a smooth rAF animation:
+  //  - A smooth scroll emits a stream of intermediate `scroll` events, and mid-flight the position
+  //    reads as "far from the bottom" — which flips atBottomRef false and disables all further
+  //    auto-follow, leaving the viewport stranded partway (the exact "scrollHeight grows but scrollTop
+  //    stays put" symptom). An instant jump lands directly at the bottom, so the single resulting
+  //    scroll event reads as "at bottom" and the pin survives.
+  //  - Both requestAnimationFrame and smooth scrolling are driven by the animation-frame loop, which is
+  //    paused while the tab is backgrounded; wrapping the scroll in rAF meant a long run streaming in a
+  //    background tab never followed at all. A direct scrollTop write runs regardless of visibility.
+  // useEffect fires after the DOM is committed, so el.scrollHeight is already the final post-growth
+  // height here — no rAF is needed to "wait for layout".
   useEffect(() => {
     const el = threadRef.current;
     if (!el || !atBottomRef.current) return;
-    const smooth = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    requestAnimationFrame(() => {
-      el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
-    });
+    el.scrollTop = el.scrollHeight;
   }, [mainEvents.length, isRunning]);
 
   // Reset the "load earlier" reveal and issue cursor when switching to a different run/session.
@@ -243,6 +251,17 @@ export function Thread({
     setShowEarlier(false);
     setIssueCursor(0);
   }, [selectedRunId]);
+
+  // Re-arm auto-follow whenever the open session changes, so a freshly opened session tracks its live
+  // edge and opens at the latest message. Keyed on the session id (not selectedRunId, which is "" for
+  // chat-only sessions) so switching between any two sessions re-arms. Without this, atBottomRef could
+  // carry a stale `false` from the previous session — or latch `false` the moment a tall transcript
+  // first renders scrolled to the top — silently killing follow for the whole session.
+  const sessionId = events[0]?.session_id ?? null;
+  useEffect(() => {
+    atBottomRef.current = true;
+    setAtBottom(true);
+  }, [sessionId]);
 
   const hiddenTurnCount = showEarlier ? 0 : Math.max(0, turns.length - MAX_RENDERED_TURNS);
   const visibleTurns = hiddenTurnCount > 0 ? turns.slice(-MAX_RENDERED_TURNS) : turns;
