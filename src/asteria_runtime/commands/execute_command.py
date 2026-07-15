@@ -1324,16 +1324,25 @@ class ExecuteCommand:
         # 用户暂停（无待批决策）：脊梁在回合边界整批停手。任务**不标 blocked**——它没有失败,只是被
         # 用户按了暂停；resume 会重跑这个任务,已完成的工件都还在。也不走完成契约判定,否则会把"做了
         # 一半"当成"没做完契约"判 blocked,把一次正常的暂停污染成一次失败。
-        if result.status == "paused" and result.pending_decision is None:
-            return self._user_paused_model_driven_task(
-                task=task,
-                task_board=task_board,
-                context=context,
-                rounds_completed=result.iterations,
-                max_rounds=max_iterations,
+        if result.status == "paused":
+            # Real work done before the pause — never report 0. The two pause summaries used to
+            # hardcode tool_calls=0/verification_calls=0, which zeroed the worker tree's activity/cost
+            # counters and review's collaboration summary for a task that had already run several tools.
+            # A pause is not a completion judgment, so count activity with the SAME detectors as the
+            # completion path, without running check_completion_contract.
+            paused_tool_calls, paused_verification_calls = self._paused_activity_counts(
+                result, goal_spec, task
             )
-
-        if result.status == "paused" and result.pending_decision is not None:
+            if result.pending_decision is None:
+                return self._user_paused_model_driven_task(
+                    task=task,
+                    task_board=task_board,
+                    context=context,
+                    rounds_completed=result.iterations,
+                    max_rounds=max_iterations,
+                    tool_calls=paused_tool_calls,
+                    verification_calls=paused_verification_calls,
+                )
             return self._pause_model_driven_task(
                 task=task,
                 task_board=task_board,
@@ -1341,6 +1350,8 @@ class ExecuteCommand:
                 decision=result.pending_decision,
                 rounds_completed=result.iterations,
                 max_rounds=max_iterations,
+                tool_calls=paused_tool_calls,
+                verification_calls=paused_verification_calls,
             )
 
         # 立真身完成判定 = 确定性正确性边界（ADR-0016：认知归模型、证据边界归 harness）。模型吐
@@ -1480,6 +1491,29 @@ class ExecuteCommand:
             validation_refs=validation_refs,
         )
 
+    def _paused_activity_counts(
+        self, result: Any, goal_spec: dict, task: dict
+    ) -> tuple[int, int]:
+        """How much work actually happened before the pause. Counted with the SAME detectors as the
+        completion path (classify_fast_path → allow_readback → _latest_verification_per_command), so a
+        paused task reports real (tool_calls, verification_calls) instead of a hardcoded 0. A pause is
+        not a completion judgment, so we count activity without running check_completion_contract."""
+        observations = result.observations
+        fast_path = classify_fast_path(
+            str(goal_spec.get("normalized_goal") or goal_spec.get("original_goal") or ""),
+            goal_spec=goal_spec,
+            task=task,
+        )
+        allow_readback = fast_path.task_kind not in {"bug_fix", "single_file_bugfix"}
+        verification_results = _latest_verification_per_command(
+            [
+                obs
+                for obs in observations
+                if _is_verification_observation(obs, allow_readback=allow_readback)
+            ]
+        )
+        return len(observations), len(verification_results)
+
     def _pause_model_driven_task(
         self,
         *,
@@ -1489,6 +1523,8 @@ class ExecuteCommand:
         decision: dict,
         rounds_completed: int,
         max_rounds: int,
+        tool_calls: int = 0,
+        verification_calls: int = 0,
     ) -> TaskExecutionSummary:
         """脊梁命中人审边界时的收尾（ADR-0016：人审=显式边界）。复用 FSM 同一套 block/证据/进度落法：
         任务标 blocked + 留 pending DecisionPoint，run 层据 pending_decisions 把 run 报成 paused。"""
@@ -1537,7 +1573,9 @@ class ExecuteCommand:
                 "reason": decision.get("reason"),
             },
         )
-        return self._blocked_task_summary(blocked)
+        return self._blocked_task_summary(
+            blocked, tool_calls=tool_calls, verification_calls=verification_calls
+        )
 
     def _model_driven_prompts(
         self,
@@ -1978,6 +2016,8 @@ class ExecuteCommand:
         context: RuntimeContext,
         rounds_completed: int,
         max_rounds: int,
+        tool_calls: int = 0,
+        verification_calls: int = 0,
     ) -> TaskExecutionSummary:
         """用户按下暂停：在回合边界干净停手，run 报 paused，可 resume。
 
@@ -2024,17 +2064,26 @@ class ExecuteCommand:
             task_id=task_id,
             status="paused",
             summary=summary,
-            tool_calls=0,
-            verification_calls=0,
+            tool_calls=tool_calls,
+            verification_calls=verification_calls,
         )
 
-    def _blocked_task_summary(self, result: BlockingResult) -> TaskExecutionSummary:
+    def _blocked_task_summary(
+        self,
+        result: BlockingResult,
+        *,
+        tool_calls: int = 0,
+        verification_calls: int = 0,
+    ) -> TaskExecutionSummary:
+        # Counts default to 0 for genuine pre-work blocks (policy denial, runtime request before any
+        # tool ran). The human-approval pause path passes the real pre-pause activity so a paused task
+        # is not misreported as having done nothing.
         return TaskExecutionSummary(
             task_id=result.task_id,
             status=result.status,
             summary=result.summary,
-            tool_calls=0,
-            verification_calls=0,
+            tool_calls=tool_calls,
+            verification_calls=verification_calls,
             evidence_path=result.evidence_path,
         )
 

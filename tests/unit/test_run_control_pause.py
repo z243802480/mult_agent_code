@@ -9,8 +9,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
+from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.core.model_driven_turn import ToolObservation, run_model_driven_turn
 from asteria_runtime.core.run_control import (
     clear_pause,
@@ -18,6 +20,34 @@ from asteria_runtime.core.run_control import (
     pause_requested,
     request_pause,
 )
+
+
+def _obs(name: str, **data: Any) -> ToolObservation:
+    return ToolObservation(
+        tool_name=name, ok=True, status="success", summary="ok", data=data, artifact_refs=[]
+    )
+
+
+def test_paused_summary_counts_real_activity_not_hardcoded_zero(tmp_path: Path) -> None:
+    """A pause after work must report the tools/verification it actually ran. Both pause summaries
+    used to hardcode tool_calls=0/verification_calls=0, which zeroed the worker tree's activity/cost
+    counters and review's collaboration summary for a task that had already run several tools.
+    Counted with the SAME detectors as the completion path (run_tests → a verification call)."""
+    cmd = ExecuteCommand(tmp_path)
+    task = {"task_id": "task-0001", "task_kind": "implementation"}
+    goal_spec = {"normalized_goal": "add a small feature"}
+
+    with_work = SimpleNamespace(
+        observations=[_obs("write_file"), _obs("write_file"), _obs("run_tests", command="pytest")]
+    )
+    tool_calls, verification_calls = cmd._paused_activity_counts(with_work, goal_spec, task)
+    assert tool_calls == 3
+    assert verification_calls == 1
+
+    # A genuine before-any-work pause still honestly reports zero — the fix restores truth, it does not
+    # fabricate activity.
+    no_work = SimpleNamespace(observations=[])
+    assert cmd._paused_activity_counts(no_work, goal_spec, task) == (0, 0)
 
 
 class _RecordingClient:
