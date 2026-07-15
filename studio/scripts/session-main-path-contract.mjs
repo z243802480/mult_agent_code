@@ -104,11 +104,20 @@ assert.ok(
   ),
   "turnCorrectnessVerdict must scan this turn's own step events, keyed off correctness_status",
 );
+// The badge condition was refactored out of an inline expression into the turnVerifiedBadge helper
+// (answerLed work), so assert the CURRENT honest structure rather than the old inline wording: the
+// badge is fed THIS turn's own verdict (turnCorrectnessVerdict(steps)), and the helper only returns
+// true when that turn-scoped verdict is "pass" — a turn that did no verification of its own reads
+// "unrun" and gets no badge, which is the goal-swallowing dishonesty this locks out.
 assert.ok(
-  /verifiedPass[\s\S]*?latestCorrectnessVerdict[\s\S]*?turnCorrectnessVerdict\(steps\) === "pass"/.test(
+  /const verifiedPass = turnVerifiedBadge\(\{[\s\S]*?turnVerdict: turnCorrectnessVerdict\(steps\)/.test(
     conversationTurn,
   ),
-  "the verified-pass badge must require the passing verdict to belong to this turn, not run-global only",
+  "the verified-pass badge must be fed THIS turn's own verdict (turnVerifiedBadge ← turnCorrectnessVerdict(steps)), not a run-global latest",
+);
+assert.ok(
+  /export function turnVerifiedBadge\([\s\S]*?return turnVerdict === "pass"/.test(runtimeNarrative),
+  "turnVerifiedBadge must gate strictly on the turn-scoped verdict being pass",
 );
 
 // Main-thread scaffolding cut: the loop's own bookkeeping steps (turn/iteration markers, context
