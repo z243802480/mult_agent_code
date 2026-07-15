@@ -151,7 +151,9 @@ createServer(async (request, response) => {
 }).listen(port, "127.0.0.1", () => {
   console.log(`Asteria Studio listening on http://127.0.0.1:${port}`);
   console.log(`workspace=${workspace}`);
+  if (WARM_WORKER_ENABLED) console.log("warm worker: enabled (ADR-0029 ②) — pre-warming");
   startPreviewServer(port + 1);
+  prewarmWorkerAtBoot();
 });
 
 async function handleApi(request, response, url) {
@@ -745,6 +747,170 @@ async function applyAutonomyForTier(permissionTier) {
   }
 }
 
+// ── Warm worker (ADR-0029 ②) ─────────────────────────────────────────────────
+// One long-lived `python -m asteria_runtime.studio_worker` that has already paid the ~50-module
+// import cost, so runs after boot start warm instead of cold-spawning (the import graph alone is
+// ~254ms per cold run). Serial by design: it serves one run at a time, which is what makes the
+// per-request event-sink env override inside the worker safe. Concurrent runs, custom-command modes,
+// and ANY worker trouble (not ready, busy, crashed) transparently fall back to the cold spawn — so
+// turning this on can only remove latency, never change an outcome. Off unless ASTERIA_STUDIO_WARM_WORKER.
+const WARM_WORKER_ENABLED =
+  process.env.ASTERIA_STUDIO_WARM_WORKER === "1" ||
+  String(process.env.ASTERIA_STUDIO_WARM_WORKER || "").toLowerCase() === "true";
+const WARM_CONTROL_PREFIX = "@@ASTERIA_WORKER@@ ";
+const WARM_WORKER_MAX_RUNS = 50; // recycle after N runs so any slow per-run leak stays bounded
+let warmWorker = null; // { child, pid, ready, busy, runCount, active, buf }
+
+function spawnWarmWorker() {
+  const child = spawn(python, ["-m", `${moduleName}.studio_worker`], {
+    cwd: runtimeRoot,
+    env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+    windowsHide: true,
+  });
+  const w = {
+    child,
+    pid: child.pid,
+    ready: false,
+    busy: false,
+    runCount: 0,
+    active: null,
+    buf: "",
+  };
+  child.stdout.on("data", (chunk) => handleWarmStdout(w, chunk.toString("utf8")));
+  child.stderr.on("data", () => {}); // process-level worker noise; per-run diagnostics ride user_progress
+  child.on("close", () => handleWarmClose(w));
+  child.on("error", () => handleWarmClose(w));
+  warmWorker = w;
+  return w;
+}
+
+function ensureWarmWorker() {
+  if (!warmWorker) return spawnWarmWorker();
+  return warmWorker;
+}
+
+// Pre-warm at boot so even the first user run is warm — the import cost is paid now, in the background.
+function prewarmWorkerAtBoot() {
+  if (!WARM_WORKER_ENABLED) return;
+  try {
+    ensureWarmWorker();
+  } catch {}
+}
+
+function finalizeWarmActive(active, w, { code, runIdHint }) {
+  active.stopTail();
+  active.job.child = null;
+  w.active = null;
+  w.busy = false;
+  void finalizeRuntimeJob({
+    job: active.job,
+    jobId: active.jobId,
+    sessionId: active.sessionId,
+    command: active.command,
+    code,
+    runIdHint: runIdHint ?? active.runId,
+  });
+}
+
+function handleWarmClose(w) {
+  if (warmWorker === w) warmWorker = null;
+  const active = w.active;
+  if (!active) return;
+  // The worker died with a run in flight. A user Stop tree-killed it (job.cancelled) → finalize as a
+  // clean stop; otherwise it crashed → non-zero exit so the honest failure path runs. Either way the
+  // next run re-warms a fresh worker.
+  finalizeWarmActive(active, w, { code: active.job.cancelled ? 0 : 1, runIdHint: null });
+}
+
+function handleWarmControl(w, msg) {
+  if (msg.event === "ready") {
+    w.ready = true;
+    return;
+  }
+  const active = w.active;
+  if (!active || (msg.id && active.jobId !== msg.id)) return; // stale / mismatched request id
+  if (msg.event === "done" || msg.event === "error") {
+    if (msg.run_id) {
+      active.runId = String(msg.run_id);
+      rememberJobRunId(active.jobId, active.runId);
+    }
+    w.runCount += 1;
+    finalizeWarmActive(active, w, {
+      code: typeof msg.exit_code === "number" ? msg.exit_code : msg.event === "error" ? 1 : 0,
+      runIdHint: active.runId,
+    });
+    if (w.runCount >= WARM_WORKER_MAX_RUNS) {
+      try {
+        w.child.kill("SIGTERM"); // recycle; next run re-warms
+      } catch {}
+      if (warmWorker === w) warmWorker = null;
+    }
+  }
+}
+
+function handleWarmStdout(w, text) {
+  w.buf += text;
+  let idx;
+  while ((idx = w.buf.indexOf("\n")) >= 0) {
+    const line = w.buf.slice(0, idx);
+    w.buf = w.buf.slice(idx + 1);
+    if (!line) continue;
+    if (line.startsWith(WARM_CONTROL_PREFIX)) {
+      let msg;
+      try {
+        msg = JSON.parse(line.slice(WARM_CONTROL_PREFIX.length));
+      } catch {
+        continue;
+      }
+      handleWarmControl(w, msg);
+    } else if (w.active) {
+      // Incidental worker stdout during a run — mirror the cold path's inspector "Runtime output".
+      const clean = redactText(line);
+      void appendEvent(w.active.sessionId, {
+        type: "tool_delta",
+        status: "running",
+        title: "Runtime output",
+        summary: summarizeRuntimeChunk(clean),
+        content_delta: `${clean}\n`,
+        display_level: "inspector",
+        command: w.active.command,
+      });
+    }
+  }
+}
+
+// Returns true if the warm worker accepted the run (caller then skips the cold spawn); false on any
+// unavailability so the caller falls back to a cold subprocess.
+function dispatchWarmRun({ job, jobId, sessionId, mode, goal, command, stopTail }) {
+  const w = ensureWarmWorker();
+  if (!w || !w.ready || w.busy || !w.child || !w.child.stdin || !w.child.stdin.writable)
+    return false;
+  const request = {
+    id: jobId,
+    mode: "run",
+    root: workspace,
+    goal,
+    max_iterations: 8,
+    max_tasks_per_iteration: 1,
+    no_research: true,
+    event_sink: sessionPath(sessionId, "events.jsonl"),
+    session_id: sessionId,
+    phase: phaseForMode(mode),
+  };
+  try {
+    w.child.stdin.write(`${JSON.stringify(request)}\n`);
+  } catch {
+    return false;
+  }
+  w.busy = true;
+  w.active = { job, jobId, sessionId, command, stopTail, runId: null };
+  job.child = w.child; // a Stop tree-kills the worker; it re-warms afterward
+  job.pid = w.child.pid;
+  job.warm = true;
+  liveJobs.set(jobId, job);
+  return true;
+}
+
 function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options = {}) {
   pruneLiveJobs();
   const command =
@@ -774,6 +940,12 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options 
   });
 
   const stopTail = tailUserProgress(sessionId, jobId);
+
+  // ADR-0029 ②: a plain run/goal can go to the warm worker (imports already paid). A custom command
+  // (continue/resume/follow-up) or any worker unavailability falls through to the cold spawn below.
+  if (WARM_WORKER_ENABLED && !commandOverride && (mode === "run" || mode === "goal")) {
+    if (dispatchWarmRun({ job, jobId, sessionId, mode, goal, command, stopTail })) return;
+  }
 
   const child = spawn(command[0], command.slice(1), {
     cwd: runtimeRoot,
@@ -824,99 +996,7 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options 
   child.on("close", async (code) => {
     stopTail();
     job.child = null;
-    // User stop: report an honest "stopped" outcome and suppress the "needs attention" final +
-    // the queued follow-up (already cleared on stop). Do not dress a user cancel up as a failure.
-    if (job.cancelled) {
-      job.status = "cancelled";
-      liveJobs.set(jobId, job);
-      void appendEvent(sessionId, {
-        type: "tool_end",
-        status: "failed",
-        title: "Stopped",
-        summary: "Stopped by user.",
-        command,
-        display_level: "main",
-        content_delta:
-          "Stopped by user before completion. Open the Inspector to review any partial work.",
-        job_id: jobId,
-      });
-      return;
-    }
-    rememberJobRunId(jobId, extractRunId(stdout) || extractRunId(stderr));
-    const completedRunId = job.run_id || extractRunId(stdout) || extractRunId(stderr);
-    const userProgressRows = completedRunId ? await readRunUserProgress(completedRunId) : [];
-    const mainFinal = latestMainFinalEvent(userProgressRows);
-    // A zero exit code only means the process did not crash — NOT that the goal was met. The `run`
-    // CLI returns 0 for blocked / paused / unverified runs too (it prints the recap and returns
-    // without keying the exit code off run status). The runtime's own conclusion event carries the
-    // real terminal status (run_command.py emits it as `status=run_status`); trust that over the exit
-    // code so a blocked or paused run is never stamped "completed" on the jobs badge or the tool_end.
-    const runTerminalStatus = String(mainFinal?.status || "").toLowerCase();
-    const processFailed = code !== 0;
-    const runIncomplete =
-      !processFailed && runTerminalStatus !== "" && runTerminalStatus !== "completed";
-    job.status = processFailed ? "failed" : runIncomplete ? runTerminalStatus : "completed";
-    liveJobs.set(jobId, job);
-    const needsAttention = processFailed || runIncomplete;
-    void appendEvent(sessionId, {
-      type: "tool_end",
-      status: job.status,
-      title: needsAttention ? "Processing needs attention" : "Processing completed",
-      summary: needsAttention
-        ? "The task needs attention; preparing the reason and next step."
-        : "Processing completed; preparing the result.",
-      command,
-      display_level: "inspector",
-      run_id: completedRunId || undefined,
-      content_delta: stderr
-        ? `stderr:
-${stderr}`
-        : stdout.slice(-4000),
-    });
-    if (mainFinal) {
-      const mapped = userProgressToStudioEvent(mainFinal, sessionId, completedRunId || "");
-      // Keep the namespaced event_id (see live-tail note above) so this persisted final dedups
-      // cleanly against the runtime re-read instead of appearing twice.
-      void appendEvent(sessionId, {
-        ...mapped,
-        job_id: jobId,
-      });
-    } else {
-      // ADR-0012: when the runtime emitted no main-thread conversational final, do NOT synthesize the
-      // diagnostic report as the reply. Show an honest short line and point to the Inspector for detail.
-      // And with no conclusion event we have no run status either — a bare exit-0 is NOT proof the goal
-      // was met, so the copy must not assert "Result prepared / completed". Say the run finished and
-      // point to the Inspector; the truthful verdict, if any, lives there.
-      const honest =
-        code === 0
-          ? "Finished. Open the Inspector to review what changed and the verification details."
-          : friendlyErrorText(stderr || stdout) ||
-            "The task needs attention — open the Inspector for the reason and next step.";
-      void appendEvent(sessionId, {
-        type: code === 0 ? "final_answer" : "error",
-        status: code === 0 ? "completed" : "failed",
-        title: code === 0 ? "Finished" : "Needs attention",
-        summary:
-          code === 0
-            ? "The run finished — open the Inspector for what changed and verification."
-            : "The task needs attention; here is the reason and suggestion.",
-        phase: code === 0 ? "result" : "review",
-        display_level: "main",
-        content_delta: honest,
-        evidence_refs: [sessionPath(sessionId, "events.jsonl")],
-        artifact_refs: runArtifactRefs(completedRunId),
-        run_id: completedRunId || undefined,
-        job_id: jobId,
-        data: code === 0 ? undefined : { error_category: friendlyErrorCategory(stderr || stdout) },
-      });
-    }
-    const followUpMode = job.follow_up_mode;
-    if (code === 0 && followUpMode) {
-      const followUp = runtimeActionByKind(followUpMode);
-      if (followUp) {
-        startRuntimeJob(sessionId, followUp.mode, followUp.goal, followUp.command);
-      }
-    }
+    await finalizeRuntimeJob({ job, jobId, sessionId, command, code, stdout, stderr });
   });
   child.on("error", (error) => {
     stopTail();
@@ -934,6 +1014,117 @@ ${stderr}`
       run_id: job.run_id || undefined,
     });
   });
+}
+
+// Shared completion path for a runtime job — reached from BOTH the cold subprocess's `close`
+// event and the warm worker's `done`/`error` control message (ADR-0029 ②). Kept identical so a
+// warm run and a cold run reach the exact same honest terminal status: a zero exit code only means
+// "did not crash", so we trust the runtime's own conclusion event (from user_progress) over it.
+// `runIdHint` lets the warm path pass the run_id it got back explicitly (the cold path scrapes it
+// from stdout); `stdout`/`stderr` are empty for the warm path, whose output rides its own channels.
+async function finalizeRuntimeJob({
+  job,
+  jobId,
+  sessionId,
+  command,
+  code,
+  stdout = "",
+  stderr = "",
+  runIdHint = null,
+}) {
+  // User stop: report an honest "stopped" outcome and suppress the "needs attention" final +
+  // the queued follow-up (already cleared on stop). Do not dress a user cancel up as a failure.
+  if (job.cancelled) {
+    job.status = "cancelled";
+    liveJobs.set(jobId, job);
+    void appendEvent(sessionId, {
+      type: "tool_end",
+      status: "failed",
+      title: "Stopped",
+      summary: "Stopped by user.",
+      command,
+      display_level: "main",
+      content_delta:
+        "Stopped by user before completion. Open the Inspector to review any partial work.",
+      job_id: jobId,
+    });
+    return;
+  }
+  rememberJobRunId(jobId, runIdHint || extractRunId(stdout) || extractRunId(stderr));
+  const completedRunId = job.run_id || runIdHint || extractRunId(stdout) || extractRunId(stderr);
+  const userProgressRows = completedRunId ? await readRunUserProgress(completedRunId) : [];
+  const mainFinal = latestMainFinalEvent(userProgressRows);
+  // A zero exit code only means the process did not crash — NOT that the goal was met. The `run`
+  // CLI returns 0 for blocked / paused / unverified runs too (it prints the recap and returns
+  // without keying the exit code off run status). The runtime's own conclusion event carries the
+  // real terminal status (run_command.py emits it as `status=run_status`); trust that over the exit
+  // code so a blocked or paused run is never stamped "completed" on the jobs badge or the tool_end.
+  const runTerminalStatus = String(mainFinal?.status || "").toLowerCase();
+  const processFailed = code !== 0;
+  const runIncomplete =
+    !processFailed && runTerminalStatus !== "" && runTerminalStatus !== "completed";
+  job.status = processFailed ? "failed" : runIncomplete ? runTerminalStatus : "completed";
+  liveJobs.set(jobId, job);
+  const needsAttention = processFailed || runIncomplete;
+  void appendEvent(sessionId, {
+    type: "tool_end",
+    status: job.status,
+    title: needsAttention ? "Processing needs attention" : "Processing completed",
+    summary: needsAttention
+      ? "The task needs attention; preparing the reason and next step."
+      : "Processing completed; preparing the result.",
+    command,
+    display_level: "inspector",
+    run_id: completedRunId || undefined,
+    content_delta: stderr
+      ? `stderr:
+${stderr}`
+      : stdout.slice(-4000),
+  });
+  if (mainFinal) {
+    const mapped = userProgressToStudioEvent(mainFinal, sessionId, completedRunId || "");
+    // Keep the namespaced event_id (see live-tail note above) so this persisted final dedups
+    // cleanly against the runtime re-read instead of appearing twice.
+    void appendEvent(sessionId, {
+      ...mapped,
+      job_id: jobId,
+    });
+  } else {
+    // ADR-0012: when the runtime emitted no main-thread conversational final, do NOT synthesize the
+    // diagnostic report as the reply. Show an honest short line and point to the Inspector for detail.
+    // And with no conclusion event we have no run status either — a bare exit-0 is NOT proof the goal
+    // was met, so the copy must not assert "Result prepared / completed". Say the run finished and
+    // point to the Inspector; the truthful verdict, if any, lives there.
+    const honest =
+      code === 0
+        ? "Finished. Open the Inspector to review what changed and the verification details."
+        : friendlyErrorText(stderr || stdout) ||
+          "The task needs attention — open the Inspector for the reason and next step.";
+    void appendEvent(sessionId, {
+      type: code === 0 ? "final_answer" : "error",
+      status: code === 0 ? "completed" : "failed",
+      title: code === 0 ? "Finished" : "Needs attention",
+      summary:
+        code === 0
+          ? "The run finished — open the Inspector for what changed and verification."
+          : "The task needs attention; here is the reason and suggestion.",
+      phase: code === 0 ? "result" : "review",
+      display_level: "main",
+      content_delta: honest,
+      evidence_refs: [sessionPath(sessionId, "events.jsonl")],
+      artifact_refs: runArtifactRefs(completedRunId),
+      run_id: completedRunId || undefined,
+      job_id: jobId,
+      data: code === 0 ? undefined : { error_category: friendlyErrorCategory(stderr || stdout) },
+    });
+  }
+  const followUpMode = job.follow_up_mode;
+  if (code === 0 && followUpMode) {
+    const followUp = runtimeActionByKind(followUpMode);
+    if (followUp) {
+      startRuntimeJob(sessionId, followUp.mode, followUp.goal, followUp.command);
+    }
+  }
 }
 
 /** Build final text for run/resume modes — reads final_report.md and eval_report.json */

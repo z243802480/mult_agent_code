@@ -1,6 +1,6 @@
 # ADR-0029 · Runtime 活起来 = 中途 steer(turn 边界注入)+ warm worker(消冷启)
 
-- 状态：**Proposed（2026-07-15）——纯提案，代码未落地。** 机制①(steer)触 ADR-0016 认知环，**尚未获授权实现**；机制②(warm worker)在环外，审定后可先行落地。
+- 状态：**Partially Accepted（2026-07-15）。机制②(warm worker) 已落地**（changelog 1.2.71·flag `ASTERIA_STUDIO_WARM_WORKER`·默认 OFF·冷路回落·studio_worker.py + server.mjs `finalizeRuntimeJob`/`dispatchWarmRun`·benchmark 均值 320ms/run 省·worker 4 单测 + 跨进程 wire 验）。**机制①(steer)仍 Proposed**——触 ADR-0016 认知环，**尚未获授权实现**。
 - 关联：[[0016]] 认知归模型/边界归 harness · [[0027]] 软保险丝续跑环(同为 turn 边界护栏族) · 记忆 `low-burden-set-and-forget-ux` · `claude-code-parity-teardown`（前端对标拆解·#3 即时感物理天花板）· `mainarea-is-agent-loop-view`
 - 授权：用户 2026-07-15 选「两条并行」= 授权**起草本提案**(纯文档)。**触环实现(机制①)待本 ADR 审定后单独授权**；warm worker(机制②)在环外，审定后即可落地。
 
