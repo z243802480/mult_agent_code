@@ -1,0 +1,43 @@
+name: Nightly
+
+# Real-stack smokes that are gated off the per-push suite because they need network / external
+# servers (not a model provider key). They run on a schedule so they exercise real behavior instead
+# of rotting as dead skipped tests, without slowing down or flaking every PR.
+on:
+  schedule:
+    - cron: "0 3 * * *" # 03:00 UTC daily
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  mcp-official-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install package
+        run: python -m pip install -e ".[dev]"
+
+      # Exercises the real stdio MCP path end-to-end: spawns @modelcontextprotocol/server-everything
+      # via npx, calls the echo tool through McpAdapter, and asserts the invocation + progress
+      # evidence. It needs npx + network but NO model provider key, and is gated off the default suite
+      # by ASTERIA_MCP_OFFICIAL_SMOKE — so without this job it was skipped in every run (dead code).
+      - name: Official MCP server stdio smoke
+        env:
+          ASTERIA_MCP_OFFICIAL_SMOKE: "1"
+        run: python -m pytest tests/integration/test_mcp_official_smoke.py -q

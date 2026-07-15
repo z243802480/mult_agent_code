@@ -16,6 +16,9 @@ pytestmark = pytest.mark.mcp_official_smoke
 
 @pytest.mark.real_provider_smoke
 def test_official_everything_mcp_server_stdio_smoke() -> None:
+    # Runs for real in the scheduled `.github/workflows/nightly.yml` job (which sets the env var and
+    # provides npx). It skips in the per-push suite by design — it needs npx + network, not a model
+    # key — so the skip here is covered, not a coverage gap.
     if os.environ.get("ASTERIA_MCP_OFFICIAL_SMOKE") != "1":
         pytest.skip("Set ASTERIA_MCP_OFFICIAL_SMOKE=1 to run the official MCP server smoke.")
     if not os.environ.get("ASTERIA_MCP_EVERYTHING_INDEX") and shutil.which("npx") is None:
