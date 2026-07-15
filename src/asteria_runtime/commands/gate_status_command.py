@@ -764,6 +764,12 @@ def _with_acceptance_repair_closure(
     report_path: Path,
     verification_dir: Path,
 ) -> dict[str, Any]:
+    """Close a failed validation report's failures against independently-existing NEWER passing
+    per-scenario reports on disk (read-only status view). This did NOT execute a rerun — it stitches
+    pre-existing evidence — so the closure is annotated with closure_source=newer_passing_reports and
+    the evidence files, and it must NOT stamp `rerun_ok: True` (that field means a rerun was actually
+    run and passed, as acceptance_command measures from a subprocess return code; using it here would
+    misrepresent a cross-report stitch as a measured rerun)."""
     if report.get("ok") or not report.get("scenarios"):
         return report
     failed = [
@@ -809,7 +815,11 @@ def _with_acceptance_repair_closure(
     repaired["complete"] = repaired["ok"]
     repaired["validation_ready"] = repaired["ok"]
     repaired["repair_closure"] = {
-        "rerun_ok": True,
+        # Honest provenance: these failures were closed by newer passing per-scenario reports found on
+        # disk (evidence_files), NOT by a rerun this command executed — so no `rerun_ok`. The pass is
+        # stitched, not a single clean full-suite run; the gate keys off ok/validation_ready, and the
+        # empty remaining_failures + evidence_files carry the real signal.
+        "closure_source": "newer_passing_reports",
         "closed_failures": sorted(closed),
         "remaining_failures": remaining,
         "evidence_files": {name: closed[name] for name in sorted(closed)},

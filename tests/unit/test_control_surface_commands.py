@@ -1435,9 +1435,13 @@ def test_gate_status_closes_failed_validation_scenario_with_newer_targeted_rerun
 
     assert payload["stage"] == "ready_for_small_real_task_validation"
     assert payload["gates"]["validation_suite"]["passed"] == 8
-    assert payload["validation_report"]["repair_closure"]["closed_failures"] == [
-        "validation_multi_file_scope"
-    ]
+    closure = payload["validation_report"]["repair_closure"]
+    assert closure["closed_failures"] == ["validation_multi_file_scope"]
+    assert closure["remaining_failures"] == []
+    # gate-status stitched this closure from newer passing reports on disk; it did NOT run a rerun, so
+    # it must annotate the real provenance and must NOT claim `rerun_ok` (a measured-rerun signal).
+    assert closure["closure_source"] == "newer_passing_reports"
+    assert "rerun_ok" not in closure
 
 
 def test_gate_status_prefers_passing_canonical_validation_summary(
