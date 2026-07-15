@@ -254,7 +254,11 @@ function TurnMiddle({
         </div>
       )}
       {toolSteps.length > 0 && (
-        <ToolStepList steps={toolSteps} showOutput={showToolOutput && !compactDiff} />
+        // Not gated on compactDiff: the tool card is collapsed by default (a disclosure, not an
+        // auto-dump), so even Focus can offer "click to see the stdout" without density cost — that
+        // is the inline tool output Claude Code has and the thread was missing (#4). Full raw output
+        // still lives in the Inspector.
+        <ToolStepList steps={toolSteps} showOutput={showToolOutput} />
       )}
       {permissionSteps.map((step) => {
         const permStep = step.events.find(
