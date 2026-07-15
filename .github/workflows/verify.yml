@@ -3,6 +3,9 @@ name: Verify
 on:
   push:
   pull_request:
+  # Callable as a reusable gate so Release can require the exact same green (one source of truth for
+  # "what passing means") before it builds and publishes — no duplicated test list to drift.
+  workflow_call:
 
 jobs:
   test:

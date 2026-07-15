@@ -10,7 +10,14 @@ permissions:
   contents: write
 
 jobs:
+  # Green-light gate: run the full Verify suite (pytest matrix + ruff + mypy ratchet + benchmarks +
+  # ring-recovery + CLI e2e, and the Studio lint/typecheck/unit/smoke/UI job) BEFORE building or
+  # publishing. build-release needs this, so a tag push whose code is red never ships an asset.
+  verify:
+    uses: ./.github/workflows/verify.yml
+
   build-release:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
