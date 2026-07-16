@@ -73,7 +73,7 @@ function TurnMiddle({
   compactDiff,
   showToolOutput = true,
   excludeFilePaths,
-  answerLed = false,
+  hasFinalAnswer = false,
 }: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
@@ -94,12 +94,12 @@ function TurnMiddle({
   // output is always in the Inspector; the last/active turn keeps it inline.
   showToolOutput?: boolean;
   excludeFilePaths?: Set<string>;
-  // The turn led with the model's final answer (TurnFinal above). That answer IS the model's completed
-  // voice, so re-printing the per-step narration prose below it just restates the same outcome — the
-  // "said it 3-4 times" density complaint. When answer-led we drop the prominent narration block: it
-  // still streamed live (LiveStream) while the turn ran, and the raw prose stays in the Inspector. The
-  // terse tool/file cards carry the concrete journey, matching Claude Code's answer + folded-process view.
-  answerLed?: boolean;
+  // The turn closes with the model's final answer (TurnFinal below the process). That answer IS the
+  // model's completed voice, so re-printing the per-step narration prose here restates the same
+  // outcome — the "said it 3-4 times" density complaint (1.2.64). When a final exists we drop the
+  // prominent narration block: it still streamed live (LiveStream) while the turn ran, and the raw
+  // prose stays in the Inspector. The terse tool/file cards carry the concrete journey.
+  hasFinalAnswer?: boolean;
 }) {
   const hasPendingPermission = steps.some((s) =>
     s.events.some((e) => e.type === "permission_request" && e.status === "waiting_user"),
@@ -206,7 +206,7 @@ function TurnMiddle({
 
   return (
     <div className="turnMiddle">
-      {narrationSteps.length > 0 && !answerLed && (
+      {narrationSteps.length > 0 && !hasFinalAnswer && (
         <div className="turnNarration">
           {narrationSteps.map((step) => {
             const text = cleanReasoning(
@@ -625,10 +625,13 @@ export function ConversationTurn({
         )
       ) : (
         <>
-          {/* Answer-first (Cursor / Claude Code): lead with the assistant's prose answer, then fold
-              the reasoning + process + file cards BELOW it. Leading with process is what made the
-              thread read like a dashboard instead of a reply. */}
-          {responseStep && <TurnFinal step={responseStep} middleSteps={processSteps} />}
+          {/* Chronological anatomy (what Claude Code / ChatGPT / Cursor actually do): the quiet
+              process cards come FIRST, and the assistant's prose answer is the TERMINAL block of
+              the turn — the eye always finds "what did it answer" right above the next user
+              message. The earlier "answer-first" inversion (1.2.64) mis-cited mainstream: it cured
+              the dashboard feel but buried the answer mid-turn under trailing tool cards, and made
+              the layout flip on completion (live view streams chronologically). Dashboard-ness is
+              solved by keeping the middle compact, not by reordering. */}
           {/* No thinking block on a completed turn (ADR-0021 whitelist): the model's real reasoning
               stream stays in the Inspector, and its conversational voice is the narration/final. The
               only thing this block ever carried on the main thread was harness placeholders / a goal
@@ -650,9 +653,10 @@ export function ConversationTurn({
               compactDiff={compactDiff}
               showToolOutput={isLast}
               excludeFilePaths={excludeFilePaths}
-              answerLed={responseStep?.kind === "final"}
+              hasFinalAnswer={responseStep?.kind === "final"}
             />
           )}
+          {responseStep && <TurnFinal step={responseStep} middleSteps={processSteps} />}
         </>
       )}
       {unverifiedHint && (

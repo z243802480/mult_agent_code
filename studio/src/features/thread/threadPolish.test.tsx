@@ -112,4 +112,19 @@ describe("answer-led turns drop redundant narration prose (density: say it once)
     const html = render([step("goal", "写 factorial"), step("narration", NARRATION)]);
     expect(html).toContain(NARRATION);
   });
+
+  it("renders the process BEFORE the final answer — the answer closes the turn", () => {
+    // Chronological anatomy (Claude Code / ChatGPT / Cursor): user → quiet process → answer.
+    // This ordering has flip-flopped twice (1.2.64 put the answer first, 1.2.82 restored
+    // chronology) — locked here so the answer is always the terminal block the eye lands on.
+    const html = render([
+      step("goal", "写 factorial"),
+      step("tool", "$ python -m pytest"),
+      step("final", ANSWER),
+    ]);
+    const processIdx = html.indexOf("turnMiddle");
+    const answerIdx = html.indexOf(ANSWER);
+    expect(processIdx).toBeGreaterThan(-1);
+    expect(answerIdx).toBeGreaterThan(processIdx);
+  });
 });

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
+import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,7 +8,16 @@ import { fileURLToPath } from "node:url";
 const studioDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(studioDir, "..");
 const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-north-star-smoke-"));
-const port = 8787 + Math.floor(Math.random() * 200);
+// OS-assigned ephemeral port (same fix as preview-proxy-smoke): `8787 + random(200)` could land
+// on a developer's LIVE studio BFF and false-red (EADDRINUSE) or hit the live workspace.
+const port = await new Promise((resolve, reject) => {
+  const probe = createServer();
+  probe.once("error", reject);
+  probe.listen(0, "127.0.0.1", () => {
+    const picked = probe.address().port;
+    probe.close(() => resolve(picked));
+  });
+});
 
 await runPython([
   "-m",
