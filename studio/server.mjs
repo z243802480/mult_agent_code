@@ -820,10 +820,12 @@ async function applyAutonomyForTier(permissionTier) {
 // ~254ms per cold run). Serial by design: it serves one run at a time, which is what makes the
 // per-request event-sink env override inside the worker safe. Concurrent runs, custom-command modes,
 // and ANY worker trouble (not ready, busy, crashed) transparently fall back to the cold spawn — so
-// turning this on can only remove latency, never change an outcome. Off unless ASTERIA_STUDIO_WARM_WORKER.
+// turning this on can only remove latency, never change an outcome. Default ON (2026-07-16 DecisionPoint:
+// pure-latency, cold-fallback, zero-behaviour-change proven by real-stack E2E, changelog 1.2.74/1.2.75);
+// set ASTERIA_STUDIO_WARM_WORKER=0 (or false) to force the cold path for debugging / rollback.
 const WARM_WORKER_ENABLED =
-  process.env.ASTERIA_STUDIO_WARM_WORKER === "1" ||
-  String(process.env.ASTERIA_STUDIO_WARM_WORKER || "").toLowerCase() === "true";
+  String(process.env.ASTERIA_STUDIO_WARM_WORKER ?? "1").toLowerCase() !== "0" &&
+  String(process.env.ASTERIA_STUDIO_WARM_WORKER ?? "1").toLowerCase() !== "false";
 // ADR-0029 ①: mid-run steer. When on, a message typed during a run is delivered to the running agent
 // at its next turn boundary (via steer.request → the spine's take_steer read) instead of being queued
 // for after the run. Off by default: the Composer keeps its honest queue-for-after behaviour and the
