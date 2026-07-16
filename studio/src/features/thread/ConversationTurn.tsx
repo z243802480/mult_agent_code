@@ -19,6 +19,7 @@ import {
 } from "../../narrative";
 import { SuggestedActions } from "./SuggestedActions";
 import { TurnRewindButton } from "./TurnRewindButton";
+import { turnSnapshotHash } from "./turnRewind";
 import {
   middleRepresentativeEvent,
   middleSummary,
@@ -504,6 +505,8 @@ export function ConversationTurn({
   runDetail,
   viewMode,
   onTurnRewind,
+  onFilesRestored,
+  turnSnapshot = null,
   onSuggestedAction,
   suppressSuggested,
   onEditMessage,
@@ -528,6 +531,10 @@ export function ConversationTurn({
   runDetail?: import("../../types").RunDetailPayload | null;
   viewMode?: import("../../hooks/useViewMode").StudioViewMode;
   onTurnRewind?: (turnIndex: number, action: string) => Promise<void>;
+  /** G7: refresh git/diff surfaces after a snapshot file-restore succeeds. */
+  onFilesRestored?: () => void;
+  /** G7: this turn's shadow snapshot, resolved by the Thread from raw events (time-windowed). */
+  turnSnapshot?: string | null;
   onSuggestedAction?: (command: string) => Promise<void>;
   suppressSuggested?: boolean;
   onEditMessage?: (text: string) => void;
@@ -681,6 +688,8 @@ export function ConversationTurn({
           runDetail={runDetail}
           viewMode={viewMode}
           onRewind={onTurnRewind}
+          snapshotHash={turnSnapshot ?? turnSnapshotHash(steps.flatMap((step) => step.events))}
+          onFilesRestored={onFilesRestored}
         />
       )}
     </div>

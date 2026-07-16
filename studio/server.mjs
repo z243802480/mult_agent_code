@@ -54,6 +54,9 @@ const {
   readWorkspaceGitDiff,
   stageWorkspaceGitFile,
   discardWorkspaceGitFile,
+  createWorkspaceSnapshot,
+  workspaceSnapshotDiff,
+  restoreWorkspaceSnapshot,
 } = createGitHelpers({ getWorkspace: () => workspace, runCommand });
 // PREVIEW-3: opt-in reverse proxy to a running dev server (Vite/Next/CRA/etc.) so SPA/framework apps
 // — which need a bundler, not static files — can be previewed. OPT-IN only (an explicit target),
@@ -411,6 +414,15 @@ async function handleApi(request, response, url) {
   }
   if (request.method === "POST" && url.pathname === "/api/studio/git/discard") {
     sendJson(response, 200, await discardWorkspaceGitFile(await readRequestJson(request)));
+    return;
+  }
+  // G7 rewind 文件回滚: preview what restoring a shadow snapshot would change, then restore it.
+  if (request.method === "POST" && url.pathname === "/api/studio/git/snapshot-diff") {
+    sendJson(response, 200, await workspaceSnapshotDiff(await readRequestJson(request)));
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/studio/git/restore-snapshot") {
+    sendJson(response, 200, await restoreWorkspaceSnapshot(await readRequestJson(request)));
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/studio/settings") {
@@ -1110,6 +1122,11 @@ async function finalizeRuntimeJob({
   stderr = "",
   runIdHint = null,
 }) {
+  // G7 rewind: shadow-checkpoint the workspace at every turn end (stopped runs included — rolling
+  // back a half-finished stop is a prime use case). Silently absent on non-git workspaces; the
+  // rewind UI then says honestly that only the conversation can rewind.
+  const turnSnapshot = await createWorkspaceSnapshot(`job ${jobId}`);
+  const snapshotData = turnSnapshot.ok ? { workspace_snapshot: turnSnapshot.snapshot } : null;
   // User stop: report an honest "stopped" outcome and suppress the "needs attention" final +
   // the queued follow-up (already cleared on stop). Do not dress a user cancel up as a failure.
   if (job.cancelled) {
@@ -1125,6 +1142,7 @@ async function finalizeRuntimeJob({
       content_delta:
         "Stopped by user before completion. Open the Inspector to review any partial work.",
       job_id: jobId,
+      data: snapshotData ?? undefined,
     });
     return;
   }
@@ -1158,6 +1176,9 @@ async function finalizeRuntimeJob({
       ? `stderr:
 ${stderr}`
       : stdout.slice(-4000),
+    // The snapshot rides the session-side settle event too: its Z timestamp sorts with the turn's
+    // own events, so the rewind anchor survives even if the runtime final's ordering drifts.
+    data: snapshotData ?? undefined,
   });
   if (mainFinal) {
     const mapped = userProgressToStudioEvent(mainFinal, sessionId, completedRunId || "");
@@ -1166,6 +1187,7 @@ ${stderr}`
     void appendEvent(sessionId, {
       ...mapped,
       job_id: jobId,
+      data: snapshotData ? { ...(mapped.data || {}), ...snapshotData } : mapped.data,
     });
   } else {
     // ADR-0012: when the runtime emitted no main-thread conversational final, do NOT synthesize the
@@ -1193,7 +1215,10 @@ ${stderr}`
       artifact_refs: runArtifactRefs(completedRunId),
       run_id: completedRunId || undefined,
       job_id: jobId,
-      data: code === 0 ? undefined : { error_category: friendlyErrorCategory(stderr || stdout) },
+      data: {
+        ...(code === 0 ? {} : { error_category: friendlyErrorCategory(stderr || stdout) }),
+        ...(snapshotData || {}),
+      },
     });
   }
   const followUpMode = job.follow_up_mode;
@@ -1680,9 +1705,34 @@ function mergeSessionAndRuntimeEvents(sessionEvents, runtimeEvents) {
     if (!replaceable.has(event.type)) return true;
     return !runtimeTypes.has(event.type);
   });
-  return [...filteredSessionEvents, ...runtimeEvents].sort((a, b) =>
-    String(a.created_at || "").localeCompare(String(b.created_at || "")),
-  );
+  // G7: the session-persisted copy of a runtime final carries BFF-side enrichment (the turn's
+  // workspace_snapshot, attached at finalize). When the authoritative runtime re-read replaces
+  // that copy, graft the enrichment onto the survivor — replacing must not LOSE it.
+  const sessionSnapshots = new Map();
+  for (const event of sessionEvents) {
+    const snap = event?.data?.workspace_snapshot;
+    if (snap && event.event_id) sessionSnapshots.set(event.event_id, snap);
+  }
+  const enrichedRuntimeEvents = runtimeEvents.map((event) => {
+    const snap = sessionSnapshots.get(event.event_id);
+    if (!snap || event?.data?.workspace_snapshot) return event;
+    return { ...event, data: { ...(event.data || {}), workspace_snapshot: snap } };
+  });
+  // Sort by PARSED time, not string compare: session events carry UTC "Z" stamps while runtime
+  // user-progress rows carry local "+08:00" stamps — localeCompare ordered those by date STRING,
+  // shoving same-moment runtime rows a whole "day" away (caught live: a turn's final landed after
+  // the NEXT turn's user message). Unparseable stamps inherit the last seen key (carry-forward,
+  // same fixed-total-order pattern as the client's mergeEventLists — a null-equals-everything
+  // comparator is intransitive and silently mis-sorts).
+  let lastTs = 0;
+  return [...filteredSessionEvents, ...enrichedRuntimeEvents]
+    .map((event, index) => {
+      const parsed = Date.parse(String(event.created_at || ""));
+      if (Number.isFinite(parsed)) lastTs = parsed;
+      return { event, index, key: Number.isFinite(parsed) ? parsed : lastTs };
+    })
+    .sort((a, b) => (a.key !== b.key ? a.key - b.key : a.index - b.index))
+    .map((entry) => entry.event);
 }
 
 function sessionPath(sessionId, file = "") {

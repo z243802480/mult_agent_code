@@ -4,6 +4,7 @@ import { ThreadSkeleton } from "../../components/Skeleton";
 import type { OverviewPayload, RunDetailPayload, StudioEvent } from "../../types";
 import { toNarrativeEvents, buildRunNarrative } from "../../narrative";
 import { splitIntoTurns } from "../../turnDiff";
+import { turnSnapshotMap } from "./turnRewind";
 import { extractFileChangesFromSteps } from "../../fileChanges";
 import type { StudioViewMode } from "../../hooks/useViewMode";
 import { RuntimeSnapshot, runtimeSnapshotActionable } from "./RuntimeSnapshot";
@@ -62,6 +63,7 @@ export function Thread({
   onAggregateDiffClick,
   viewMode,
   onTurnRewind,
+  onFilesRestored,
   loading,
 }: {
   events: StudioEvent[];
@@ -89,6 +91,8 @@ export function Thread({
   onAggregateDiffClick?: (turnIndex: number) => void;
   viewMode: StudioViewMode;
   onTurnRewind?: (turnIndex: number, action: string) => Promise<void>;
+  /** G7: refresh git/diff surfaces after a snapshot file-restore succeeds. */
+  onFilesRestored?: () => void;
 }) {
   const threadRef = useRef<HTMLElement>(null);
   const [expandSignal, setExpandSignal] = useState<ProcessExpandSignal>(null);
@@ -169,6 +173,17 @@ export function Thread({
   const narrativeEvents = useMemo(() => toNarrativeEvents(sessionEvents), [sessionEvents]);
   const narrative = useMemo(() => buildRunNarrative(narrativeEvents), [narrativeEvents]);
   const turns = useMemo(() => splitIntoTurns(narrative.steps), [narrative.steps]);
+  // G7: per-turn shadow-snapshot anchors from the RAW main events — the narrative layer may drop
+  // the settle event that carries the hash (pointer-only finals are scaffolding), so this must not
+  // go through steps. Matched by time window: a snapshot belongs to the turn it settled in.
+  const turnSnapshots = useMemo(
+    () =>
+      turnSnapshotMap(
+        turns.map((turnSteps) => turnSteps[0]?.events[0]?.created_at),
+        sessionEvents,
+      ),
+    [turns, sessionEvents],
+  );
   // Files are deliverables, not per-message noise: once a file has been shown in an earlier turn it
   // must not reappear as a "changed file" in every later turn (the event stream re-emits the same
   // file_change many times across a resumed/multi-goal run). Precompute each turn's file paths so a
@@ -377,6 +392,8 @@ export function Thread({
             runDetail={runDetail}
             viewMode={viewMode}
             onTurnRewind={onTurnRewind}
+            onFilesRestored={onFilesRestored}
+            turnSnapshot={turnSnapshots[globalIndex] ?? null}
             onSuggestedAction={onRuntimeAction}
             suppressSuggested={snapshotOwnsNextStep}
             onEditMessage={onPrompt}

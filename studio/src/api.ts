@@ -94,6 +94,19 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ message, mode, permission, channel, permissionMode }),
     }),
+  // G7 rewind 文件回滚: preview / restore a turn's shadow workspace snapshot.
+  snapshotDiff: (snapshot: string) =>
+    requestJson<AnyRecord>("/api/studio/git/snapshot-diff", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ snapshot }),
+    }),
+  restoreSnapshot: (snapshot: string) =>
+    requestJson<AnyRecord>("/api/studio/git/restore-snapshot", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ snapshot }),
+    }),
   runtimeAction: (id: string, nextAction: string, permission = "ask") =>
     requestJson<AnyRecord>(`/api/studio/sessions/${encodeURIComponent(id)}/runtime-actions`, {
       method: "POST",

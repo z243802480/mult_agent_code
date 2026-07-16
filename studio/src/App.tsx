@@ -512,6 +512,7 @@ export function App() {
           onAggregateDiffClick={openTurnReview}
           viewMode={viewMode}
           onTurnRewind={onTurnRewind}
+          onFilesRestored={() => void review.refreshGitStatus()}
           loading={bootstrap.loading}
         />
         <DiffCommentTray

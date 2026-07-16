@@ -12,8 +12,8 @@ import { redactText } from "./text-utils.mjs";
 import { isSafeWorkspacePath } from "./workspace-paths.mjs";
 
 export function createGitHelpers({ getWorkspace, runCommand }) {
-  function runGit(args) {
-    return runCommand(["git", ...args], getWorkspace());
+  function runGit(args, envOverrides) {
+    return runCommand(["git", ...args], getWorkspace(), envOverrides);
   }
 
   function gitChangeLabel(indexStatus, worktreeStatus) {
@@ -181,10 +181,150 @@ export function createGitHelpers({ getWorkspace, runCommand }) {
     return { ok: true, path: normalized, action: "discarded" };
   }
 
+  // ── G7 rewind 文件回滚: shadow workspace snapshots (Claude Code checkpoint / Cline shadow-git
+  // model). A snapshot is a REAL commit object built through a TEMP index — the user's staging
+  // area, HEAD and branches are never touched, and a ref under refs/asteria/ keeps it alive
+  // without appearing as a branch. `.asteria/` (runtime state) is excluded both ways: it must not
+  // be rolled back with user code. No cleanup policy by design (local disk; documented).
+
+  const SNAPSHOT_EXCLUDES = ["--", ".", ":(exclude).asteria"];
+
+  function validSnapshotHash(value) {
+    return /^[0-9a-f]{7,40}$/i.test(String(value || "").trim());
+  }
+
+  async function createWorkspaceSnapshot(label = "turn") {
+    const workspace = getWorkspace();
+    if (!existsSync(path.join(workspace, ".git"))) {
+      return { ok: false, reason: "not a git repository" };
+    }
+    const tmpIndex = path.join(
+      workspace,
+      ".git",
+      `asteria-snap-index-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    );
+    const env = { GIT_INDEX_FILE: tmpIndex };
+    try {
+      const head = await runGit(["rev-parse", "--verify", "HEAD"]);
+      const hasHead = head.code === 0;
+      if (hasHead) {
+        const seeded = await runGit(["read-tree", "HEAD"], env);
+        if (seeded.code !== 0)
+          return { ok: false, reason: redactText(seeded.stderr || "git read-tree failed") };
+      }
+      const added = await runGit(["add", "-A", ...SNAPSHOT_EXCLUDES], env);
+      if (added.code !== 0)
+        return { ok: false, reason: redactText(added.stderr || "git add failed") };
+      const wrote = await runGit(["write-tree"], env);
+      if (wrote.code !== 0)
+        return { ok: false, reason: redactText(wrote.stderr || "git write-tree failed") };
+      const tree = wrote.stdout.trim();
+      const commitArgs = ["commit-tree", tree, "-m", `asteria snapshot (${label})`];
+      if (hasHead) commitArgs.push("-p", head.stdout.trim());
+      const committed = await runGit(commitArgs);
+      if (committed.code !== 0)
+        return { ok: false, reason: redactText(committed.stderr || "git commit-tree failed") };
+      const snapshot = committed.stdout.trim();
+      // Keep-alive ref, invisible to normal branch UX. Best-effort: the hash in the session event
+      // still works for git's unreachable-object horizon even if the ref write fails.
+      await runGit(["update-ref", `refs/asteria/snapshots/${snapshot.slice(0, 12)}`, snapshot]);
+      return { ok: true, snapshot, tree };
+    } finally {
+      await fs.rm(tmpIndex, { force: true }).catch(() => {});
+    }
+  }
+
+  // Files that exist in the worktree today but not in the snapshot — restoring would DELETE them.
+  // Split out so the preview and the restore compute the same set.
+  async function snapshotExtraFiles(snapshot) {
+    const snapFiles = await runGit(["ls-tree", "-r", "--name-only", snapshot]);
+    const current = await runGit(["ls-files", "--cached", "--others", "--exclude-standard"]);
+    const inSnapshot = new Set(
+      String(snapFiles.stdout || "")
+        .split(/\r?\n/)
+        .filter(Boolean),
+    );
+    return String(current.stdout || "")
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .filter(
+        (file) =>
+          !inSnapshot.has(file) && !/^\.asteria(\/|$)/i.test(file) && isSafeWorkspacePath(file),
+      );
+  }
+
+  async function workspaceSnapshotDiff(body) {
+    const workspace = getWorkspace();
+    const snapshot = String(body?.snapshot || "").trim();
+    if (!validSnapshotHash(snapshot)) return { ok: false, error: "快照标识无效。" };
+    if (!existsSync(path.join(workspace, ".git")))
+      return { ok: false, error: "此工作区不是 Git 仓库。" };
+    const exists = await runGit(["cat-file", "-e", `${snapshot}^{commit}`]);
+    if (exists.code !== 0) return { ok: false, error: "快照不存在（可能已被 git gc 回收）。" };
+    const numstat = await runGit(["diff", "--numstat", snapshot, ...SNAPSHOT_EXCLUDES]);
+    if (numstat.code !== 0)
+      return { ok: false, error: redactText(numstat.stderr || "git diff 失败。") };
+    const changed = String(numstat.stdout || "")
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => {
+        const [additions, deletions, ...rest] = line.split("\t");
+        return {
+          path: rest.join("\t"),
+          additions: Number(additions) || 0,
+          deletions: Number(deletions) || 0,
+        };
+      })
+      .filter((row) => row.path && isSafeWorkspacePath(row.path));
+    const toDelete = await snapshotExtraFiles(snapshot);
+    return {
+      ok: true,
+      snapshot,
+      changed,
+      to_delete: toDelete,
+      clean: changed.length === 0 && toDelete.length === 0,
+    };
+  }
+
+  async function restoreWorkspaceSnapshot(body) {
+    const workspace = getWorkspace();
+    const snapshot = String(body?.snapshot || "").trim();
+    if (!validSnapshotHash(snapshot)) return { ok: false, error: "快照标识无效。" };
+    if (!existsSync(path.join(workspace, ".git")))
+      return { ok: false, error: "此工作区不是 Git 仓库——文件无法回滚。" };
+    const exists = await runGit(["cat-file", "-e", `${snapshot}^{commit}`]);
+    if (exists.code !== 0) return { ok: false, error: "快照不存在（可能已被 git gc 回收）。" };
+    // The rewind itself must be undoable: shadow-snapshot the CURRENT state first.
+    const safety = await createWorkspaceSnapshot("pre-rewind safety");
+    const restored = await runGit([
+      "restore",
+      "--source",
+      snapshot,
+      "--worktree",
+      ...SNAPSHOT_EXCLUDES,
+    ]);
+    if (restored.code !== 0)
+      return { ok: false, error: redactText(restored.stderr || "git restore 失败。") };
+    // Delete files created after the snapshot (restore only rewrites paths the snapshot HAS).
+    const extras = await snapshotExtraFiles(snapshot);
+    for (const file of extras) {
+      await fs.rm(path.join(workspace, file), { force: true }).catch(() => {});
+    }
+    return {
+      ok: true,
+      snapshot,
+      deleted: extras.length,
+      safety_snapshot: safety.ok ? safety.snapshot : null,
+    };
+  }
+
   return {
     readWorkspaceGitStatus,
     readWorkspaceGitDiff,
     stageWorkspaceGitFile,
     discardWorkspaceGitFile,
+    createWorkspaceSnapshot,
+    workspaceSnapshotDiff,
+    restoreWorkspaceSnapshot,
   };
 }

@@ -64,11 +64,19 @@ try {
     permission: "allow",
   });
 
+  // Non-empty command only: the merged view time-interleaves runtime user-progress rows (which can
+  // carry `command: []`) with the session's launch row. The assertion's target is the LAUNCH
+  // command; grabbing "first tool_start with any array" depended on the old (string-compare,
+  // wrong) event ordering that happened to push runtime rows to the end.
   const { events } = await fetchEventsUntil(sessionId, (items) =>
-    items.some((event) => event.type === "tool_start" && Array.isArray(event.command)),
+    items.some(
+      (event) =>
+        event.type === "tool_start" && Array.isArray(event.command) && event.command.length > 0,
+    ),
   );
   const toolStart = events.find(
-    (event) => event.type === "tool_start" && Array.isArray(event.command),
+    (event) =>
+      event.type === "tool_start" && Array.isArray(event.command) && event.command.length > 0,
   );
   const command = toolStart?.command || [];
   assert(
