@@ -1,6 +1,7 @@
 import React from "react";
 import type { FilePreview, GitDiffPayload } from "../../types";
 import { DiffPreview, type DiffLayout, type DiffStage } from "../../components/DiffPreview";
+import { addDiffComment, removeDiffComment, useDiffComments } from "../../session/diffComments";
 
 export type DiffPreviewSectionProps = {
   preview: FilePreview | null;
@@ -27,8 +28,11 @@ export function DiffPreviewSection({
   onStageFile,
   onDiscardFile,
 }: DiffPreviewSectionProps) {
+  // G4 评论即指令: same shared store as the thread's inline diffs — hooks must run unconditionally.
+  const allComments = useDiffComments();
   if (!preview) return null;
   const isDiff = Boolean(preview.path && (preview.content ?? "").includes("@@"));
+  const pendingComments = allComments.filter((item) => item.file === preview.path);
   return (
     <section className="inspectorDiffPreview">
       {!isDiff && preview.ok && (
@@ -82,6 +86,9 @@ export function DiffPreviewSection({
             onStageFile={gitSelectedPath ? onStageFile : undefined}
             onDiscardFile={gitSelectedPath ? onDiscardFile : undefined}
             staging={gitActionLoading}
+            comments={pendingComments}
+            onAddComment={addDiffComment}
+            onRemoveComment={removeDiffComment}
           />
         </>
       )}

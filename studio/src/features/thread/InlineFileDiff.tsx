@@ -5,6 +5,7 @@ import type { GitDiffPayload } from "../../types";
 import { DiffPreview } from "../../components/DiffPreview";
 import { fileChangeBasename } from "../../fileChanges";
 import { gitUnavailableText } from "../inspector/diff/DiffFileList";
+import { addDiffComment, removeDiffComment, useDiffComments } from "../../session/diffComments";
 
 const OPERATION_BADGE: Record<string, string> = {
   create: "新增",
@@ -47,6 +48,9 @@ export function InlineFileDiff({
   const [payload, setPayload] = useState<GitDiffPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // G4 评论即指令: pending line comments live in the shared per-session store — the inline diff and
+  // the Inspector pane see the same list, and the tray above the composer submits them all at once.
+  const pendingComments = useDiffComments().filter((item) => item.file === path);
 
   async function toggle() {
     const next = !open;
@@ -100,6 +104,9 @@ export function InlineFileDiff({
               unstaged={payload.unstaged}
               stage="all"
               layout="unified"
+              comments={pendingComments}
+              onAddComment={addDiffComment}
+              onRemoveComment={removeDiffComment}
             />
           )}
           {payload &&

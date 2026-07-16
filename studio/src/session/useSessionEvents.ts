@@ -129,8 +129,8 @@ export function useSessionEvents(
     mode: string,
     permission: string,
     permissionMode?: string,
-  ) {
-    if (!activeSession) return;
+  ): Promise<boolean> {
+    if (!activeSession) return false;
     // A new goal supersedes any earlier verdict about a dead job — re-probe from scratch.
     resetRunProbe();
     setPendingTurn({ message, mode, startedAt: Date.now() });
@@ -145,6 +145,7 @@ export function useSessionEvents(
       );
       const refreshed = await api.sessions();
       setSessions(refreshed.sessions ?? []);
+      return true;
     } catch {
       // Never silently swallow a failed send — the message was NOT delivered. Offer a Retry that
       // re-sends the exact text (so the draft is not lost) instead of clearing it into the void.
@@ -154,6 +155,7 @@ export function useSessionEvents(
           onClick: () => void sendGoal(message, mode, permission, permissionMode),
         },
       });
+      return false;
     } finally {
       setPendingTurn(null);
     }
@@ -210,19 +212,21 @@ export function useSessionEvents(
     }
   }
 
-  async function steerRun(instruction: string) {
-    if (!activeSession) return;
+  async function steerRun(instruction: string): Promise<boolean> {
+    if (!activeSession) return false;
     try {
       const result = await api.steerSession(activeSession.session_id, instruction);
       if (result?.ok) {
         // Honest wording: like pause, this is delivered at a turn boundary, not this instant. The
         // running step finishes first; the model sees the instruction on its next turn.
         toast.success("已发给运行中的任务——它会在下一轮开始时收到。");
-      } else {
-        toast.error(String(result?.error || "无法发送——请重试。"));
+        return true;
       }
+      toast.error(String(result?.error || "无法发送——请重试。"));
+      return false;
     } catch {
       toast.error("无法发送——请重试。");
+      return false;
     }
   }
 

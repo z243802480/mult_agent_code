@@ -23,8 +23,10 @@ import { ToastViewport } from "./components/ToastViewport";
 import { WorkspaceSwitcher } from "./components/WorkspaceSwitcher";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { toast } from "./components/toast";
-import { isPermissionTierId } from "./permissionTiers";
+import { isPermissionTierId, legacyPermission, DEFAULT_PERMISSION_TIER } from "./permissionTiers";
 import { useTheme } from "./hooks/useTheme";
+import { DiffCommentTray } from "./components/DiffCommentTray";
+import { setDiffCommentSession } from "./session/diffComments";
 import type { StudioSession } from "./types";
 
 export function App() {
@@ -94,6 +96,12 @@ export function App() {
     runEvidence.setRunDetail,
   );
   reviewRef.current = review;
+
+  // G4 评论即指令: point the shared diff-comment store at the active session so pending line
+  // comments written in the thread's inline diffs and the panel's diff view stay per-session.
+  useEffect(() => {
+    setDiffCommentSession(bootstrap.activeSession?.session_id ?? "");
+  }, [bootstrap.activeSession?.session_id]);
 
   // OS notifications ("done and you're not looking") + favicon status dot (G1).
   useNotifications({
@@ -453,6 +461,16 @@ export function App() {
           viewMode={viewMode}
           onTurnRewind={onTurnRewind}
           loading={bootstrap.loading}
+        />
+        <DiffCommentTray
+          isRunning={sessionEvents.isRunning}
+          midRunSteer={midRunSteer}
+          onSteer={sessionEvents.steerRun}
+          onSend={(message) => {
+            const candidate = bootstrap.settings?.permissionMode;
+            const tier = isPermissionTierId(candidate) ? candidate : DEFAULT_PERMISSION_TIER;
+            return sessionEvents.sendGoal(message, "auto", legacyPermission(tier), tier);
+          }}
         />
         <Composer
           key={bootstrap.activeSession?.session_id ?? "no-session"}

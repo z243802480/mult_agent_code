@@ -1,4 +1,6 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
+import { MessageSquarePlus, X } from "lucide-react";
+import type { DiffComment, DiffCommentAnchor } from "../session/diffComments";
 
 type DiffLine = {
   kind: "add" | "del" | "hunk" | "meta" | "context";
@@ -97,6 +99,69 @@ function toSplitRows(lines: DiffLine[]): SplitRow[] {
   return rows;
 }
 
+/**
+ * The comment anchor a diff row can carry (G4 评论即指令): added/context lines anchor on the NEW
+ * line number, deleted lines on the OLD one. Meta/hunk rows are not commentable.
+ * Exported for tests (the test harness renders static markup, so anchoring is verified directly).
+ */
+export function rowAnchor(line: DiffLine, file: string): DiffCommentAnchor | null {
+  if (line.kind === "meta" || line.kind === "hunk") return null;
+  if (line.kind === "del") {
+    return { file, line: line.oldNo ?? null, side: "old", excerpt: line.text };
+  }
+  const no = line.newNo ?? line.oldNo ?? null;
+  return { file, line: no, side: line.newNo != null ? "new" : "old", excerpt: line.text };
+}
+
+function commentsForAnchor(
+  comments: DiffComment[],
+  anchor: DiffCommentAnchor | null,
+): DiffComment[] {
+  if (!anchor || anchor.line == null) return [];
+  return comments.filter((item) => item.side === anchor.side && item.line === anchor.line);
+}
+
+function CommentEditor({
+  onSave,
+  onCancel,
+}: {
+  onSave: (text: string) => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState("");
+  return (
+    <div className="diffCommentEditor">
+      <textarea
+        autoFocus
+        value={draft}
+        placeholder="对这一行写意见…（Ctrl+Enter 保存）"
+        rows={2}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            if (draft.trim()) onSave(draft);
+          }
+          if (e.key === "Escape") onCancel();
+        }}
+      />
+      <div className="diffCommentEditorActions">
+        <button type="button" className="diffActionButton" onClick={onCancel}>
+          取消
+        </button>
+        <button
+          type="button"
+          className="diffActionButton primary"
+          disabled={!draft.trim()}
+          onClick={() => onSave(draft)}
+        >
+          添加评论
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function pickStageText(
   diff: string,
   staged?: string,
@@ -121,6 +186,9 @@ export function DiffPreview({
   onStageFile,
   onDiscardFile,
   staging = false,
+  comments = [],
+  onAddComment,
+  onRemoveComment,
 }: {
   path?: string;
   diff?: string;
@@ -133,7 +201,13 @@ export function DiffPreview({
   onStageFile?: () => void;
   onDiscardFile?: () => void;
   staging?: boolean;
+  /** Pending line comments for THIS file (G4). Rendered under their anchored rows (unified layout). */
+  comments?: DiffComment[];
+  /** Enables the per-line comment affordance; needs `path` to build the anchor. */
+  onAddComment?: (anchor: DiffCommentAnchor, text: string) => void;
+  onRemoveComment?: (id: string) => void;
 }) {
+  const [editorAt, setEditorAt] = useState<number | null>(null);
   const stageText = pickStageText(diff ?? "", staged, unstaged, stage);
   const lines = useMemo(() => parseUnifiedDiff(stageText), [stageText]);
   const splitRows = useMemo(() => toSplitRows(lines), [lines]);
@@ -196,13 +270,58 @@ export function DiffPreview({
         </div>
       ) : (
         <div className="diffPreviewTable" role="region" aria-label="Git diff（差异）">
-          {visibleLines.map((line, index) => (
-            <div key={`${index}-${line.kind}`} className={`diffPreviewRow kind-${line.kind}`}>
-              <span className="diffGutter old">{line.oldNo ?? ""}</span>
-              <span className="diffGutter new">{line.newNo ?? ""}</span>
-              <code className="diffLineText">{line.text || " "}</code>
-            </div>
-          ))}
+          {visibleLines.map((line, index) => {
+            const anchor = path && onAddComment ? rowAnchor(line, path) : null;
+            const canComment = Boolean(anchor && anchor.line != null);
+            const lineComments = commentsForAnchor(comments, anchor);
+            return (
+              <React.Fragment key={`${index}-${line.kind}`}>
+                <div
+                  className={`diffPreviewRow kind-${line.kind}${canComment ? " commentable" : ""}`}
+                >
+                  <span className="diffGutter old">{line.oldNo ?? ""}</span>
+                  <span className="diffGutter new">{line.newNo ?? ""}</span>
+                  <code className="diffLineText">{line.text || " "}</code>
+                  {canComment && (
+                    <button
+                      type="button"
+                      className="diffCommentAdd"
+                      title="对此行添加评论"
+                      aria-label={`对第 ${anchor?.line} 行添加评论`}
+                      onClick={() => setEditorAt(editorAt === index ? null : index)}
+                    >
+                      <MessageSquarePlus size={12} />
+                    </button>
+                  )}
+                </div>
+                {lineComments.map((item) => (
+                  <div key={item.id} className="diffCommentCard">
+                    <span className="diffCommentText">{item.text}</span>
+                    {onRemoveComment && (
+                      <button
+                        type="button"
+                        className="diffCommentRemove"
+                        title="删除这条评论"
+                        aria-label="删除这条评论"
+                        onClick={() => onRemoveComment(item.id)}
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {editorAt === index && anchor && (
+                  <CommentEditor
+                    onSave={(text) => {
+                      onAddComment?.(anchor, text);
+                      setEditorAt(null);
+                    }}
+                    onCancel={() => setEditorAt(null)}
+                  />
+                )}
+              </React.Fragment>
+            );
+          })}
         </div>
       )}
       {clipped && <p className="diffPreviewTruncated">仅显示前 {maxLines} 行差异。</p>}

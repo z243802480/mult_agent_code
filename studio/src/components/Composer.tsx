@@ -101,7 +101,7 @@ export function Composer({
     mode: string,
     permission: string,
     permissionMode?: string,
-  ) => Promise<void>;
+  ) => Promise<boolean | void>;
   onSideAsk?: (message: string) => Promise<void>;
   sideAsk?: boolean;
   onSideAskToggle?: () => void;
@@ -115,7 +115,7 @@ export function Composer({
   /** Cooperative pause: the run stops at its next turn boundary and can be resumed. */
   onPause?: () => Promise<void> | void;
   /** Mid-run steer (ADR-0029 ①): deliver this message to the running run at its next turn boundary. */
-  onSteer?: (message: string) => Promise<void> | void;
+  onSteer?: (message: string) => Promise<boolean | void> | void;
   /** True when the server has mid-run steer enabled — gates the "insert now" behaviour honestly. */
   midRunSteer?: boolean;
   files?: WorkspaceFile[];

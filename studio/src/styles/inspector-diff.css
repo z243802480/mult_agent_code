@@ -210,6 +210,96 @@
   color: var(--text-muted);
 }
 
+/* G4 评论即指令 — per-line comment affordance + pending comment cards under their rows. */
+.diffPreviewRow.commentable {
+  position: relative;
+}
+
+.diffCommentAdd {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.diffPreviewRow.commentable:hover .diffCommentAdd,
+.diffCommentAdd:focus-visible {
+  display: inline-flex;
+}
+
+.diffCommentCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 2px 8px 4px 92px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-subtle);
+  border-left: 2px solid var(--accent);
+  border-radius: 6px;
+  background: var(--surface-2);
+  white-space: normal;
+}
+
+.diffCommentText {
+  flex: 1;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.diffCommentRemove {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: none;
+  padding: 2px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.diffCommentRemove:hover {
+  color: var(--bad);
+}
+
+.diffCommentEditor {
+  margin: 2px 8px 6px 92px;
+  padding: 6px;
+  border: 1px solid var(--accent-border);
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.diffCommentEditor textarea {
+  width: 100%;
+  resize: vertical;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 12px;
+  line-height: 1.5;
+  outline: none;
+}
+
+.diffCommentEditorActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+}
+
 .diffPreviewTruncated,
 .diffPreviewError {
   color: var(--text-secondary);
@@ -305,6 +395,17 @@ button.aggregateDiffChip {
 .diffActionButton.danger {
   border-color: var(--bad);
   color: var(--bad);
+}
+
+.diffActionButton.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+.diffActionButton.primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /* B10-a context budget snapshot: dedupe savings / compaction guidance / peak pressure. A quiet

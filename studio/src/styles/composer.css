@@ -611,3 +611,67 @@
   background: var(--accent-hover);
   border-color: var(--accent-hover);
 }
+
+/* G4 评论即指令 — pending diff-comment tray above the composer. */
+.diffCommentTray {
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-1);
+  padding: 4px 8px 6px;
+  margin-bottom: 6px;
+}
+
+.diffCommentTrayHead {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  padding: 4px 2px;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.diffCommentTrayList {
+  list-style: none;
+  margin: 2px 0 4px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.diffCommentTrayItem {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.diffCommentTrayItem:hover {
+  background: var(--surface-2);
+}
+
+.diffCommentTrayAnchor {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.diffCommentTrayText {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.diffCommentTrayActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
