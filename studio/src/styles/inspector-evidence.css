@@ -226,6 +226,59 @@
   padding-top: 9px;
 }
 
+/* G11 分组/批量展开 — collapsible group header, disclosed truncation, batch controls. */
+.evidenceBlockHead {
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  gap: 5px;
+  padding: 0 0 4px;
+  width: 100%;
+  text-align: left;
+}
+
+.evidenceBlockHead .chevron {
+  flex-shrink: 0;
+  transition: transform 0.12s ease;
+}
+
+.evidenceBlockHead .chevron.open {
+  transform: rotate(90deg);
+}
+
+.evidenceShowAll {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 0 0;
+}
+
+.evidenceShowAll:hover {
+  text-decoration: underline;
+}
+
+.evidenceGroupControls {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-bottom: 6px;
+}
+
+.evidenceGroupControls button {
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
 .evidenceBlock details {
   background: var(--surface-1);
   border: 1px solid var(--border-subtle);

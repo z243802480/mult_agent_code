@@ -1,6 +1,13 @@
-import React, { useState } from "react";
-import { FileText, ShieldAlert } from "lucide-react";
-import type { AnyRecord, OverviewPayload, RunDetailPayload, StudioEvent } from "../../types";
+import React, { useEffect, useState } from "react";
+import { ChevronRight, FileText, ShieldAlert } from "lucide-react";
+import { api } from "../../api";
+import type {
+  AnyRecord,
+  FilePreview,
+  OverviewPayload,
+  RunDetailPayload,
+  StudioEvent,
+} from "../../types";
 import { Metric, formatMs, Status } from "../../components/Shared";
 import { WorkflowMonitorPanel } from "../../components/WorkflowMonitorPanel";
 import { CopyablePre } from "../../components/CopyablePre";
@@ -280,6 +287,209 @@ function flattenWorkerTree(workerTree: AnyRecord): AnyRecord[] {
   return result;
 }
 
+function renderEvidenceLine(item: AnyRecord, kind: string): string {
+  if (kind === "progress")
+    return firstText(
+      `${String(item.channel ?? "progress")}/${String(item.event_type ?? "message")} ${String(item.phase ?? "")} ${String(item.status ?? "")}`,
+      String(item.summary ?? ""),
+      String(item.title ?? ""),
+    );
+  if (kind === "model") {
+    const route = [item.model_provider, item.model_name, item.purpose].filter(Boolean).join("/");
+    return firstText(
+      `${route || "model"} ${String(item.status ?? "")} ${formatMs(item.duration_ms)}`,
+      String(item.error ?? ""),
+    );
+  }
+  if (kind === "validation")
+    return firstText(
+      `${String(item.name ?? item.command ?? "validation")} ${String(item.status ?? item.outcome ?? "")}`,
+      String(item.summary ?? ""),
+    );
+  if (kind === "worker")
+    return firstText(
+      `${String(item.task_id ?? item.worker_id ?? "worker")} ${String(item.status ?? item.outcome ?? "")}`,
+      String(item.summary ?? ""),
+    );
+  if (kind === "evidence")
+    return firstText(
+      `${String(item.task_id ?? item.kind ?? "evidence")} ${String(item.status ?? item.outcome ?? "")}`,
+      String(item.path ?? ""),
+    );
+  // A hook row reads as "which hook fired, on which task" — the summary carries what it did.
+  if (kind === "hook")
+    return firstText(
+      `${String(item.hook_name ?? "hook")} ${String(item.task_id ?? "")}`.trim(),
+      String(item.summary ?? ""),
+    );
+  if (kind === "route")
+    return firstText(
+      `${String(item.task_id ?? item.purpose ?? "route")} ${String(item.purpose ?? "")} -> ${String(item.selected_tier ?? "unknown")}`,
+      String(item.reason ?? ""),
+    );
+  if (kind === "mcp")
+    return firstText(
+      `${String(item.server_name ?? "mcp")}/${String(item.tool_name ?? "")} ${String(item.status ?? "")}`,
+      String(item.summary ?? ""),
+    );
+  if (kind === "skill")
+    return firstText(
+      `${String(item.skill_name ?? item.name ?? "skill")} ${String(item.status ?? "")}`,
+      String(item.summary ?? ""),
+    );
+  if (kind === "capability") {
+    const decision = asRecord(item.decision);
+    return firstText(
+      `${String(item.capability_type ?? "cap")}:${String(item.capability ?? "")} -> ${String(decision.decision ?? decision.effect ?? "")}`,
+      String(decision.reason ?? ""),
+    );
+  }
+  return JSON.stringify(item).slice(0, 80);
+}
+
+/**
+ * G11 分组/批量展开: one evidence category = one collapsible group. Module-level (NOT nested in
+ * the explorer) so its open/show-all state survives parent re-renders — a nested definition would
+ * remount and reset on every keystroke in the filter box.
+ *
+ * Truncation is now DISCLOSED: the list shows the latest `defaultShown` entries with an explicit
+ * "显示全部 N 条" toggle instead of a silent slice. The filter searches ALL entries of the group
+ * (previously it only searched the pre-sliced tail — a filtered view that quietly missed matches).
+ */
+export function EvidenceBlock({
+  title,
+  items,
+  kind,
+  filter,
+  selectedKey,
+  onPick,
+  signal,
+  defaultShown = 8,
+}: {
+  title: string;
+  items: AnyRecord[];
+  kind: string;
+  filter: string;
+  selectedKey: string;
+  onPick: (item: AnyRecord, index: number, line: string, kind: string) => void;
+  /** Batch expand/collapse request from the explorer header (expandSignal pattern). */
+  signal?: { mode: "expand" | "collapse"; id: number } | null;
+  defaultShown?: number;
+}) {
+  const [open, setOpen] = useState(true);
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => {
+    if (signal) setOpen(signal.mode === "expand");
+  }, [signal?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const query = filter.trim().toLowerCase();
+  // Preserve the original index (progress selection uses it for a stable "progress-N" label).
+  const matched = items
+    .map((item, index) => ({ item, index, line: renderEvidenceLine(item, kind) }))
+    .filter(({ line }) => !query || line.toLowerCase().includes(query));
+  // While filtering, hide blocks with no match so the search declutters instead of showing a
+  // wall of empty sections. A filter is already a narrowing act, so matches are never re-truncated.
+  if (query && !matched.length) return null;
+  const truncated = !query && !showAll && matched.length > defaultShown;
+  const shown = truncated ? matched.slice(-defaultShown) : matched;
+
+  return (
+    <div className="evidenceBlock">
+      <button
+        type="button"
+        className="evidenceBlockHead"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+      >
+        <ChevronRight size={12} className={`chevron ${open ? "open" : ""}`} />
+        <small>
+          {title} ({query ? `${matched.length}/${items.length}` : items.length})
+        </small>
+      </button>
+      {open && (
+        <>
+          {!matched.length && <p className="muted">暂无记录。</p>}
+          <div className="evidenceSelectableList">
+            {shown.map(({ item, index, line }) => {
+              const key = `${kind}:${line}`;
+              return (
+                <button
+                  key={`${title}-${index}`}
+                  className={selectedKey === key ? "active" : ""}
+                  onClick={() => onPick(item, index, line, kind)}
+                >
+                  <span>{line}</span>
+                </button>
+              );
+            })}
+          </div>
+          {truncated && (
+            <button type="button" className="evidenceShowAll" onClick={() => setShowAll(true)}>
+              显示全部 {matched.length} 条
+            </button>
+          )}
+          {showAll && matched.length > defaultShown && !query && (
+            <button type="button" className="evidenceShowAll" onClick={() => setShowAll(false)}>
+              只看最近 {defaultShown} 条
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+const INLINE_ARTIFACT_CHARS = 4000;
+
+// The BFF returns preview refusals in English ("file too large for preview" at >120KB,
+// "file is not previewable" for non-text extensions) — localize instead of leaking, same
+// guard pattern as gitUnavailableText.
+function previewErrorText(error: string | null | undefined): string {
+  const value = String(error ?? "").trim();
+  if (/too large/i.test(value)) return "文件太大（>120KB），不支持内联预览。";
+  if (/not previewable/i.test(value)) return "该文件类型不支持预览。";
+  return value || "无法读取文件内容。";
+}
+
+/**
+ * G11 小 artifact 内联预览: a selected run file renders its actual content right in the detail
+ * panel (small JSON/JSONL/md artifacts are what you drill into most). Large files show a bounded
+ * head with the truncation stated — the full content still opens in the Changes pane preview via
+ * the existing click path.
+ */
+function RunFileInlinePreview({ path }: { path: string }) {
+  const [preview, setPreview] = useState<FilePreview | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setPreview(null);
+    api
+      .previewFile(path)
+      .then((result) => {
+        if (alive) setPreview(result);
+      })
+      .catch(() => {
+        if (alive) setPreview({ ok: false, error: "无法读取文件内容。" });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [path]);
+  if (!preview) return <p className="muted">读取文件…</p>;
+  if (!preview.ok) return <p className="muted">{previewErrorText(preview.error)}</p>;
+  const content = preview.content ?? "";
+  const clipped = content.length > INLINE_ARTIFACT_CHARS;
+  return (
+    <>
+      {clipped && (
+        <p className="muted">
+          文件较大（{content.length} 字符）——这里只内联前 {INLINE_ARTIFACT_CHARS} 字符。
+        </p>
+      )}
+      <CopyablePre text={clipped ? content.slice(0, INLINE_ARTIFACT_CHARS) : content} />
+    </>
+  );
+}
+
 function EvidenceDetailPanel({ selection }: { selection: EvidenceSelection | null }) {
   return (
     <div className="evidenceDetailPanel">
@@ -293,7 +503,11 @@ function EvidenceDetailPanel({ selection }: { selection: EvidenceSelection | nul
             <span>{selection.kind}</span>
           </div>
           <p>{selection.summary}</p>
-          <CopyablePre text={JSON.stringify(selection.item, null, 2)} />
+          {selection.kind === "run-file" ? (
+            <RunFileInlinePreview path={String(selection.item.path ?? "")} />
+          ) : (
+            <CopyablePre text={JSON.stringify(selection.item, null, 2)} />
+          )}
         </>
       )}
     </div>
@@ -703,6 +917,12 @@ export function EvidenceExplorer({
 }) {
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceSelection | null>(null);
   const [evidenceFilter, setEvidenceFilter] = useState("");
+  // G11: batch expand/collapse across every evidence group + disclosed run-picker truncation.
+  const [groupSignal, setGroupSignal] = useState<{
+    mode: "expand" | "collapse";
+    id: number;
+  } | null>(null);
+  const [showAllRuns, setShowAllRuns] = useState(false);
   const modelCalls = (runDetail?.model_calls ?? []) as AnyRecord[];
   const validations = (runDetail?.validation_results ?? []) as AnyRecord[];
   const workers = (runDetail?.worker_results ?? []) as AnyRecord[];
@@ -747,117 +967,17 @@ export function EvidenceExplorer({
     onSelectRunEvent(progressToStudioEvent(item, runDetail?.run_id));
   }
 
-  function renderLine(item: AnyRecord, kind: string): string {
-    if (kind === "progress")
-      return firstText(
-        `${String(item.channel ?? "progress")}/${String(item.event_type ?? "message")} ${String(item.phase ?? "")} ${String(item.status ?? "")}`,
-        String(item.summary ?? ""),
-        String(item.title ?? ""),
-      );
-    if (kind === "model") {
-      const route = [item.model_provider, item.model_name, item.purpose].filter(Boolean).join("/");
-      return firstText(
-        `${route || "model"} ${String(item.status ?? "")} ${formatMs(item.duration_ms)}`,
-        String(item.error ?? ""),
-      );
+  function pickEvidence(item: AnyRecord, index: number, line: string, kind: string) {
+    if (kind === "progress") {
+      selectProgress(item, index);
+      return;
     }
-    if (kind === "validation")
-      return firstText(
-        `${String(item.name ?? item.command ?? "validation")} ${String(item.status ?? item.outcome ?? "")}`,
-        String(item.summary ?? ""),
-      );
-    if (kind === "worker")
-      return firstText(
-        `${String(item.task_id ?? item.worker_id ?? "worker")} ${String(item.status ?? item.outcome ?? "")}`,
-        String(item.summary ?? ""),
-      );
-    if (kind === "evidence")
-      return firstText(
-        `${String(item.task_id ?? item.kind ?? "evidence")} ${String(item.status ?? item.outcome ?? "")}`,
-        String(item.path ?? ""),
-      );
-    // A hook row reads as "which hook fired, on which task" — the summary carries what it did.
-    if (kind === "hook")
-      return firstText(
-        `${String(item.hook_name ?? "hook")} ${String(item.task_id ?? "")}`.trim(),
-        String(item.summary ?? ""),
-      );
-    if (kind === "route")
-      return firstText(
-        `${String(item.task_id ?? item.purpose ?? "route")} ${String(item.purpose ?? "")} -> ${String(item.selected_tier ?? "unknown")}`,
-        String(item.reason ?? ""),
-      );
-    if (kind === "mcp")
-      return firstText(
-        `${String(item.server_name ?? "mcp")}/${String(item.tool_name ?? "")} ${String(item.status ?? "")}`,
-        String(item.summary ?? ""),
-      );
-    if (kind === "skill")
-      return firstText(
-        `${String(item.skill_name ?? item.name ?? "skill")} ${String(item.status ?? "")}`,
-        String(item.summary ?? ""),
-      );
-    if (kind === "capability") {
-      const decision = asRecord(item.decision);
-      return firstText(
-        `${String(item.capability_type ?? "cap")}:${String(item.capability ?? "")} -> ${String(decision.decision ?? decision.effect ?? "")}`,
-        String(decision.reason ?? ""),
-      );
-    }
-    return JSON.stringify(item).slice(0, 80);
-  }
-
-  function EvidenceBlock({
-    title,
-    items,
-    kind,
-  }: {
-    title: string;
-    items: AnyRecord[];
-    kind: string;
-  }) {
-    const query = evidenceFilter.trim().toLowerCase();
-    // Preserve the original index (selectProgress uses it for a stable "progress-N" fallback label).
-    const shown = items
-      .map((item, index) => ({ item, index, line: renderLine(item, kind) }))
-      .filter(({ line }) => !query || line.toLowerCase().includes(query));
-    // While filtering, hide blocks with no match so the search declutters instead of showing a
-    // wall of empty sections.
-    if (query && !shown.length) return null;
-    return (
-      <div className="evidenceBlock">
-        <small>
-          {title}
-          {query && shown.length !== items.length ? ` (${shown.length}/${items.length})` : ""}
-        </small>
-        {!shown.length && <p className="muted">暂无记录。</p>}
-        <div className="evidenceSelectableList">
-          {shown.map(({ item, index, line }) => {
-            const key = `${kind}:${line}`;
-            return (
-              <button
-                key={`${title}-${index}`}
-                className={selectedKey === key ? "active" : ""}
-                onClick={() => {
-                  if (kind === "progress") {
-                    selectProgress(item, index);
-                    return;
-                  }
-                  selectEvidence({
-                    title: line,
-                    kind,
-                    summary: firstText(String(item.summary ?? ""), String(item.reason ?? ""), line),
-                    item,
-                  });
-                }}
-              >
-                <span>{line}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    );
+    selectEvidence({
+      title: line,
+      kind,
+      summary: firstText(String(item.summary ?? ""), String(item.reason ?? ""), line),
+      item,
+    });
   }
 
   return (
@@ -865,7 +985,7 @@ export function EvidenceExplorer({
       <h2>证据浏览器</h2>
       <div className="runPicker">
         {runs.length === 0 && <p className="muted">暂无本地运行证据。</p>}
-        {runs.slice(0, 6).map((run) => {
+        {(showAllRuns ? runs : runs.slice(0, 6)).map((run) => {
           const runId = String(run.run_id ?? "");
           return (
             <button
@@ -877,6 +997,15 @@ export function EvidenceExplorer({
             </button>
           );
         })}
+        {runs.length > 6 && (
+          <button
+            type="button"
+            className="evidenceShowAll"
+            onClick={() => setShowAllRuns(!showAllRuns)}
+          >
+            {showAllRuns ? "只看最近 6 个" : `显示全部 ${runs.length} 个`}
+          </button>
+        )}
       </div>
       {runDetail?.error && <p className="muted">{runDetail.error}</p>}
       {runDetail?.ok && (
@@ -899,6 +1028,20 @@ export function EvidenceExplorer({
                 ×
               </button>
             )}
+          </div>
+          <div className="evidenceGroupControls">
+            <button
+              type="button"
+              onClick={() => setGroupSignal({ mode: "expand", id: Date.now() })}
+            >
+              全部展开
+            </button>
+            <button
+              type="button"
+              onClick={() => setGroupSignal({ mode: "collapse", id: Date.now() })}
+            >
+              全部收起
+            </button>
           </div>
           <V02ReadinessPanel overview={overview} runDetail={runDetail} />
           <RunStatusPanel runDetail={runDetail} />
@@ -940,9 +1083,34 @@ export function EvidenceExplorer({
               tone={userProgress.length ? "good" : "warn"}
             />
           </div>
-          <EvidenceBlock title="模型路由时间线" items={routeTimeline.slice(-8)} kind="route" />
-          <EvidenceBlock title="用户进度" items={userProgress.slice(-8)} kind="progress" />
-          <EvidenceBlock title="模型调用" items={modelCalls.slice(-5)} kind="model" />
+          <EvidenceBlock
+            title="模型路由时间线"
+            items={routeTimeline}
+            kind="route"
+            filter={evidenceFilter}
+            selectedKey={selectedKey}
+            onPick={pickEvidence}
+            signal={groupSignal}
+          />
+          <EvidenceBlock
+            title="用户进度"
+            items={userProgress}
+            kind="progress"
+            filter={evidenceFilter}
+            selectedKey={selectedKey}
+            onPick={pickEvidence}
+            signal={groupSignal}
+          />
+          <EvidenceBlock
+            title="模型调用"
+            items={modelCalls}
+            kind="model"
+            filter={evidenceFilter}
+            selectedKey={selectedKey}
+            onPick={pickEvidence}
+            signal={groupSignal}
+            defaultShown={5}
+          />
           <VerificationMatrix
             validations={validations.slice(-8)}
             selectedKey={selectedKey}
@@ -955,12 +1123,62 @@ export function EvidenceExplorer({
               })
             }
           />
-          <EvidenceBlock title="工作者结果" items={workers.slice(-4)} kind="worker" />
-          <EvidenceBlock title="任务证据" items={evidence.slice(-4)} kind="evidence" />
-          <EvidenceBlock title="MCP 调用" items={mcpInvocations.slice(-8)} kind="mcp" />
-          <EvidenceBlock title="技能调用" items={skillInvocations.slice(-8)} kind="skill" />
-          <EvidenceBlock title="能力决策" items={capabilityDecisions.slice(-8)} kind="capability" />
-          <EvidenceBlock title="运行时 Hook" items={runtimeHooks.slice(-8)} kind="hook" />
+          <EvidenceBlock
+            title="工作者结果"
+            items={workers}
+            kind="worker"
+            filter={evidenceFilter}
+            selectedKey={selectedKey}
+            onPick={pickEvidence}
+            signal={groupSignal}
+            defaultShown={4}
+          />
+          <EvidenceBlock
+            title="任务证据"
+            items={evidence}
+            kind="evidence"
+            filter={evidenceFilter}
+            selectedKey={selectedKey}
+            onPick={pickEvidence}
+            signal={groupSignal}
+            defaultShown={4}
+          />
+          <EvidenceBlock
+            title="MCP 调用"
+            items={mcpInvocations}
+            kind="mcp"
+            filter={evidenceFilter}
+            selectedKey={selectedKey}
+            onPick={pickEvidence}
+            signal={groupSignal}
+          />
+          <EvidenceBlock
+            title="技能调用"
+            items={skillInvocations}
+            kind="skill"
+            filter={evidenceFilter}
+            selectedKey={selectedKey}
+            onPick={pickEvidence}
+            signal={groupSignal}
+          />
+          <EvidenceBlock
+            title="能力决策"
+            items={capabilityDecisions}
+            kind="capability"
+            filter={evidenceFilter}
+            selectedKey={selectedKey}
+            onPick={pickEvidence}
+            signal={groupSignal}
+          />
+          <EvidenceBlock
+            title="运行时 Hook"
+            items={runtimeHooks}
+            kind="hook"
+            filter={evidenceFilter}
+            selectedKey={selectedKey}
+            onPick={pickEvidence}
+            signal={groupSignal}
+          />
           {files.length > 0 && (
             <div className="runFiles">
               <small>运行文件 ({files.length})</small>
