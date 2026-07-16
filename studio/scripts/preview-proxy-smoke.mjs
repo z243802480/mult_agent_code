@@ -12,12 +12,22 @@ import { fileURLToPath } from "node:url";
 
 const studioDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(studioDir, "..");
-const mainPort = Number(process.env.ASTERIA_STUDIO_PREVIEW_PROXY_PORT || 18840);
-const devPort = mainPort + 500;
-const mainBase = `http://127.0.0.1:${mainPort}`;
-
 function assert(cond, message) {
   if (!cond) throw new Error(message);
+}
+
+// Ports are allocated at runtime instead of hard-coded: fixed ports made this smoke fail
+// intermittently when an earlier run's socket was still bound or another smoke held one.
+// The preview port is not allocated here — the server picks its own and reports it via preview-info.
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+  });
 }
 
 // Fake dev server: answers HTTP with distinctive markers and completes a websocket upgrade so we can
@@ -36,7 +46,11 @@ devServer.on("upgrade", (req, socket) => {
     "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nX-Dev-Upgrade: DEV_WS_MARKER\r\n\r\n",
   );
 });
-await new Promise((resolve) => devServer.listen(devPort, "127.0.0.1", resolve));
+await new Promise((resolve) => devServer.listen(0, "127.0.0.1", resolve));
+const devPort = devServer.address().port;
+
+const mainPort = Number(process.env.ASTERIA_STUDIO_PREVIEW_PROXY_PORT) || (await freePort());
+const mainBase = `http://127.0.0.1:${mainPort}`;
 
 const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-preview-proxy-smoke-"));
 // A static file that must be IGNORED in proxy mode (everything is forwarded to the dev server).
