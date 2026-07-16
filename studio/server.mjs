@@ -24,6 +24,7 @@ import {
 import { createPreviewSubsystem, normalizeProxyTarget } from "./lib/preview-server.mjs";
 import { createEventBus } from "./lib/event-bus.mjs";
 import { parseSessionText, writeSessionJson } from "./lib/session-store.mjs";
+import { renderSessionReplayHtml } from "./lib/session-replay.mjs";
 import { eventsAfter, parseSince } from "./lib/event-cursor.mjs";
 import { createJobRegistry } from "./lib/jobs.mjs";
 import { createRunDetailReader } from "./lib/run-detail-reader.mjs";
@@ -197,6 +198,27 @@ async function handleApi(request, response, url) {
       return;
     }
     sendJson(response, 200, await importSessionBundle(body));
+    return;
+  }
+  // G15 会话回放导出: a self-contained HTML replay page (inline CSS/JS, zero external requests) —
+  // the forwardable review artifact; the JSON bundle below stays the lossless backup format.
+  if (
+    request.method === "GET" &&
+    url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/export\.html$/)
+  ) {
+    const sessionId = decodeURIComponent(url.pathname.split("/").at(-2) || "");
+    const loaded = await readSession(sessionId);
+    if (!loaded.ok) {
+      sendJson(response, 404, loaded);
+      return;
+    }
+    const html = renderSessionReplayHtml(loaded.session, loaded.events ?? []);
+    const filename = `asteria-replay-${sessionId}.html`.replace(/[^a-zA-Z0-9._-]/g, "_");
+    response.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "content-disposition": `attachment; filename="${filename}"`,
+    });
+    response.end(html);
     return;
   }
   if (request.method === "GET" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/export$/)) {

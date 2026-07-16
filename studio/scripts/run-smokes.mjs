@@ -54,6 +54,7 @@ const HERMETIC = [
   "s8-resume-continuation-smoke.mjs",
   "session-id-smoke.mjs",
   "session-lifecycle-smoke.mjs",
+  "session-replay-export-smoke.mjs",
   "snapshot-rollback-smoke.mjs",
   "session-main-path-contract.mjs",
   "side-chat-smoke.mjs",

@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
-import { Archive, ArchiveRestore, Download, Pencil, Trash2, Upload } from "lucide-react";
+import { Archive, ArchiveRestore, Download, FileClock, Pencil, Trash2, Upload } from "lucide-react";
 import { api } from "../../api";
 import type { StudioSession } from "../../types";
 import type { SessionListFilter } from "./sessionListUtils";
@@ -247,6 +247,16 @@ function SessionRow({
         onClick={(event) => event.stopPropagation()}
       >
         <Download size={13} />
+      </a>
+      <a
+        className="sessionExport"
+        href={`${exportHref}.html`}
+        download
+        title="导出回放页(自包含 HTML·可转发复盘)"
+        aria-label="导出会话回放页"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <FileClock size={13} />
       </a>
       {onArchive && (
         <button
