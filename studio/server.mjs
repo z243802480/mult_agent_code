@@ -828,11 +828,12 @@ const WARM_WORKER_ENABLED =
   String(process.env.ASTERIA_STUDIO_WARM_WORKER ?? "1").toLowerCase() !== "false";
 // ADR-0029 ①: mid-run steer. When on, a message typed during a run is delivered to the running agent
 // at its next turn boundary (via steer.request → the spine's take_steer read) instead of being queued
-// for after the run. Off by default: the Composer keeps its honest queue-for-after behaviour and the
-// runtime never reads the signal, so this cannot change today's behaviour unless explicitly enabled.
+// for after the run. Default ON (2026-07-16 DecisionPoint, changelog 1.2.76): the Composer offers
+// "insert now (takes effect next turn)" for a running job. Set ASTERIA_STUDIO_MID_RUN_STEER=0 (or
+// false) to restore the honest queue-for-after behaviour (the runtime then never reads the signal).
 const MID_RUN_STEER_ENABLED =
-  process.env.ASTERIA_STUDIO_MID_RUN_STEER === "1" ||
-  String(process.env.ASTERIA_STUDIO_MID_RUN_STEER || "").toLowerCase() === "true";
+  String(process.env.ASTERIA_STUDIO_MID_RUN_STEER ?? "1").toLowerCase() !== "0" &&
+  String(process.env.ASTERIA_STUDIO_MID_RUN_STEER ?? "1").toLowerCase() !== "false";
 const WARM_CONTROL_PREFIX = "@@ASTERIA_WORKER@@ ";
 const WARM_WORKER_MAX_RUNS = 50; // recycle after N runs so any slow per-run leak stays bounded
 let warmWorker = null; // { child, pid, ready, busy, runCount, active, buf }

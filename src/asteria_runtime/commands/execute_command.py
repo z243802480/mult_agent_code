@@ -457,13 +457,14 @@ class ExecuteCommand:
 
     def _mid_run_steer_enabled(self, policy: dict) -> bool:
         # ADR-0029 ①: whether a user instruction dropped into the run dir (steer.request) is injected
-        # at the next turn boundary. Default OFF — behaviour is byte-identical to today when disabled
-        # (the signal is simply never read, so the Studio queue-for-after path stands). This is NOT an
-        # autonomy ring (it delivers the user's OWN words, no self-driving), so it does not bind to the
-        # permission mode; it is an explicit opt-in flag.
+        # at the next turn boundary. Default ON (2026-07-16 DecisionPoint, changelog 1.2.76). Behaviour
+        # is still byte-identical to today whenever no steer.request exists — the signal is only read at
+        # a turn boundary and only when the file is present, so a run nobody steers is unchanged. This is
+        # NOT an autonomy ring (it delivers the user's OWN words, no self-driving), so it does not bind to
+        # the permission mode; set agent_loop.mid_run_steer=false in policy to restore queue-for-after.
         raw_agent_loop = policy.get("agent_loop")
         agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
-        return bool(agent_loop.get("mid_run_steer", False))
+        return bool(agent_loop.get("mid_run_steer", True))
 
     def _max_repair_attempts_per_task(self, policy: dict) -> int:
         budgets = resolve_budget_limits(policy)
