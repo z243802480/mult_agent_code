@@ -106,6 +106,13 @@ describe("cleanSessionTitle — mojibake guard for legacy CLI sessions", () => {
     expect(cleanSessionTitle("   ")).toBe("未命名会话");
   });
 
+  it("never throws on a missing title — untitled sessions carry no title field", () => {
+    // The header crashed the whole app on cleanSessionTitle(undefined) when this guard was first
+    // wired there (2026-07-16); a display guard must be total.
+    expect(cleanSessionTitle(undefined)).toBe("未命名会话");
+    expect(cleanSessionTitle(null)).toBe("未命名会话");
+  });
+
   it("does not treat a legitimate title with punctuation as mojibake", () => {
     expect(cleanSessionTitle("把这些笔记整理成一页 PRD")).toBe("把这些笔记整理成一页 PRD");
   });

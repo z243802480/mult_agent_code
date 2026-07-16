@@ -6,6 +6,7 @@ import { Thread } from "./components/Thread";
 import { SidePanel } from "./components/SidePanel";
 import { Composer } from "./components/Composer";
 import { MissionPaneHeader } from "./layout/MissionPaneHeader";
+import { cleanSessionTitle } from "./features/sidebar/sessionListUtils";
 import { usePaneLayout } from "./hooks/usePaneLayout";
 import { useViewMode } from "./hooks/useViewMode";
 import { useDiffFocus } from "./hooks/useDiffFocus";
@@ -297,7 +298,11 @@ export function App() {
       }}
     >
       <MissionPaneHeader
-        title={bootstrap.activeSession?.title ?? "新任务"}
+        // Same mojibake guard the sidebar uses — the header was the third leak of raw legacy-CLI
+        // titles (misdecoded console bytes rendered as debris in the most prominent spot on screen).
+        title={
+          bootstrap.activeSession ? cleanSessionTitle(bootstrap.activeSession.title) : "新任务"
+        }
         settings={bootstrap.settings}
         viewMode={viewMode}
         panelOpen={panelOpen}

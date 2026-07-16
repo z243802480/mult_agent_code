@@ -1,4 +1,4 @@
-import type { AnyRecord, NarrativeStep as NarrativeStepType } from "./types";
+import type { AnyRecord, NarrativeStep as NarrativeStepType, StudioEvent } from "./types";
 
 export type FileChangeRecord = {
   path: string;
@@ -14,6 +14,12 @@ export function fileChangePath(record: AnyRecord): string {
 }
 
 export function extractFileChangesFromSteps(steps: NarrativeStepType[]): FileChangeRecord[] {
+  return extractFileChangesFromEvents(steps.flatMap((step) => step.events));
+}
+
+// Same extraction straight from transcript events — for surfaces that hold events, not narrative
+// steps (e.g. the Inspector scoping its Preview tab to files THIS session actually touched).
+export function extractFileChangesFromEvents(events: StudioEvent[]): FileChangeRecord[] {
   const seen = new Set<string>();
   const result: FileChangeRecord[] = [];
 
@@ -37,14 +43,12 @@ export function extractFileChangesFromSteps(steps: NarrativeStepType[]): FileCha
     });
   };
 
-  for (const step of steps) {
-    for (const event of step.events) {
-      for (const item of (event.file_changes ?? []) as AnyRecord[]) push(item);
-      // Structured file_changed events already carry the real, full path. The old summary-text
-      // scrape was dropped: its `js|json` alternation mis-captured `foo.json` as a phantom `foo.js`,
-      // and it surfaced un-path-filterable internal-artifact basenames. Real paths only, no guessing.
-      if (event.type === "file_changed") push(event.data as AnyRecord);
-    }
+  for (const event of events) {
+    for (const item of (event.file_changes ?? []) as AnyRecord[]) push(item);
+    // Structured file_changed events already carry the real, full path. The old summary-text
+    // scrape was dropped: its `js|json` alternation mis-captured `foo.json` as a phantom `foo.js`,
+    // and it surfaced un-path-filterable internal-artifact basenames. Real paths only, no guessing.
+    if (event.type === "file_changed") push(event.data as AnyRecord);
   }
   return result;
 }

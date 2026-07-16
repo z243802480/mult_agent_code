@@ -1578,26 +1578,31 @@
   margin-top: 2px;
 }
 
+/* Scroll-to-bottom: a quiet circular icon button floating over the thread (ChatGPT/Claude style)
+   instead of the old accent-filled text pill — it's navigation chrome, not a call to action. */
 .jumpToLatest {
-  background: var(--accent);
-  border: 0;
-  border-radius: var(--radius-pill);
-  bottom: 14px;
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  bottom: 16px;
   box-shadow: var(--shadow-md);
-  color: var(--accent-fg);
+  color: var(--text-primary);
   cursor: pointer;
-  display: block;
-  font-size: 12px;
-  font-weight: var(--weight-semibold);
-  margin: -32px auto 6px;
-  padding: 6px 14px;
+  display: flex;
+  flex: none;
+  height: 36px;
+  justify-content: center;
+  margin: -36px auto 0;
+  max-width: 36px;
+  padding: 0;
   position: sticky;
-  width: fit-content;
+  width: 36px;
   z-index: 4;
 }
 
 .jumpToLatest:hover {
-  background: var(--accent-hover);
+  background: var(--surface-3);
 }
 
 .turnFinalAvatar {

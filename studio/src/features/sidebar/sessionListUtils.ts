@@ -86,7 +86,9 @@ const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[
 // never mixes them into Chinese, so two or more surviving here is a reliable "this is debris" signal.
 const STRAY_SCRIPT = /[À-ɏʰ-˿Ͱ-ۿ]/g;
 
-export function cleanSessionTitle(value: string): string {
+export function cleanSessionTitle(value: string | null | undefined): string {
+  // A display guard must never throw — untitled sessions carry no title field at all.
+  if (value == null) return "未命名会话";
   // Sessions created from a mis-encoded console (a GBK terminal whose UTF-8 bytes were decoded with
   // the wrong codepage) stored mojibake in session.json. Two shapes appear: (1) a good UTF-8 prefix
   // with a mangled tail of lone surrogates / U+FFFD — e.g. "用一句话说明素数的定义�\udc80\udc82", where

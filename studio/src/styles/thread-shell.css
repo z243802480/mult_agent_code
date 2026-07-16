@@ -21,7 +21,12 @@
   margin-top: var(--space-1);
 }
 
-.thread > *:not(.threadProcessControls) {
+/* The conversation is a centered column with a reading measure (mainstream: ChatGPT/Claude/Cursor
+   all center the transcript) — on wide windows turns must not hug the left edge of the pane.
+   .jumpToLatest is excluded: it is a fixed-size floating circle, not a column member. */
+.thread > *:not(.threadProcessControls):not(.jumpToLatest) {
+  margin-inline: auto;
+  max-width: var(--thread-max);
   width: 100%;
 }
 

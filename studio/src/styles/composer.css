@@ -6,6 +6,13 @@
   transition: background 0.15s;
 }
 
+/* Keep the input aligned with the centered conversation column above it. */
+.composer > * {
+  margin-inline: auto;
+  max-width: var(--thread-max);
+  width: 100%;
+}
+
 /* Queued follow-ups while a run is in flight (I9) */
 .composerQueue {
   align-items: center;

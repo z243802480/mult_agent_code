@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCw, AlertTriangle } from "lucide-react";
+import { RefreshCw, AlertTriangle, ArrowDown } from "lucide-react";
 import { ThreadSkeleton } from "../../components/Skeleton";
 import type { OverviewPayload, RunDetailPayload, StudioEvent } from "../../types";
 import { toNarrativeEvents, buildRunNarrative } from "../../narrative";
@@ -267,8 +267,15 @@ export function Thread({
   const visibleTurns = hiddenTurnCount > 0 ? turns.slice(-MAX_RENDERED_TURNS) : turns;
   const turnIndexOffset = turns.length - visibleTurns.length;
   const scrollToLatest = () => {
+    // Instant, synchronous jump — same decision as the auto-follow fix: smooth scrolling silently
+    // no-ops in hidden/背景 documents (rAF-driven), leaving the button visibly dead. The pinned
+    // state is written directly rather than waiting for the async scroll event (also unreliable in
+    // hidden documents): we just placed the viewport at the bottom, so the state is a fact.
     const el = threadRef.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    atBottomRef.current = true;
+    setAtBottom(true);
   };
   const jumpToIssue = () => {
     if (!failedTurnNumbers.length) return;
@@ -395,8 +402,9 @@ export function Thread({
           className="jumpToLatest"
           onClick={scrollToLatest}
           aria-label="跳到最新"
+          title="跳到最新"
         >
-          跳到最新 ↓
+          <ArrowDown size={16} />
         </button>
       )}
       {shouldShowPending && pendingTurn && <PendingTurn {...pendingTurn} />}

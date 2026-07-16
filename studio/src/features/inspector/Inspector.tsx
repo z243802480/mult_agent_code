@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type {
   FilePreview,
   GitDiffPayload,
@@ -13,6 +13,7 @@ import type { DiffLayout, DiffStage } from "../../components/DiffPreview";
 import { ContextPanel } from "../../components/ContextPanel";
 import type { StudioViewMode } from "../../hooks/useViewMode";
 import type { TurnDiffScope } from "../../turnDiff";
+import { extractFileChangesFromEvents } from "../../fileChanges";
 import { DiffReviewPane } from "./DiffReviewPane";
 import { InspectorAdvanced } from "./InspectorAdvanced";
 import { PreviewPane } from "./PreviewPane";
@@ -118,6 +119,16 @@ export function Inspector({
   viewMode: StudioViewMode;
 }) {
   const [tab, setTab] = useState<InspectorTabId>(loadInspectorTab);
+
+  // Preview is scoped to files THIS session actually touched — the workspace is shared across
+  // sessions, and offering another session's artifacts here (a snake game next to an algorithm
+  // chat) reads as showing an unrelated project. Same event walk the thread's file cards use.
+  const sessionFilePaths = useMemo(() => {
+    const source = events.length
+      ? events
+      : ((runDetail?.events ?? runDetail?.user_progress ?? []) as StudioEvent[]);
+    return extractFileChangesFromEvents(source).map((change) => change.path);
+  }, [events, runDetail]);
   const selectTab = (next: InspectorTabId) => {
     setTab(next);
     try {
@@ -153,7 +164,7 @@ export function Inspector({
         ))}
       </div>
       <div className="inspectorTabPanel">
-        {tab === "preview" && <PreviewPane files={files} />}
+        {tab === "preview" && <PreviewPane files={files} sessionPaths={sessionFilePaths} />}
         {tab === "changes" && (
           <div className="inspectorPrimary">
             <DiffReviewPane

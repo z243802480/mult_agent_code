@@ -28,9 +28,37 @@ function encodePath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
-export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
-  const htmlFiles = files.filter((file) => isHtml(file.path));
-  const [selected, setSelected] = useState("");
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/^\.\//, "").trim();
+}
+
+// Touched-by-this-session check — tolerant of one side carrying a directory prefix the other lacks
+// (events sometimes record workspace-absolute paths while the file list is workspace-relative).
+function sessionTouched(filePath: string, touched: string[]): boolean {
+  const p = normalizePath(filePath);
+  return touched.some((raw) => {
+    const t = normalizePath(raw);
+    return t === p || t.endsWith(`/${p}`) || p.endsWith(`/${t}`);
+  });
+}
+
+export function PreviewPane({
+  files,
+  sessionPaths,
+}: {
+  files: WorkspaceFile[];
+  sessionPaths: string[];
+}) {
+  // Only this session's own artifacts are preview candidates — the workspace is shared across
+  // sessions and surfacing another session's page here reads as an unrelated project (real
+  // user friction, 2026-07-16). The dev-server proxy mode stays workspace-level by design: it
+  // is an explicit backend flag, not a per-session artifact.
+  const htmlFiles = files.filter(
+    (file) => isHtml(file.path) && sessionTouched(file.path, sessionPaths),
+  );
+  // Lazy-init to the default pick so the first frame already names a file (the effect below only
+  // re-picks when the workspace file set changes later).
+  const [selected, setSelected] = useState(() => pickDefault(htmlFiles));
   const [previewPort, setPreviewPort] = useState<number | null>(null);
   const [portResolved, setPortResolved] = useState(false);
   const [fallbackContent, setFallbackContent] = useState<string | null>(null);
@@ -101,8 +129,8 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
     return (
       <div className="previewPane empty">
         <Globe size={22} />
-        <p>暂无可预览的网页输出。</p>
-        <small>工作区中的 HTML 文件会在此实时、可交互地渲染。</small>
+        <p>本会话暂无可预览的网页产出。</p>
+        <small>本会话中产出的 HTML 会在此实时、可交互地渲染；其他会话的产物不在此显示。</small>
       </div>
     );
   }
