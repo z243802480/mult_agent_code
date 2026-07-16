@@ -17,6 +17,7 @@ import { extractFileChangesFromEvents } from "../../fileChanges";
 import { isCleanVerdict, latestAiReview, parseReviewFindings } from "../../session/aiReview";
 import { DiffReviewPane } from "./DiffReviewPane";
 import { InspectorAdvanced } from "./InspectorAdvanced";
+import { MemoryPanel } from "./MemoryPanel";
 import { PreviewPane } from "./PreviewPane";
 import { SubagentPanel } from "./SubagentPanel";
 
@@ -27,6 +28,7 @@ const INSPECTOR_TABS = [
   { id: "preview", label: "预览" },
   { id: "changes", label: "改动" },
   { id: "context", label: "上下文" },
+  { id: "memory", label: "记忆" },
   { id: "agents", label: "子 agent" },
   { id: "evidence", label: "证据" },
 ] as const;
@@ -40,6 +42,7 @@ function loadInspectorTab(): InspectorTabId {
       raw === "preview" ||
       raw === "changes" ||
       raw === "context" ||
+      raw === "memory" ||
       raw === "agents" ||
       raw === "evidence"
     )
@@ -232,6 +235,7 @@ export function Inspector({
             />
           </div>
         )}
+        {tab === "memory" && <MemoryPanel />}
         {tab === "agents" && (
           <SubagentPanel
             events={
