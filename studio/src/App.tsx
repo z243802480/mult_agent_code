@@ -187,6 +187,16 @@ export function App() {
 
   const selectSession = useCallback(
     (session: StudioSession) => {
+      // Re-selecting the ALREADY-ACTIVE session must be a no-op. clearEvents() here wiped the
+      // loaded transcript, but the session id did not change, so the subscription effect never
+      // re-ran — and the live subscription's dedup set had already marked every event as seen, so
+      // nothing ever refilled the state. Result: thread stuck on the empty state until the user
+      // switched away and back (hit every time after a reload, because bootstrap auto-selects the
+      // latest session and the user's first click usually IS that session).
+      if (session.session_id === bootstrap.activeSession?.session_id) {
+        bootstrap.setActiveSession(session);
+        return;
+      }
       bootstrap.setActiveSession(session);
       runEvidence.clearSelection();
       sessionEvents.clearEvents();
