@@ -23,6 +23,7 @@ import {
 } from "./lib/workspace-paths.mjs";
 import { createPreviewSubsystem, normalizeProxyTarget } from "./lib/preview-server.mjs";
 import { createEventBus } from "./lib/event-bus.mjs";
+import { parseSessionText, writeSessionJson } from "./lib/session-store.mjs";
 import { eventsAfter, parseSince } from "./lib/event-cursor.mjs";
 import { createJobRegistry } from "./lib/jobs.mjs";
 import { createRunDetailReader } from "./lib/run-detail-reader.mjs";
@@ -1318,11 +1319,7 @@ async function createSession() {
     updated_at: now,
   };
   await fs.mkdir(sessionPath(sessionId), { recursive: true });
-  await fs.writeFile(
-    sessionPath(sessionId, "session.json"),
-    JSON.stringify(session, null, 2),
-    "utf8",
-  );
+  await writeSessionJson(sessionPath(sessionId, "session.json"), session);
   // No seed/welcome event: a brand-new session must stay empty so the thread renders the EmptyState
   // ("What would you like to do?" + example prompts). A main-level greeting event here made every new
   // conversation non-empty, which rendered a stray assistant turn AND dragged in the workspace-level
@@ -1353,7 +1350,11 @@ async function readSession(sessionId) {
   try {
     const raw = await fs.readFile(file, "utf8");
     if (!raw.trim()) return { ok: false, error: "empty session" };
-    return { ok: true, session: JSON.parse(raw), events: await readSessionEvents(sessionId) };
+    // parseSessionText salvages torn files (concurrent-write tail garbage) instead of letting a
+    // stray byte make the whole session silently vanish from listSessions.
+    const session = parseSessionText(raw);
+    if (!session) return { ok: false, error: "session unreadable" };
+    return { ok: true, session, events: await readSessionEvents(sessionId) };
   } catch (error) {
     return { ok: false, error: String(error?.message || error) };
   }
@@ -1376,12 +1377,12 @@ async function deleteSession(sessionId, { purge = false } = {}) {
   let session = { session_id: sessionId };
   try {
     const raw = await fs.readFile(file, "utf8");
-    if (raw.trim()) session = JSON.parse(raw);
+    session = parseSessionText(raw) ?? { session_id: sessionId };
   } catch {
     session = { session_id: sessionId };
   }
   session.deleted_at = new Date().toISOString();
-  await fs.writeFile(file, JSON.stringify(session, null, 2), "utf8");
+  await writeSessionJson(file, session);
   return { ok: true, deleted: sessionId, soft_deleted: true };
 }
 
@@ -1389,16 +1390,12 @@ async function restoreSession(sessionId) {
   if (!isSafeId(sessionId)) return { ok: false, error: "invalid session id" };
   const file = sessionPath(sessionId, "session.json");
   if (!existsSync(file)) return { ok: false, error: "session not found" };
-  let session = {};
-  try {
-    session = JSON.parse(await fs.readFile(file, "utf8"));
-  } catch {
-    return { ok: false, error: "session unreadable" };
-  }
+  const session = parseSessionText(await fs.readFile(file, "utf8").catch(() => ""));
+  if (!session) return { ok: false, error: "session unreadable" };
   // Clear the marker without touching updated_at, so the session slots back into its original
   // position in the list (undo = put it back exactly, not bump to the top).
   delete session.deleted_at;
-  await fs.writeFile(file, JSON.stringify(session, null, 2), "utf8");
+  await writeSessionJson(file, session);
   return { ok: true, session, restored: sessionId };
 }
 
@@ -1452,11 +1449,7 @@ async function importSessionBundle(body) {
   };
   if (src.goal_preview) session.goal_preview = String(src.goal_preview).slice(0, 160);
   await fs.mkdir(sessionPath(sessionId), { recursive: true });
-  await fs.writeFile(
-    sessionPath(sessionId, "session.json"),
-    JSON.stringify(session, null, 2),
-    "utf8",
-  );
+  await writeSessionJson(sessionPath(sessionId, "session.json"), session);
   if (events.length) {
     // Re-stamp session_id so the imported events belong to the new session; keep everything else
     // (event_id, timestamps, content) verbatim for a faithful restore.
@@ -1473,12 +1466,8 @@ async function updateSession(sessionId, body) {
   if (!isSafeId(sessionId)) return { ok: false, error: "invalid session id" };
   const file = sessionPath(sessionId, "session.json");
   if (!existsSync(file)) return { ok: false, error: "session not found" };
-  let session = {};
-  try {
-    session = JSON.parse(await fs.readFile(file, "utf8"));
-  } catch {
-    return { ok: false, error: "session unreadable" };
-  }
+  const session = parseSessionText(await fs.readFile(file, "utf8").catch(() => ""));
+  if (!session) return { ok: false, error: "session unreadable" };
   if (body?.title) session.title = String(body.title).slice(0, 120);
   if (body?.goal_preview) session.goal_preview = String(body.goal_preview).slice(0, 160);
   // Archive (G3): reversible like soft-delete, but user-intentional shelving — the session stays
@@ -1491,7 +1480,7 @@ async function updateSession(sessionId, body) {
     session.ui_state = { ...(session.ui_state || {}), ...body.ui_state };
   }
   session.updated_at = new Date().toISOString();
-  await fs.writeFile(file, JSON.stringify(session, null, 2), "utf8");
+  await writeSessionJson(file, session);
   return { ok: true, session };
 }
 

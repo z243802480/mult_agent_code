@@ -8,6 +8,7 @@
 import { existsSync, promises as fs } from "node:fs";
 import { redact } from "./text-utils.mjs";
 import { isSafeId } from "./workspace-paths.mjs";
+import { parseSessionText, writeSessionJson } from "./session-store.mjs";
 
 export function createEventBus({ sessionPath, getWorkspace }) {
   const sseClients = new Map(); // sessionId -> Set<response>
@@ -80,7 +81,7 @@ export function createEventBus({ sessionPath, getWorkspace }) {
       let session = {};
       try {
         const rawSession = await fs.readFile(sessionFile, "utf8");
-        session = rawSession.trim() ? JSON.parse(rawSession) : {};
+        session = parseSessionText(rawSession) ?? {};
       } catch {
         session = {};
       }
@@ -93,7 +94,9 @@ export function createEventBus({ sessionPath, getWorkspace }) {
           full.content_delta || full.summary || session.goal_preview || "",
         ).slice(0, 160);
       }
-      await fs.writeFile(sessionFile, JSON.stringify(session, null, 2), "utf8");
+      // Serialized + atomic: this runs on EVERY appended event and used to race the user-action
+      // writers (rename/archive) with bare writeFile — the torn-file corruption source.
+      await writeSessionJson(sessionFile, session);
     }
     notifySSE(sessionId, full);
     return full;

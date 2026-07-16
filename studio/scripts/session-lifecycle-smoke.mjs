@@ -113,6 +113,21 @@ try {
   });
   assert(unarchived.ok && !unarchived.session.archived_at, "unarchive did not clear archived_at");
 
+  // 2c. Torn-file resilience (2026-07-17): concurrent session.json writers used to interleave and
+  // leave trailing garbage (a real corruption ended in `}}`), making JSON.parse throw and the
+  // session VANISH from the list. The reader must salvage the valid object instead.
+  const sessionFile = path.join(workspace, ".asteria", "studio", "sessions", sid, "session.json");
+  const intact = await fs.readFile(sessionFile, "utf8");
+  await fs.writeFile(sessionFile, `${intact}}`, "utf8");
+  const listWithTornFile = await fetchJson(`${base}/api/studio/sessions`);
+  assert(
+    listWithTornFile.sessions.some((s) => s.session_id === sid),
+    "torn session.json (trailing garbage) dropped the session from the list",
+  );
+  // A follow-up write-through (PATCH) heals the file back to clean JSON on disk.
+  await fetchJson(`${base}/api/studio/sessions/${sid}`, "PATCH", { title: "torn-file healed" });
+  JSON.parse(await fs.readFile(sessionFile, "utf8"));
+
   // 3. Soft-delete (default): reversible, not a hard delete.
   const deleted = await fetchJson(`${base}/api/studio/sessions/${sid}`, "DELETE");
   assert(
