@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StudioSession } from "../../types";
-import { cleanSessionTitle, sessionPreview } from "./sessionListUtils";
+import { cleanSessionTitle, filterSessions, sessionPreview } from "./sessionListUtils";
 
 describe("cleanSessionTitle — mojibake guard for legacy CLI sessions", () => {
   it("keeps a normal Chinese title untouched", () => {
@@ -115,5 +115,25 @@ describe("cleanSessionTitle — mojibake guard for legacy CLI sessions", () => {
 
   it("does not treat a legitimate title with punctuation as mojibake", () => {
     expect(cleanSessionTitle("把这些笔记整理成一页 PRD")).toBe("把这些笔记整理成一页 PRD");
+  });
+});
+
+describe("filterSessions with the archived tab (G3)", () => {
+  const now = new Date().toISOString();
+  const session = (id: string, archived: boolean): StudioSession =>
+    ({
+      session_id: id,
+      title: id,
+      workspace: "w",
+      created_at: now,
+      updated_at: now,
+      ...(archived ? { archived_at: now } : {}),
+    }) as StudioSession;
+  const sessions = [session("s-live", false), session("s-shelved", true)];
+
+  it("working tabs never show archived sessions; the archived tab shows only them", () => {
+    expect(filterSessions(sessions, "all").map((s) => s.session_id)).toEqual(["s-live"]);
+    expect(filterSessions(sessions, "recent").map((s) => s.session_id)).toEqual(["s-live"]);
+    expect(filterSessions(sessions, "archived").map((s) => s.session_id)).toEqual(["s-shelved"]);
   });
 });

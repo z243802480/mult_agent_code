@@ -77,7 +77,8 @@
 
 .sessionDelete,
 .sessionRename,
-.sessionExport {
+.sessionExport,
+.sessionArchive {
   align-items: center;
   background: transparent;
   border: 0;
@@ -96,13 +97,21 @@
 .sessionRow:hover .sessionDelete,
 .sessionRow:hover .sessionRename,
 .sessionRow:hover .sessionExport,
+.sessionRow:hover .sessionArchive,
 .sessionRow.active .sessionDelete,
 .sessionRow.active .sessionRename,
 .sessionRow.active .sessionExport,
+.sessionRow.active .sessionArchive,
 .sessionDelete:focus-visible,
 .sessionRename:focus-visible,
-.sessionExport:focus-visible {
+.sessionExport:focus-visible,
+.sessionArchive:focus-visible {
   opacity: 1;
+}
+
+.sessionArchive:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
 }
 
 .sessionDelete:hover {

@@ -96,6 +96,23 @@ try {
   // Clean up the imported session so it doesn't affect the lifecycle assertions below.
   await fetchJson(`${base}/api/studio/sessions/${importedId}?purge=1`, "DELETE");
 
+  // 2b. Archive round-trip (G3): reversible shelving — archived_at set, still listed (the sidebar
+  // filters it into the 已归档 tab), then cleared on unarchive.
+  const archived = await fetchJson(`${base}/api/studio/sessions/${sid}`, "PATCH", {
+    archived: true,
+  });
+  assert(archived.ok && archived.session.archived_at, "archive did not set archived_at");
+  const listWithArchived = await fetchJson(`${base}/api/studio/sessions`);
+  const archivedRow = listWithArchived.sessions.find((s) => s.session_id === sid);
+  assert(
+    archivedRow && archivedRow.archived_at,
+    "archived session missing from list (must stay listed for the 已归档 tab)",
+  );
+  const unarchived = await fetchJson(`${base}/api/studio/sessions/${sid}`, "PATCH", {
+    archived: false,
+  });
+  assert(unarchived.ok && !unarchived.session.archived_at, "unarchive did not clear archived_at");
+
   // 3. Soft-delete (default): reversible, not a hard delete.
   const deleted = await fetchJson(`${base}/api/studio/sessions/${sid}`, "DELETE");
   assert(

@@ -6,7 +6,7 @@ const STORAGE_KEY = "asteria.studio.sessionFilter";
 function loadFilter(): SessionListFilter {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw === "all" || raw === "recent") return raw;
+    if (raw === "all" || raw === "recent" || raw === "archived") return raw;
   } catch {
     // ignore
   }

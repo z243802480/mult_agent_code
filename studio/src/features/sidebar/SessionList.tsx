@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
-import { Download, Pencil, Trash2, Upload } from "lucide-react";
+import { Archive, ArchiveRestore, Download, Pencil, Trash2, Upload } from "lucide-react";
 import { api } from "../../api";
 import type { StudioSession } from "../../types";
 import type { SessionListFilter } from "./sessionListUtils";
@@ -21,6 +21,7 @@ type SessionListProps = {
   onSelect: (session: StudioSession) => void;
   onDelete: (session: StudioSession) => void;
   onRename: (session: StudioSession, title: string) => Promise<void>;
+  onArchive?: (session: StudioSession, archived: boolean) => void;
   onImportFile?: (file: File) => void;
   compact?: boolean;
 };
@@ -34,6 +35,7 @@ export function SessionList({
   onSelect,
   onDelete,
   onRename,
+  onArchive,
   onImportFile,
   compact = false,
 }: SessionListProps) {
@@ -86,7 +88,7 @@ export function SessionList({
           )}
         </div>
         <div className="sessionFilterTabs" role="tablist" aria-label="会话筛选">
-          {(["all", "recent"] as SessionListFilter[]).map((value) => (
+          {(["all", "recent", "archived"] as SessionListFilter[]).map((value) => (
             <button
               key={value}
               type="button"
@@ -95,7 +97,7 @@ export function SessionList({
               aria-selected={filter === value}
               onClick={() => onFilterChange(value)}
             >
-              {value === "all" ? "全部" : "最近"}
+              {value === "all" ? "全部" : value === "recent" ? "最近" : "已归档"}
             </button>
           ))}
         </div>
@@ -114,7 +116,9 @@ export function SessionList({
             ? `没有匹配“${query.trim()}”的任务。`
             : filter === "recent"
               ? "最近 7 天没有任务。"
-              : "还没有任务。"}
+              : filter === "archived"
+                ? "没有已归档的任务。"
+                : "还没有任务。"}
         </p>
       )}
       {groups.map((group) => (
@@ -125,7 +129,11 @@ export function SessionList({
               key={session.session_id}
               session={session}
               isActive={active?.session_id === session.session_id}
-              showLive={active?.session_id === session.session_id && isRunning}
+              showLive={
+                session.run_status === "running" ||
+                (active?.session_id === session.session_id && isRunning)
+              }
+              onArchive={onArchive}
               compact={compact}
               editingId={editingId}
               draftTitle={draftTitle}
@@ -151,6 +159,7 @@ type SessionRowProps = {
   session: StudioSession;
   isActive: boolean;
   showLive: boolean;
+  onArchive?: (session: StudioSession, archived: boolean) => void;
   compact?: boolean;
   editingId: string | null;
   draftTitle: string;
@@ -167,6 +176,7 @@ function SessionRow({
   session,
   isActive,
   showLive,
+  onArchive,
   compact = false,
   editingId,
   draftTitle,
@@ -203,7 +213,15 @@ function SessionRow({
           title={hint || title}
         >
           <span className="sessionTitleRow">
-            {showLive && <span className="sessionLiveDot" aria-label="运行中" />}
+            {showLive ? (
+              <span className="sessionLiveDot" aria-label="运行中" />
+            ) : session.run_status === "failed" && !isActive ? (
+              // The session's latest job settled red while you were elsewhere — a quiet attention
+              // dot until the job registry's retention window prunes it (or you open the session).
+              <span className="sessionStatusDot failed" aria-label="刚失败" title="刚失败" />
+            ) : session.run_status === "completed" && !isActive ? (
+              <span className="sessionStatusDot done" aria-label="刚完成" title="刚完成" />
+            ) : null}
             <span className="sessionTitleText">{title}</span>
           </span>
           {preview && !isActive && !compact && <small className="sessionPreview">{preview}</small>}
@@ -230,6 +248,19 @@ function SessionRow({
       >
         <Download size={13} />
       </a>
+      {onArchive && (
+        <button
+          className="sessionArchive"
+          title={session.archived_at ? "取消归档" : "归档会话"}
+          aria-label={session.archived_at ? "取消归档" : "归档会话"}
+          onClick={(event) => {
+            event.stopPropagation();
+            onArchive(session, !session.archived_at);
+          }}
+        >
+          {session.archived_at ? <ArchiveRestore size={13} /> : <Archive size={13} />}
+        </button>
+      )}
       <button
         className="sessionDelete"
         title="删除会话"

@@ -64,6 +64,29 @@ export function useStudioBootstrap(callbacks: BootstrapCallbacks = {}) {
     void bootstrap();
   }, [bootstrap]);
 
+  // Light sessions poll (G3): keeps the sidebar's per-session status dots (run_status projected by
+  // the BFF from its job registry) and archive changes live without any user action. Local BFF, a
+  // handful of session.json reads — cheap. Only commits state when the payload actually changed, so
+  // the idle steady-state causes zero re-renders.
+  useEffect(() => {
+    let lastPayload = "";
+    const timer = window.setInterval(() => {
+      void api
+        .sessions()
+        .then((data) => {
+          if (!data?.sessions) return;
+          const payload = JSON.stringify(data.sessions);
+          if (payload === lastPayload) return;
+          lastPayload = payload;
+          setSessions(data.sessions);
+        })
+        .catch(() => {
+          /* transient — the connectivity banner already covers a down server */
+        });
+    }, 7000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   async function newSession(onSessionSelected?: () => void) {
     const created = await api.createSession();
     setSessions([created.session, ...sessions]);

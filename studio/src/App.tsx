@@ -30,13 +30,13 @@ import type { StudioSession } from "./types";
 export function App() {
   const [panelOpen, setPanelOpen] = useState(true);
   // Header context ring → open the panel focused on the Context tab (transient tab focus).
-  const [inspectorTabSignal, setInspectorTabSignal] = useState<{
+  const [panelTabSignal, setPanelTabSignal] = useState<{
     id: number;
     tab: "preview" | "changes" | "context" | "agents" | "evidence";
   } | null>(null);
   const openContextPanel = useCallback(() => {
     setPanelOpen(true);
-    setInspectorTabSignal((signal) => ({ id: (signal?.id ?? 0) + 1, tab: "context" }));
+    setPanelTabSignal((signal) => ({ id: (signal?.id ?? 0) + 1, tab: "context" }));
   }, []);
   const paneLayout = usePaneLayout();
   const { viewMode, cycleViewMode } = useViewMode();
@@ -366,6 +366,19 @@ export function App() {
             sessionEvents.clearEvents();
           })
         }
+        onArchive={(session, archived) => {
+          void (async () => {
+            const result = await api
+              .updateSession(session.session_id, { archived })
+              .catch(() => null);
+            if (!result?.ok) return;
+            bootstrap.setSessions(
+              bootstrap.sessions.map((item) =>
+                item.session_id === session.session_id ? result.session : item,
+              ),
+            );
+          })();
+        }}
         onRename={async (session, title) => {
           const result = await api.updateSession(session.session_id, { title });
           bootstrap.setSessions(
@@ -478,7 +491,7 @@ export function App() {
           <SidePanel
             event={runEvidence.selectedEvent}
             events={sessionEvents.events}
-            tabSignal={inspectorTabSignal}
+            tabSignal={panelTabSignal}
             files={bootstrap.files}
             preview={review.preview}
             settings={bootstrap.settings}

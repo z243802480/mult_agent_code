@@ -169,7 +169,7 @@ async function handleApi(request, response, url) {
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/studio/sessions") {
-    sendJson(response, 200, { ok: true, sessions: await listSessions() });
+    sendJson(response, 200, { ok: true, sessions: decorateSessionRunStatus(await listSessions()) });
     return;
   }
   if (request.method === "POST" && url.pathname === "/api/studio/sessions") {
@@ -1481,12 +1481,38 @@ async function updateSession(sessionId, body) {
   }
   if (body?.title) session.title = String(body.title).slice(0, 120);
   if (body?.goal_preview) session.goal_preview = String(body.goal_preview).slice(0, 160);
+  // Archive (G3): reversible like soft-delete, but user-intentional shelving — the session stays
+  // listed under the 已归档 filter instead of vanishing from the sidebar.
+  if (typeof body?.archived === "boolean") {
+    if (body.archived) session.archived_at = new Date().toISOString();
+    else delete session.archived_at;
+  }
   if (body?.ui_state && typeof body.ui_state === "object") {
     session.ui_state = { ...(session.ui_state || {}), ...body.ui_state };
   }
   session.updated_at = new Date().toISOString();
   await fs.writeFile(file, JSON.stringify(session, null, 2), "utf8");
   return { ok: true, session };
+}
+
+// Sidebar status badges (G3): project each session's latest live job onto the list response —
+// "running" while a job is alive, "completed"/"failed" for the retention window after it settles
+// (pruneLiveJobs keeps terminal jobs ~10min), absent otherwise. Purely in-memory; no event scan.
+function decorateSessionRunStatus(sessions) {
+  const latest = new Map();
+  for (const job of liveJobs.values()) {
+    if (!job.session_id) continue;
+    const prev = latest.get(job.session_id);
+    if (!prev || (job.started_at_ms || 0) > (prev.started_at_ms || 0)) {
+      latest.set(job.session_id, job);
+    }
+  }
+  return sessions.map((session) => {
+    const job = latest.get(session.session_id);
+    const status =
+      job && ["running", "completed", "failed"].includes(job.status) ? job.status : null;
+    return status ? { ...session, run_status: status } : session;
+  });
 }
 
 async function listSessions() {

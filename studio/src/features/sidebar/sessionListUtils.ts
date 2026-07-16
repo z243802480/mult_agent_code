@@ -1,6 +1,6 @@
 import type { StudioSession } from "../../types";
 
-export type SessionListFilter = "all" | "recent";
+export type SessionListFilter = "all" | "recent" | "archived";
 
 export type SessionDateGroup = "today" | "yesterday" | "earlier";
 
@@ -22,9 +22,12 @@ export function filterSessions(
   filter: SessionListFilter,
 ): StudioSession[] {
   const sorted = [...sessions].sort((a, b) => sessionTimestamp(b) - sessionTimestamp(a));
-  if (filter === "all") return sorted;
+  // Archived sessions live ONLY in their own tab; the working tabs never show them (G3).
+  if (filter === "archived") return sorted.filter((session) => session.archived_at);
+  const active = sorted.filter((session) => !session.archived_at);
+  if (filter === "all") return active;
   const cutoff = Date.now() - RECENT_MS;
-  return sorted.filter((session) => sessionTimestamp(session) >= cutoff);
+  return active.filter((session) => sessionTimestamp(session) >= cutoff);
 }
 
 export function searchSessions(sessions: StudioSession[], query: string): StudioSession[] {

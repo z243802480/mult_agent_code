@@ -7,6 +7,11 @@ export type StudioSession = {
   created_at: string;
   updated_at: string;
   goal_preview?: string;
+  /** Set when the user archived the session (G3); archived sessions live in their own filter tab. */
+  archived_at?: string;
+  /** BFF projection of the session's latest live job: "running" | "completed" | "failed".
+      Absent for idle sessions or once the job registry pruned the terminal entry (~10min). */
+  run_status?: string;
   ui_state?: {
     diffScopeId?: string;
     diffStage?: string;

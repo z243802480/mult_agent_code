@@ -771,6 +771,25 @@ button.aggregateDiffChip {
   white-space: nowrap;
 }
 
+/* Settled-while-away attention dots (G3): the latest job finished red/green while the session was
+   in the background; cleared once the job registry prunes (~10min) or the session is opened. */
+.sessionStatusDot {
+  border-radius: 50%;
+  flex-shrink: 0;
+  height: 7px;
+  width: 7px;
+}
+
+.sessionStatusDot.done {
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--warn-subtle);
+}
+
+.sessionStatusDot.failed {
+  background: var(--bad);
+  box-shadow: 0 0 0 2px var(--bad-subtle);
+}
+
 .sessionLiveDot {
   background: var(--ok);
   border-radius: 50%;

@@ -60,7 +60,12 @@ export const api = {
     ),
   updateSession: (
     id: string,
-    body: { title?: string; goal_preview?: string; ui_state?: Record<string, unknown> },
+    body: {
+      title?: string;
+      goal_preview?: string;
+      archived?: boolean;
+      ui_state?: Record<string, unknown>;
+    },
   ) =>
     requestJson<{ ok: boolean; session: StudioSession }>(
       `/api/studio/sessions/${encodeURIComponent(id)}`,
