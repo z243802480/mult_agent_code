@@ -1,5 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
-import { FileText, Loader2, MessageCircle, Pause, Send, Square, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  FileText,
+  Loader2,
+  MessageCircle,
+  Pause,
+  Send,
+  Square,
+  X,
+} from "lucide-react";
 import {
   PERMISSION_TIERS,
   DEFAULT_PERMISSION_TIER,
@@ -313,11 +323,59 @@ export function Composer({
           <span className="composerQueueLabel">{queue.length} 条已排队 · 运行结束后发送</span>
           {queue.map((q, i) => (
             <span key={i} className="composerQueueChip" title={q}>
-              <span className="composerQueueText">{q}</span>
+              {/* Click-to-edit = pull the message back into the composer (it leaves the queue —
+                  honest: an edited message is a NEW pending input, not an in-place mutation). */}
+              <button
+                type="button"
+                className="composerQueueText"
+                title="点击放回输入框编辑"
+                onClick={() => {
+                  setQueue((qs) => qs.filter((_, j) => j !== i));
+                  setMessage(q);
+                  textareaRef.current?.focus();
+                }}
+              >
+                {q}
+              </button>
+              {queue.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    disabled={i === 0}
+                    onClick={() =>
+                      setQueue((qs) => {
+                        const next = [...qs];
+                        [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                        return next;
+                      })
+                    }
+                    aria-label="上移排队消息"
+                    title="上移"
+                  >
+                    <ArrowUp size={11} />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={i === queue.length - 1}
+                    onClick={() =>
+                      setQueue((qs) => {
+                        const next = [...qs];
+                        [next[i], next[i + 1]] = [next[i + 1], next[i]];
+                        return next;
+                      })
+                    }
+                    aria-label="下移排队消息"
+                    title="下移"
+                  >
+                    <ArrowDown size={11} />
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 onClick={() => setQueue((qs) => qs.filter((_, j) => j !== i))}
                 aria-label="移除排队消息"
+                title="移除"
               >
                 <X size={11} />
               </button>

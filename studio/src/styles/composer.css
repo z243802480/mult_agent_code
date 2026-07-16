@@ -56,9 +56,25 @@
   padding: 2px;
 }
 
-.composerQueueChip button:hover {
+.composerQueueChip button:hover:not(:disabled) {
   background: var(--surface-1);
   color: var(--text-primary);
+}
+
+.composerQueueChip button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+/* The message text itself is now a button (click = pull back into the composer to edit) — keep it
+   reading as chip text, not as a control. */
+.composerQueueChip button.composerQueueText {
+  color: var(--text-secondary);
+  display: block;
+  font: inherit;
+  max-width: 190px;
+  padding: 2px 0;
+  text-align: left;
 }
 
 .composer:not(.compact) {
