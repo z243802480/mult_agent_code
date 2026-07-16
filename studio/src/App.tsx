@@ -27,6 +27,7 @@ import { isPermissionTierId, legacyPermission, DEFAULT_PERMISSION_TIER } from ".
 import { useTheme } from "./hooks/useTheme";
 import { DiffCommentTray } from "./components/DiffCommentTray";
 import { setDiffCommentSession } from "./session/diffComments";
+import { setPlanCommentSession } from "./session/planComments";
 import { buildAiReviewPrompt } from "./session/aiReview";
 import type { StudioSession } from "./types";
 
@@ -98,10 +99,11 @@ export function App() {
   );
   reviewRef.current = review;
 
-  // G4 评论即指令: point the shared diff-comment store at the active session so pending line
-  // comments written in the thread's inline diffs and the panel's diff view stay per-session.
+  // G4/G6 评论即指令: point the shared pending-feedback stores (diff line comments + plan step
+  // comments) at the active session so comments written anywhere stay per-session.
   useEffect(() => {
     setDiffCommentSession(bootstrap.activeSession?.session_id ?? "");
+    setPlanCommentSession(bootstrap.activeSession?.session_id ?? "");
   }, [bootstrap.activeSession?.session_id]);
 
   // G5 AI 自审: assemble the current workspace diff into a read-only chat-mode review request.

@@ -1,6 +1,15 @@
 import React, { useState } from "react";
-import { Check, ChevronRight, Circle, Loader2, TriangleAlert } from "lucide-react";
+import {
+  Check,
+  ChevronRight,
+  Circle,
+  Loader2,
+  MessageSquarePlus,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 import type { PlanItemState, PlanModel } from "./planModel";
+import { addPlanComment, removePlanComment, usePlanComments } from "../../session/planComments";
 
 function ItemIcon({ state }: { state: PlanItemState }) {
   if (state === "done") return <Check size={13} className="planItemIcon done" />;
@@ -12,6 +21,9 @@ function ItemIcon({ state }: { state: PlanItemState }) {
 
 // Live plan/todo checklist derived from the run's real task_plan. De-boxed and compact: a "Plan · N of M"
 // header that collapses the item list. Item states flip in place as the run's task_plan updates.
+// G6 刀一: each step carries a comment entry — "对计划第 N 步的意见" accumulates in the shared
+// pending-feedback tray and reaches the model as one batched message (Jules/VS Code plan-comment
+// semantics; plan revision itself stays a model act, we only deliver the user's words).
 export function PlanChecklist({
   plan,
   defaultOpen = true,
@@ -20,7 +32,18 @@ export function PlanChecklist({
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const [editorAt, setEditorAt] = useState<number | null>(null);
+  const [draft, setDraft] = useState("");
+  const comments = usePlanComments();
   const blocked = plan.counts.blocked;
+
+  function saveDraft(step: number, title: string) {
+    if (!draft.trim()) return;
+    addPlanComment(step, title, draft);
+    setDraft("");
+    setEditorAt(null);
+  }
+
   return (
     <div className={`planChecklist ${open ? "open" : ""}`}>
       <button
@@ -42,12 +65,79 @@ export function PlanChecklist({
               this — a static task_plan never changes, so it has nothing to explain. */}
           {plan.updateReason && <p className="planReason">{plan.updateReason}</p>}
           <ol className="planItems">
-            {plan.items.map((item) => (
-              <li key={item.id} className={`planItem ${item.state}`}>
-                <ItemIcon state={item.state} />
-                <span className="planItemText">{item.title}</span>
-              </li>
-            ))}
+            {plan.items.map((item, index) => {
+              const step = index + 1;
+              const stepComments = comments.filter((comment) => comment.step === step);
+              return (
+                <li key={item.id} className={`planItem ${item.state}`}>
+                  <div className="planItemRow">
+                    <ItemIcon state={item.state} />
+                    <span className="planItemText">{item.title}</span>
+                    <button
+                      type="button"
+                      className="planItemComment"
+                      title="对这一步写意见"
+                      aria-label={`对计划第 ${step} 步写意见`}
+                      onClick={() => {
+                        setDraft("");
+                        setEditorAt(editorAt === index ? null : index);
+                      }}
+                    >
+                      <MessageSquarePlus size={12} />
+                    </button>
+                  </div>
+                  {stepComments.map((comment) => (
+                    <div key={comment.id} className="planCommentCard">
+                      <span className="planCommentText">{comment.text}</span>
+                      <button
+                        type="button"
+                        className="diffCommentRemove"
+                        title="删除这条意见"
+                        aria-label="删除这条计划意见"
+                        onClick={() => removePlanComment(comment.id)}
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                  {editorAt === index && (
+                    <div className="planCommentEditor">
+                      <textarea
+                        autoFocus
+                        value={draft}
+                        placeholder="对这一步写意见…（Ctrl+Enter 保存）"
+                        rows={2}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                            e.preventDefault();
+                            saveDraft(step, item.title);
+                          }
+                          if (e.key === "Escape") setEditorAt(null);
+                        }}
+                      />
+                      <div className="planCommentEditorActions">
+                        <button
+                          type="button"
+                          className="diffActionButton"
+                          onClick={() => setEditorAt(null)}
+                        >
+                          取消
+                        </button>
+                        <button
+                          type="button"
+                          className="diffActionButton primary"
+                          disabled={!draft.trim()}
+                          onClick={() => saveDraft(step, item.title)}
+                        >
+                          添加意见
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ol>
         </>
       )}

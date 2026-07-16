@@ -1391,12 +1391,79 @@
 }
 
 .planItem {
-  align-items: center;
   color: var(--text-secondary);
-  display: flex;
   font-size: 12.5px;
-  gap: 7px;
   line-height: 1.4;
+}
+
+/* G6 刀一: the icon+title line moved into .planItemRow so comment cards/editor can stack under it. */
+.planItemRow {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+}
+
+.planItemComment {
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  display: none;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 1px;
+}
+
+.planItemRow:hover .planItemComment,
+.planItemComment:focus-visible {
+  display: inline-flex;
+}
+
+.planCommentCard {
+  align-items: flex-start;
+  background: var(--surface-2);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-sm);
+  display: flex;
+  gap: 8px;
+  margin: 3px 0 3px 20px;
+  padding: 4px 8px;
+}
+
+.planCommentText {
+  color: var(--text-primary);
+  flex: 1;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.planCommentEditor {
+  background: var(--surface-2);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  margin: 3px 0 3px 20px;
+  padding: 6px;
+}
+
+.planCommentEditor textarea {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 12px;
+  line-height: 1.5;
+  outline: none;
+  resize: vertical;
+  width: 100%;
+}
+
+.planCommentEditorActions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 4px;
 }
 
 .planItem.done {
