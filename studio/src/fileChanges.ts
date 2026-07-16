@@ -48,7 +48,14 @@ export function extractFileChangesFromEvents(events: StudioEvent[]): FileChangeR
     // Structured file_changed events already carry the real, full path. The old summary-text
     // scrape was dropped: its `js|json` alternation mis-captured `foo.json` as a phantom `foo.js`,
     // and it surfaced un-path-filterable internal-artifact basenames. Real paths only, no guessing.
-    if (event.type === "file_changed") push(event.data as AnyRecord);
+    if (event.type === "file_changed") {
+      push(event.data as AnyRecord);
+      // Some runs emit file_changed with an empty data payload and the touched path ONLY in
+      // artifact_refs (observed live 2026-07-17: the Preview tab scoped to "no session artifacts"
+      // while the run had plainly written demo.html). Refs on file_changed ARE file paths; the
+      // runtime-internal filter above still drops .asteria bookkeeping.
+      for (const ref of event.artifact_refs ?? []) push({ path: ref });
+    }
   }
   return result;
 }

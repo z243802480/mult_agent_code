@@ -1,7 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { Globe, RefreshCw } from "lucide-react";
+import { ExternalLink, Globe, RefreshCw, TriangleAlert, X } from "lucide-react";
 import type { WorkspaceFile } from "../../types";
 import { api } from "../../api";
+import {
+  DEVICE_PRESETS,
+  isPreviewErrorMessage,
+  pushPreviewError,
+  type DevicePresetId,
+} from "./previewConsole";
 
 // Live browser preview (PREVIEW-1, VS Code Live Preview / live-server model): the studio backend runs
 // a dedicated localhost static server for the workspace, so the iframe loads a real URL and MULTI-FILE
@@ -66,6 +72,32 @@ export function PreviewPane({
   // PREVIEW-3: when the backend reverse-proxies a dev server, the app lives at the preview root — there
   // are no static workspace HTML files to pick, so the whole tab switches to a single framed SPA.
   const [proxyTarget, setProxyTarget] = useState<string | null>(null);
+  // G10 预览控制台: page errors forwarded by the injected preview client (static mode only — the
+  // proxied dev server owns its own error overlay), plus responsive device-width presets.
+  const [pageErrors, setPageErrors] = useState<string[]>([]);
+  const [errorsOpen, setErrorsOpen] = useState(false);
+  const [device, setDevice] = useState<DevicePresetId>("fit");
+
+  useEffect(() => {
+    // Same-host origins only + the injected client's distinctive envelope. Deliberately NOT gated
+    // on the previewPort state: a synchronous console.error fires while previewInfo is still in
+    // flight, and a port-state gate dropped exactly those earliest errors (observed live).
+    const originPrefix = `${window.location.protocol}//${window.location.hostname}:`;
+    function onMessage(event: MessageEvent) {
+      if (!event.origin.startsWith(originPrefix)) return;
+      if (!isPreviewErrorMessage(event.data)) return;
+      const message = event.data.message;
+      setPageErrors((errors) => pushPreviewError(errors, message));
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
+  // Errors belong to the page instance that produced them: switching file/session (a new iframe
+  // mount) starts a fresh slate, same as the reload button.
+  useEffect(() => {
+    setPageErrors([]);
+  }, [selected]);
 
   // Resolve the dedicated preview server's port + mode once.
   useEffect(() => {
@@ -92,7 +124,10 @@ export function PreviewPane({
   }, []);
   const proxyMode = Boolean(proxyTarget && previewPort);
 
-  // Default / re-pick the selected html file as the workspace file set changes.
+  // Default / re-pick the selected html file as the candidate set changes. Keyed on BOTH inputs of
+  // htmlFiles: the workspace file list AND the session's touched paths — a session switch changes
+  // only the latter, and keying on [files] alone left `selected` empty after switching into a
+  // session that has artifacts (observed live 2026-07-17: iframe stuck on the server root).
   useEffect(() => {
     if (!htmlFiles.length) {
       setSelected("");
@@ -102,7 +137,7 @@ export function PreviewPane({
       setSelected(pickDefault(htmlFiles));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [files]);
+  }, [files, sessionPaths]);
 
   // Fallback path (srcDoc) only when the dedicated preview server is unavailable.
   useEffect(() => {
@@ -177,12 +212,40 @@ export function PreviewPane({
             </span>
           )
         )}
+        <div className="previewDevices" role="group" aria-label="预览宽度">
+          {DEVICE_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              className={device === preset.id ? "active" : ""}
+              title={preset.width ? `${preset.width}px 宽度` : "填满面板宽度"}
+              onClick={() => setDevice(preset.id)}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+        {src && (
+          <a
+            className="previewRefresh"
+            href={src}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="在浏览器中打开"
+            aria-label="在浏览器中打开"
+          >
+            <ExternalLink size={13} />
+          </a>
+        )}
         <button
           type="button"
           className="previewRefresh"
           title="重新加载预览"
           aria-label="重新加载预览"
-          onClick={() => setReloadKey((key) => key + 1)}
+          onClick={() => {
+            setPageErrors([]);
+            setReloadKey((key) => key + 1);
+          }}
         >
           <RefreshCw size={13} />
         </button>
@@ -191,7 +254,12 @@ export function PreviewPane({
         {src ? (
           <iframe
             key={`${src}-${reloadKey}`}
-            className="previewFrame"
+            className={`previewFrame${device !== "fit" ? " deviceWidth" : ""}`}
+            style={
+              device !== "fit"
+                ? { width: DEVICE_PRESETS.find((p) => p.id === device)?.width ?? undefined }
+                : undefined
+            }
             title="工作区预览"
             sandbox="allow-scripts allow-same-origin allow-forms"
             src={src}
@@ -208,6 +276,35 @@ export function PreviewPane({
           <div className="previewStatus muted">{portResolved ? "加载预览中…" : "启动预览中…"}</div>
         )}
       </div>
+      {pageErrors.length > 0 && (
+        <div className="previewErrorBar">
+          <button
+            type="button"
+            className="previewErrorHead"
+            onClick={() => setErrorsOpen(!errorsOpen)}
+            aria-expanded={errorsOpen}
+          >
+            <TriangleAlert size={13} />
+            <span>页面报错 {pageErrors.length} 条</span>
+          </button>
+          <button
+            type="button"
+            className="previewErrorClear"
+            title="清空报错"
+            aria-label="清空报错"
+            onClick={() => setPageErrors([])}
+          >
+            <X size={13} />
+          </button>
+          {errorsOpen && (
+            <ul className="previewErrorList">
+              {pageErrors.map((error, index) => (
+                <li key={`${index}-${error.slice(0, 20)}`}>{error}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }

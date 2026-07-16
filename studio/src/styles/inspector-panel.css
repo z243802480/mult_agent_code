@@ -195,6 +195,88 @@
   width: 100%;
 }
 
+/* G10 预览控制台 — device-width presets, open-in-browser, page-error bar. */
+.previewFrame.deviceWidth {
+  border-inline: 1px solid var(--border-strong);
+  margin: 0 auto;
+  max-width: 100%;
+}
+
+.previewDevices {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.previewDevices button {
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 10.5px;
+  padding: 2px 6px;
+}
+
+.previewDevices button.active {
+  background: var(--accent-subtle);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.previewErrorBar {
+  background: var(--bad-subtle);
+  border: 1px solid var(--bad);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 4px 8px;
+}
+
+.previewErrorHead {
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--bad);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.previewErrorClear {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  margin-left: auto;
+  padding: 2px;
+}
+
+.previewErrorList {
+  flex-basis: 100%;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  list-style: none;
+  margin: 4px 0 0;
+  max-height: 140px;
+  overflow: auto;
+  padding: 0;
+}
+
+.previewErrorList li {
+  border-top: 1px solid var(--border-subtle);
+  overflow-wrap: anywhere;
+  padding: 3px 0;
+}
+
 .previewStatus {
   padding: var(--space-2);
 }

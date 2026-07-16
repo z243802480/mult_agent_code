@@ -135,13 +135,29 @@ export function createPreviewSubsystem({ getWorkspace, previewProxyTarget }) {
         const contentType = previewContentType(abs);
         const body = await fs.readFile(abs);
         // PREVIEW-2: inject the live-reload client into served HTML so edits auto-refresh the preview.
+        // G10: the same injected client forwards page errors (window.onerror / unhandledrejection /
+        // console.error) to the embedding Studio via postMessage, so the Preview tab can show an
+        // error bar without the user opening devtools. Static mode only — proxy mode passes the dev
+        // server's responses through untouched (Vite/Next own their error overlay there).
         if (contentType.startsWith("text/html") && req.method !== "HEAD") {
           let html = body.toString("utf8");
           const snippet =
-            '\n<script>(function(){try{var s=new EventSource("/__livereload");s.onmessage=function(e){if(e.data==="reload")location.reload();};}catch(_){}})();</script>\n';
-          html = html.includes("</body>")
-            ? html.replace("</body>", `${snippet}</body>`)
-            : html + snippet;
+            "\n<script>(function(){" +
+            'try{var s=new EventSource("/__livereload");s.onmessage=function(e){if(e.data==="reload")location.reload();};}catch(_){}' +
+            'function post(m){try{parent.postMessage({__asteriaPreview:"error",message:String(m).slice(0,500)},"*");}catch(_){}}' +
+            'window.addEventListener("error",function(e){post((e.message||"脚本错误")+(e.filename?" @ "+e.filename+":"+e.lineno:""));});' +
+            'window.addEventListener("unhandledrejection",function(e){var r=e.reason;post("未处理的 Promise 拒绝: "+((r&&r.message)||String(r)));});' +
+            'var ce=console.error;console.error=function(){try{post(Array.prototype.map.call(arguments,function(a){try{return a instanceof Error?a.message:typeof a==="object"?JSON.stringify(a):String(a);}catch(_){return String(a);}}).join(" "));}catch(_){}ce.apply(console,arguments);};' +
+            "})();</script>\n";
+          // Inject at the START of <head> (not before </body>): a parse-time console.error in the
+          // page's own inline script runs before any end-of-body script, so a late-injected wrapper
+          // would miss exactly the first errors worth seeing.
+          const headTag = html.match(/<head[^>]*>/i);
+          html = headTag
+            ? html.replace(headTag[0], `${headTag[0]}${snippet}`)
+            : html.includes("</body>")
+              ? html.replace("</body>", `${snippet}</body>`)
+              : html + snippet;
           res.writeHead(200, {
             "content-type": contentType,
             "cache-control": "no-store",
