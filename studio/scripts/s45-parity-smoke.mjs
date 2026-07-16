@@ -33,11 +33,10 @@ assert.match(
   /aggregateDiffChip/,
   "`aggregateDiffChip` present in AggregateDiffChip.tsx",
 );
-assert.match(
-  markdownBody,
-  /parseMarkdownBlocks/,
-  "`parseMarkdownBlocks` present in MarkdownBody.tsx",
-);
+// Markdown is rendered by react-markdown + remark-gfm (2026-07-16 — the hand parser faked lists
+// and dropped hr/blockquote/emphasis); behavior is locked by MarkdownBody.test.tsx.
+assert.match(markdownBody, /react-markdown/, "`react-markdown` wired in MarkdownBody.tsx");
+assert.match(markdownBody, /remark-gfm/, "`remark-gfm` wired in MarkdownBody.tsx");
 assert.match(
   contextSummary,
   /contextSectionLabel/,

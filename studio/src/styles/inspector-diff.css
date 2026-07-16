@@ -516,28 +516,119 @@ button.aggregateDiffChip {
   margin-top: 8px;
 }
 
-.turnFinalDetails h3 {
-  font-size: 11px;
-  margin: 0 0 4px;
-}
-
 .turnFinalMeta {
   color: var(--text-muted);
   font-size: 11px;
   margin-left: auto;
 }
 
+/* ── Markdown prose scale — the main reading surface (final answers, side chat) ─────────────
+   Real GFM structure arrives from MarkdownBody (react-markdown): headings sit ABOVE body size
+   (the old flat 11–14px scale made section structure invisible), block rhythm is explicit, and
+   ul/ol/blockquote/hr are real elements. em-based so it tracks the host surface's font size. */
+.markdownBody p,
+.markdownBody ul,
+.markdownBody ol,
+.markdownBody blockquote,
+.markdownBody hr,
+.markdownBody .markdownTableWrap,
+.markdownBody .markdownCodeWrap {
+  margin: 0.7em 0;
+}
+
+.markdownBody h1,
+.markdownBody h2,
 .markdownBody h3,
-.markdownBody h4 {
-  margin: 10px 0 6px;
+.markdownBody h4,
+.markdownBody h5,
+.markdownBody h6 {
+  color: var(--text-primary);
+  font-weight: 650;
+  line-height: 1.4;
+  margin: 1.15em 0 0.45em;
+}
+
+.markdownBody h1 {
+  font-size: 1.25em;
+}
+
+.markdownBody h2 {
+  font-size: 1.15em;
+}
+
+.markdownBody h3 {
+  font-size: 1.05em;
+}
+
+.markdownBody h4,
+.markdownBody h5,
+.markdownBody h6 {
+  font-size: 1em;
+}
+
+.markdownBody > :first-child {
+  margin-top: 0;
+}
+
+.markdownBody > :last-child {
+  margin-bottom: 0;
+}
+
+.markdownBody ul,
+.markdownBody ol {
+  padding-left: 1.4em;
+}
+
+.markdownBody li {
+  margin: 0.25em 0;
+}
+
+.markdownBody li > p {
+  margin: 0.25em 0;
+}
+
+.markdownBody li > ul,
+.markdownBody li > ol {
+  margin: 0.25em 0;
+}
+
+.markdownBody li::marker {
+  color: var(--text-muted);
+}
+
+.markdownBody blockquote {
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-secondary);
+  padding: 2px 0 2px 12px;
+}
+
+.markdownBody blockquote > p {
+  margin: 0.25em 0;
+}
+
+.markdownBody hr {
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.markdownBody :not(pre) > code {
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  padding: 1px 5px;
 }
 
 .markdownCode {
   background: var(--surface-0);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  line-height: 1.6;
   overflow: auto;
-  padding: 10px;
+  padding: 12px 14px;
 }
 
 /* Hover-revealed copy button on code blocks (mainstream: ChatGPT/Claude/Cursor). */
@@ -576,36 +667,22 @@ button.aggregateDiffChip {
   color: var(--text-primary);
 }
 
-/* Ordered list item — number gutter + inline text, matching the flat bullet rendering. */
-.finalOrdered {
-  display: flex;
-  gap: 8px;
-  margin: 2px 0;
-}
-
-.finalOrderedNum {
-  color: var(--text-muted);
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-}
-
 /* GitHub-flavored pipe tables (agents emit comparison tables constantly). Horizontal-scrolls inside
    its own container so wide tables never break the thread layout. */
 .markdownTableWrap {
   overflow-x: auto;
-  margin: 6px 0;
 }
 
 .markdownTable {
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 0.9em;
   width: 100%;
 }
 
 .markdownTable th,
 .markdownTable td {
   border: 1px solid var(--border-subtle);
-  padding: 5px 9px;
+  padding: 6px 10px;
   text-align: left;
   vertical-align: top;
 }
@@ -617,12 +694,13 @@ button.aggregateDiffChip {
 }
 
 .markdownBody a {
+  border-bottom: 1px solid var(--accent-border);
   color: var(--accent);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration: none;
 }
 
 .markdownBody a:hover {
+  border-bottom-color: var(--accent);
   color: var(--accent-hover);
 }
 

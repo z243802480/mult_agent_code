@@ -131,28 +131,24 @@ function stripContextNoise(text: string): string {
 }
 
 /**
- * Conversation-first split (ADR-0012): render the runtime's lead answer as prose; fold the structured
- * tail (plan / verification / process-summary sections) into a default-collapsed disclosure so the main
- * thread reads like Claude Code / Codex instead of a maintainer report. Full diagnostics live in the Inspector.
- * When the runtime emitted only a short conversational final, there is no tail and the whole thing renders as prose.
+ * Conversation-first split (ADR-0012): fold ONLY a recognizable harness-authored tail (legacy
+ * report-style finals ended with 计划/验证/执行过程 sections) into the collapsed "运行详情"
+ * disclosure. The model's own prose is NEVER amputated: the previous heuristic ("≥2 headings →
+ * collapse everything after the first section") hid the actual answer body of any structured
+ * model reply (a multi-section explanation lost all sections but the first) behind a disclosure
+ * whose label lied about what it contained. Modern recaps are prompted to contain no markdown
+ * sections at all (run_recap.py), so this allowlist only ever fires on legacy stored events.
  */
+const HARNESS_TAIL_HEADING =
+  /^#{2,6}\s*(计划|执行过程|运行过程|验证(结果)?|证据|运行详情|plan|process( summary)?|verification|evidence)\s*$/i;
+
 function splitLeadAndDetails(text: string): { lead: string; details: string } {
   const raw = String(text || "");
   const lines = raw.split(/\r?\n/);
-  const headingIdx: number[] = [];
-  lines.forEach((line, index) => {
-    if (/^#{2,6}\s+/.test(line)) headingIdx.push(index);
-  });
-  if (headingIdx.length <= 1) {
-    // 0 or 1 section: it's already conversational — render as prose, stripping a lone leading heading.
-    const stripped = raw.replace(/^#{2,6}\s+.*$/m, "").trim();
-    return { lead: stripped || raw.trim(), details: "" };
-  }
-  const first = headingIdx[0];
-  const second = headingIdx[1];
-  const preamble = lines.slice(0, first).join("\n");
-  const leadBody = lines.slice(first + 1, second).join("\n"); // first section body, heading stripped
-  const lead = `${preamble}\n${leadBody}`.trim();
-  const details = lines.slice(second).join("\n").trim();
-  return { lead, details };
+  const tailStart = lines.findIndex((line) => HARNESS_TAIL_HEADING.test(line.trim()));
+  if (tailStart === -1) return { lead: raw.trim(), details: "" };
+  return {
+    lead: lines.slice(0, tailStart).join("\n").trim(),
+    details: lines.slice(tailStart).join("\n").trim(),
+  };
 }
