@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const studioDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-studio-friendly-ssl-"));
-const port = Number(process.env.ASTERIA_STUDIO_FRIENDLY_SSL_PORT || 18796);
+const port = Number(process.env.ASTERIA_STUDIO_FRIENDLY_SSL_PORT || 18816);
 const sslError = "<urlopen error _ssl.c:1015: The handshake operation timed out>";
 
 const server = spawn(

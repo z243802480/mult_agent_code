@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const studioDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-studio-s8-resume-"));
-const port = Number(process.env.ASTERIA_STUDIO_S8_RESUME_PORT || 18795);
+const port = Number(process.env.ASTERIA_STUDIO_S8_RESUME_PORT || 18815);
 const firstRunId = "run-20990101-0001";
 const secondRunId = "run-20990101-0002";
 

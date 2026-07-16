@@ -11,5 +11,5 @@ export default defineConfig({
   workers: 1,
   fullyParallel: false,
   reporter: process.env.CI ? "line" : "list",
-  use: { baseURL: `http://127.0.0.1:${process.env.ASTERIA_STUDIO_INTERACTIVE_PORT || 18794}` },
+  use: { baseURL: `http://127.0.0.1:${process.env.ASTERIA_STUDIO_INTERACTIVE_PORT || 18860}` },
 });

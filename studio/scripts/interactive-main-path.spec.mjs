@@ -8,7 +8,7 @@ import {
   waitForHealth,
 } from "./studio-fixture.mjs";
 
-const port = Number(process.env.ASTERIA_STUDIO_INTERACTIVE_PORT || 18794);
+const port = Number(process.env.ASTERIA_STUDIO_INTERACTIVE_PORT || 18860);
 
 let workspace;
 let server;

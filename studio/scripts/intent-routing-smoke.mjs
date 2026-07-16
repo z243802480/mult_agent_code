@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const studioDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-studio-intent-smoke-"));
-const port = Number(process.env.ASTERIA_STUDIO_INTENT_SMOKE_PORT || 18788);
+const port = Number(process.env.ASTERIA_STUDIO_INTENT_SMOKE_PORT || 18813);
 const server = spawn(
   process.execPath,
   ["server.mjs", "--workspace", workspace, "--port", String(port)],

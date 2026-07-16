@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const studioDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-studio-plan-output-"));
-const port = Number(process.env.ASTERIA_STUDIO_PLAN_OUTPUT_PORT || 18794);
+const port = Number(process.env.ASTERIA_STUDIO_PLAN_OUTPUT_PORT || 18814);
 
 const server = spawn(
   process.execPath,

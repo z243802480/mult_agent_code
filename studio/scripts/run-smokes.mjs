@@ -18,7 +18,7 @@
  *   node scripts/run-smokes.mjs --with-model # also run real-model smokes (needs a provider key)
  *   node scripts/run-smokes.mjs --list       # print the classification and exit
  */
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -103,6 +103,35 @@ function validateManifest(discovered) {
   }
   const overlap = HERMETIC.filter((f) => f in REQUIRES_MODEL);
   if (overlap.length) errors.push(`Smoke(s) in both buckets: ${overlap.join(", ")}`);
+  errors.push(...validatePortUniqueness());
+  return errors;
+}
+
+// Every test script must own a UNIQUE fixed port. Two scripts sharing one (three shared 18795 at
+// the worst) fail intermittently when run back-to-back: the previous server's port lingers in
+// TIME_WAIT / its process tree is still dying when the next script binds — the classic "red in the
+// full suite, green when re-run alone". Playwright specs live in the same directory and the same
+// port space, so they are scanned too.
+function validatePortUniqueness() {
+  const claims = new Map(); // port -> Set<file>
+  for (const file of readdirSync(scriptsDir)) {
+    if (!file.endsWith(".mjs")) continue;
+    if (file === "run-smokes.mjs") continue; // the runner itself binds nothing (and documents ports)
+    const source = readFileSync(path.join(scriptsDir, file), "utf8");
+    for (const match of source.matchAll(/\b18\d{3}\b/g)) {
+      const port = match[0];
+      if (!claims.has(port)) claims.set(port, new Set());
+      claims.get(port).add(file);
+    }
+  }
+  const errors = [];
+  for (const [port, files] of claims) {
+    if (files.size > 1) {
+      errors.push(
+        `Port ${port} is claimed by multiple test scripts (back-to-back runs will collide):\n  ${[...files].join("\n  ")}`,
+      );
+    }
+  }
   return errors;
 }
 

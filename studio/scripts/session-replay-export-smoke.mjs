@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 
 const studioDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(studioDir, "..");
-const port = Number(process.env.ASTERIA_STUDIO_REPLAY_PORT || 18811);
+const port = Number(process.env.ASTERIA_STUDIO_REPLAY_PORT || 18812);
 const python = process.env.ASTERIA_PYTHON || "python";
 const base = `http://127.0.0.1:${port}`;
 
