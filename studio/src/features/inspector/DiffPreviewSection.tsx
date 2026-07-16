@@ -1,5 +1,7 @@
 import React from "react";
+import { Sparkles } from "lucide-react";
 import type { FilePreview, GitDiffPayload } from "../../types";
+import type { ReviewFinding } from "../../session/aiReview";
 import { DiffPreview, type DiffLayout, type DiffStage } from "../../components/DiffPreview";
 import { addDiffComment, removeDiffComment, useDiffComments } from "../../session/diffComments";
 
@@ -14,6 +16,8 @@ export type DiffPreviewSectionProps = {
   onSelectDiffLayout: (layout: DiffLayout) => void;
   onStageFile: () => void;
   onDiscardFile: () => void;
+  /** G5 AI 自审: the latest review round's findings for THIS file, listed above its diff. */
+  findings?: ReviewFinding[];
 };
 
 export function DiffPreviewSection({
@@ -27,6 +31,7 @@ export function DiffPreviewSection({
   onSelectDiffLayout,
   onStageFile,
   onDiscardFile,
+  findings = [],
 }: DiffPreviewSectionProps) {
   // G4 评论即指令: same shared store as the thread's inline diffs — hooks must run unconditionally.
   const allComments = useDiffComments();
@@ -44,6 +49,19 @@ export function DiffPreviewSection({
       {!preview.ok && <p className="muted">{preview.error}</p>}
       {preview.ok && isDiff && (
         <>
+          {findings.length > 0 && (
+            <ul className="aiReviewFindingList" aria-label="AI 自审对这个文件的发现">
+              {findings.map((finding, index) => (
+                <li key={`${finding.line}-${index}`} className="aiReviewFinding">
+                  <Sparkles size={12} />
+                  <span className="aiReviewFindingLine">
+                    {finding.line != null ? `第 ${finding.line} 行` : "文件级"}
+                  </span>
+                  <span className="aiReviewFindingNote">{finding.note}</span>
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="diffViewControls">
             <div className="diffStageTabs" role="tablist" aria-label="改动暂存状态">
               {(["all", "staged", "unstaged"] as DiffStage[]).map((stage) => (

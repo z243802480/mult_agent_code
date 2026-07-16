@@ -29,6 +29,108 @@
   margin: 4px 0 0;
 }
 
+/* G5 AI 自审 — toolbar trigger, verdict line, per-file badges, per-line findings. */
+.gitChangesHeaderActions {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.aiReviewButton {
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 5px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.aiReviewButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.aiReviewSummary {
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  margin: 0;
+  padding: 6px 8px;
+}
+
+.aiReviewSummary.tone-muted {
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+.aiReviewSummary.tone-ok {
+  background: var(--ok-subtle);
+  color: var(--ok-text);
+}
+
+.aiReviewSummary.tone-warn {
+  background: var(--warn-subtle);
+  color: var(--warn);
+}
+
+.aiReviewSummary.tone-bad {
+  background: var(--bad-subtle);
+  color: var(--bad);
+}
+
+.gitChangeFindings {
+  background: var(--warn-subtle);
+  border-radius: 999px;
+  color: var(--warn);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  margin-left: auto;
+  padding: 3px 6px;
+}
+
+.aiReviewFindingList {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.aiReviewFinding {
+  align-items: baseline;
+  background: var(--surface-2);
+  border-left: 2px solid var(--warn);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  display: flex;
+  font-size: 12px;
+  gap: 6px;
+  line-height: 1.5;
+  padding: 5px 8px;
+}
+
+.aiReviewFinding svg {
+  flex-shrink: 0;
+  color: var(--warn);
+  transform: translateY(1px);
+}
+
+.aiReviewFindingLine {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.aiReviewFindingNote {
+  flex: 1;
+}
+
 .gitChangeList {
   display: grid;
   gap: 4px;

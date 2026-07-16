@@ -29,11 +29,14 @@ export function DiffFileList({
   activeScope,
   selectedPath,
   onSelectChange,
+  findingCounts = {},
 }: {
   gitStatus: GitStatusPayload | null;
   activeScope: TurnDiffScope | undefined;
   selectedPath: string | null;
   onSelectChange: (path: string) => void;
+  /** G5 AI 自审: per-file finding counts — rendered as a small badge on the file row. */
+  findingCounts?: Record<string, number>;
 }) {
   if (!gitStatus) {
     return <p className="muted">加载 git 状态中…</p>;
@@ -49,6 +52,7 @@ export function DiffFileList({
       activeScope={activeScope}
       selectedPath={selectedPath}
       onSelectChange={onSelectChange}
+      findingCounts={findingCounts}
     />
   );
 }
@@ -58,11 +62,13 @@ function ScopeChangeList({
   activeScope,
   selectedPath,
   onSelectChange,
+  findingCounts = {},
 }: {
   gitStatus: GitStatusPayload;
   activeScope: TurnDiffScope | undefined;
   selectedPath: string | null;
   onSelectChange: (path: string) => void;
+  findingCounts?: Record<string, number>;
 }) {
   const gitChanges = gitStatus.changes ?? [];
 
@@ -84,6 +90,7 @@ function ScopeChangeList({
               deletions={file.deletions}
               active={selectedPath === file.path}
               onSelect={() => onSelectChange(file.path)}
+              findingCount={findingCounts[file.path] ?? 0}
             />
           );
         })}
@@ -103,6 +110,7 @@ function ScopeChangeList({
           change={change}
           active={selectedPath === change.path}
           onSelect={() => onSelectChange(change.path)}
+          findingCount={findingCounts[change.path] ?? 0}
         />
       ))}
     </div>
@@ -113,10 +121,12 @@ function GitChangeRow({
   change,
   active,
   onSelect,
+  findingCount = 0,
 }: {
   change: GitChangeEntry;
   active: boolean;
   onSelect: () => void;
+  findingCount?: number;
 }) {
   const badge = STATUS_LABEL[change.status] ?? "~";
   return (
@@ -129,6 +139,11 @@ function GitChangeRow({
       <span className="gitChangePath" title={change.path}>
         {basename(change.path)}
       </span>
+      {findingCount > 0 && (
+        <span className="gitChangeFindings" title={`AI 自审在这个文件发现 ${findingCount} 条问题`}>
+          {findingCount}
+        </span>
+      )}
     </button>
   );
 }
@@ -141,6 +156,7 @@ function TurnScopeRow({
   deletions,
   active,
   onSelect,
+  findingCount = 0,
 }: {
   path: string;
   badge: string;
@@ -149,6 +165,7 @@ function TurnScopeRow({
   deletions?: number;
   active: boolean;
   onSelect: () => void;
+  findingCount?: number;
 }) {
   const delta =
     additions !== undefined || deletions !== undefined ? (
@@ -173,6 +190,11 @@ function TurnScopeRow({
         {basename(path)}
       </span>
       {delta}
+      {findingCount > 0 && (
+        <span className="gitChangeFindings" title={`AI 自审在这个文件发现 ${findingCount} 条问题`}>
+          {findingCount}
+        </span>
+      )}
     </button>
   );
 }

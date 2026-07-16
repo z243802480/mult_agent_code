@@ -14,6 +14,7 @@ import { ContextPanel } from "../../components/ContextPanel";
 import type { StudioViewMode } from "../../hooks/useViewMode";
 import type { TurnDiffScope } from "../../turnDiff";
 import { extractFileChangesFromEvents } from "../../fileChanges";
+import { isCleanVerdict, latestAiReview, parseReviewFindings } from "../../session/aiReview";
 import { DiffReviewPane } from "./DiffReviewPane";
 import { InspectorAdvanced } from "./InspectorAdvanced";
 import { PreviewPane } from "./PreviewPane";
@@ -84,6 +85,8 @@ export function Inspector({
   onSelectRunEvent,
   viewMode,
   tabSignal,
+  onAiReview,
+  aiReviewBusy = false,
 }: {
   event: StudioEvent | null;
   events: StudioEvent[];
@@ -120,6 +123,10 @@ export function Inspector({
   viewMode: StudioViewMode;
   /** External focus request (e.g. the header's context ring) — same pattern as expandSignal. */
   tabSignal?: { id: number; tab: InspectorTabId } | null;
+  /** G5 AI 自审: kick off a model review of the current workspace diff (wired in the app shell). */
+  onAiReview?: () => void;
+  /** True while a run is in flight (review must wait) or the review request is being assembled. */
+  aiReviewBusy?: boolean;
 }) {
   const [tab, setTab] = useState<InspectorTabId>(loadInspectorTab);
 
@@ -132,6 +139,30 @@ export function Inspector({
       : ((runDetail?.events ?? runDetail?.user_progress ?? []) as StudioEvent[]);
     return extractFileChangesFromEvents(source).map((change) => change.path);
   }, [events, runDetail]);
+  // G5 AI 自审: the latest review round lives in the transcript (sentinel-prefixed user message →
+  // its final answer). Findings are parsed here and hung on the diff view's file anchors.
+  const aiReview = useMemo(() => latestAiReview(events), [events]);
+  const aiFindings = useMemo(() => {
+    if (aiReview.status !== "answered" || !aiReview.answer) return [];
+    const knownFiles = (gitStatus?.changes ?? []).map((change) => change.path);
+    return parseReviewFindings(aiReview.answer, knownFiles);
+  }, [aiReview, gitStatus]);
+  const aiReviewSummary = useMemo(() => {
+    if (aiReview.status === "none") return null;
+    if (aiReview.status === "pending")
+      return { tone: "muted" as const, text: "AI 自审进行中——结论会回到这里和主对话。" };
+    if (aiReview.status === "failed")
+      return { tone: "bad" as const, text: "AI 自审未完成——主对话里有失败原因。" };
+    if (isCleanVerdict(aiReview.answer))
+      return { tone: "ok" as const, text: "AI 自审：未发现高信号问题。" };
+    if (aiFindings.length)
+      return {
+        tone: "warn" as const,
+        text: `AI 自审：${aiFindings.length} 条发现，挂在对应文件上。`,
+      };
+    return { tone: "muted" as const, text: "AI 自审已回复——结论在主对话里（未解析出文件锚点）。" };
+  }, [aiReview, aiFindings]);
+
   const selectTab = (next: InspectorTabId) => {
     setTab(next);
     try {
@@ -193,6 +224,11 @@ export function Inspector({
               onSelectDiffLayout={onSelectDiffLayout}
               onStageFile={onStageFile}
               onDiscardFile={onDiscardFile}
+              onAiReview={onAiReview}
+              aiReviewBusy={aiReviewBusy}
+              aiReviewPending={aiReview.status === "pending"}
+              aiReviewSummary={aiReviewSummary}
+              aiFindings={aiFindings}
             />
           </div>
         )}

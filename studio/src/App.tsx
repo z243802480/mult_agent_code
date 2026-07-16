@@ -27,6 +27,7 @@ import { isPermissionTierId, legacyPermission, DEFAULT_PERMISSION_TIER } from ".
 import { useTheme } from "./hooks/useTheme";
 import { DiffCommentTray } from "./components/DiffCommentTray";
 import { setDiffCommentSession } from "./session/diffComments";
+import { buildAiReviewPrompt } from "./session/aiReview";
 import type { StudioSession } from "./types";
 
 export function App() {
@@ -102,6 +103,55 @@ export function App() {
   useEffect(() => {
     setDiffCommentSession(bootstrap.activeSession?.session_id ?? "");
   }, [bootstrap.activeSession?.session_id]);
+
+  // G5 AI 自审: assemble the current workspace diff into a read-only chat-mode review request.
+  // Bounded (files + chars) with the truncation stated in the prompt — the verdict must never
+  // claim coverage it didn't have. The reply is a normal turn; the changes pane anchors it.
+  const [aiReviewSending, setAiReviewSending] = useState(false);
+  async function startAiReview() {
+    if (sessionEvents.isRunning || aiReviewSending) return;
+    setAiReviewSending(true);
+    try {
+      const status = await review.refreshGitStatus();
+      const changes = (status?.changes ?? []).map((change) => change.path).filter(Boolean);
+      if (!changes.length) {
+        toast.error("工作区没有可评审的改动。");
+        return;
+      }
+      const diffs: { path: string; diff: string }[] = [];
+      let total = 0;
+      let truncated = false;
+      for (const filePath of changes) {
+        if (diffs.length >= 12 || total > 24_000) {
+          truncated = true;
+          break;
+        }
+        try {
+          const payload = await api.gitDiff(filePath, "all");
+          const text = String(payload.diff ?? "");
+          if (!text.trim() || text.includes("(no diff")) continue;
+          diffs.push({ path: filePath, diff: text.slice(0, 8_000) });
+          total += Math.min(text.length, 8_000);
+        } catch {
+          // Unreadable file (binary/permission) — review what we can, honestly bounded.
+        }
+      }
+      if (!diffs.length) {
+        toast.error("没有可评审的文本改动。");
+        return;
+      }
+      const candidate = bootstrap.settings?.permissionMode;
+      const tier = isPermissionTierId(candidate) ? candidate : DEFAULT_PERMISSION_TIER;
+      await sessionEvents.sendGoal(
+        buildAiReviewPrompt(diffs, { truncated }),
+        "chat",
+        legacyPermission(tier),
+        tier,
+      );
+    } finally {
+      setAiReviewSending(false);
+    }
+  }
 
   // OS notifications ("done and you're not looking") + favicon status dot (G1).
   useNotifications({
@@ -541,6 +591,8 @@ export function App() {
             onOpenRun={runEvidence.openRun}
             onSelectRunEvent={runEvidence.selectRunEvidenceEvent}
             viewMode={viewMode}
+            onAiReview={() => void startAiReview()}
+            aiReviewBusy={sessionEvents.isRunning || aiReviewSending}
           />
         </>
       )}

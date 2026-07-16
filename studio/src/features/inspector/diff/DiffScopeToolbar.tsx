@@ -1,5 +1,5 @@
 import React from "react";
-import { GitBranch, RefreshCw } from "lucide-react";
+import { GitBranch, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import type { GitStatusPayload } from "../../../types";
 import type { TurnDiffScope } from "../../../turnDiff";
 
@@ -10,6 +10,9 @@ export function DiffScopeToolbar({
   activeScopeId,
   onSelectScope,
   onRefresh,
+  onAiReview,
+  aiReviewBusy = false,
+  aiReviewPending = false,
 }: {
   gitStatus: GitStatusPayload | null;
   loading: boolean;
@@ -17,6 +20,10 @@ export function DiffScopeToolbar({
   activeScopeId: string;
   onSelectScope: (scopeId: string) => void;
   onRefresh: () => void;
+  /** G5: ask the model to review the current workspace diff (only reports high-signal problems). */
+  onAiReview?: () => void;
+  aiReviewBusy?: boolean;
+  aiReviewPending?: boolean;
 }) {
   const activeScope = scopes.find((scope) => scope.id === activeScopeId) ?? scopes[0];
   const turnScopes = scopes.filter((scope) => scope.kind === "turn");
@@ -38,15 +45,37 @@ export function DiffScopeToolbar({
             </p>
           )}
         </div>
-        <button
-          type="button"
-          className="iconButton"
-          title="刷新 git 状态"
-          onClick={onRefresh}
-          disabled={loading}
-        >
-          <RefreshCw size={14} className={loading ? "spinning" : ""} />
-        </button>
+        <div className="gitChangesHeaderActions">
+          {onAiReview && gitStatus?.available && !gitStatus.clean && (
+            <button
+              type="button"
+              className="aiReviewButton"
+              title={
+                aiReviewBusy
+                  ? "有任务在运行——等本轮结束后再自审。"
+                  : "让模型评审当前改动，只报高信号问题"
+              }
+              onClick={onAiReview}
+              disabled={aiReviewBusy || aiReviewPending}
+            >
+              {aiReviewPending ? (
+                <Loader2 size={13} className="spinning" />
+              ) : (
+                <Sparkles size={13} />
+              )}
+              AI 自审
+            </button>
+          )}
+          <button
+            type="button"
+            className="iconButton"
+            title="刷新 git 状态"
+            onClick={onRefresh}
+            disabled={loading}
+          >
+            <RefreshCw size={14} className={loading ? "spinning" : ""} />
+          </button>
+        </div>
       </div>
 
       <div className="diffScopeTabs" role="tablist" aria-label="改动范围">
