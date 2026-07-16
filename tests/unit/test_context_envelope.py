@@ -45,3 +45,40 @@ def test_chat_context_builder_persists_envelope(tmp_path: Path) -> None:
     assert path.exists()
     persisted = JsonStore(SchemaValidator(SCHEMA_DIR)).read(path, "context_envelope")
     assert persisted["payload_hash"] == envelope.payload_hash
+
+
+def test_chat_runtime_summary_reports_project_paths_and_guidance(tmp_path: Path) -> None:
+    # runtime_summary read important_paths/guidance off ContextLoader's payload, which has never
+    # returned either key — they live in project.json — so the chat model was told the project has
+    # no important paths and no guidance on every single turn. Nothing tested this, which is how it
+    # stayed dead.
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("print('hi')\n", encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("# Rules\nStay in scope.\n", encoding="utf-8")
+    InitCommand(tmp_path).run()
+
+    payload = ChatContextBuilder(tmp_path, SchemaValidator(SCHEMA_DIR)).context(
+        intent="ordinary_chat"
+    )
+
+    summary = payload["runtime_summary"]
+    project = JsonStore(SchemaValidator(SCHEMA_DIR)).read(
+        tmp_path / ".asteria" / "project.json", "project_config"
+    )
+    assert summary["important_paths"], "detected project paths must reach the chat model"
+    assert summary["important_paths"] == project["important_paths"][:10]
+    assert summary["guidance"] is True
+
+
+def test_chat_runtime_summary_guidance_is_false_when_the_file_is_gone(tmp_path: Path) -> None:
+    # project.json declares root_guidance_path at init; a declaration is not proof the file is
+    # still there, so the flag must be reconciled against disk rather than repeated.
+    (tmp_path / "AGENTS.md").write_text("# Rules\n", encoding="utf-8")
+    InitCommand(tmp_path).run()
+    (tmp_path / "AGENTS.md").unlink()
+
+    payload = ChatContextBuilder(tmp_path, SchemaValidator(SCHEMA_DIR)).context(
+        intent="ordinary_chat"
+    )
+
+    assert payload["runtime_summary"]["guidance"] is False

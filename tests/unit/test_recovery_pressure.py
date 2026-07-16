@@ -126,6 +126,66 @@ def test_recovery_pressure_treats_invalid_memory_jsonl_as_damaged_memory(
     assert ".asteria/memory/failures.jsonl" in damaged["sample_refs"]
 
 
+def test_recovery_pressure_does_not_read_the_recovery_journal_as_damaged_memory(
+    tmp_path: Path,
+) -> None:
+    # recovery_events.jsonl is the recovery journal, not a memory-entry file, but it lives in the
+    # same directory and has its own shape. Glob-matching it against the memory-entry schema made a
+    # benign multi_run_conflict event — whose whole point is that memory is intact — report the
+    # memory as damaged.
+    memory_dir = tmp_path / ".asteria" / "memory"
+    memory_dir.mkdir(parents=True)
+    (memory_dir / "recovery_events.jsonl").write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "created_at": "2026-07-16T10:00:00+08:00",
+                "chain": "multi_run_conflict",
+                "summary": "Two runs touched the active goal memory.",
+                "data": {},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (memory_dir / "active_goal.json").write_text(
+        json.dumps({"current_goal": "healthy", "update_reason": "run_completed"}),
+        encoding="utf-8",
+    )
+
+    report = recovery_pressure_report(tmp_path, SchemaValidator(Path.cwd() / "schemas"))
+
+    assert report["chains"]["damaged_memory"]["covered"] is False
+    assert report["chains"]["damaged_memory"]["sample_refs"] == []
+
+
+def test_recovery_pressure_still_reports_real_damage_recorded_in_the_journal(
+    tmp_path: Path,
+) -> None:
+    # Skipping the journal for the memory-entry check must not skip its damaged_memory events.
+    memory_dir = tmp_path / ".asteria" / "memory"
+    memory_dir.mkdir(parents=True)
+    (memory_dir / "recovery_events.jsonl").write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "created_at": "2026-07-16T10:00:00+08:00",
+                "chain": "damaged_memory",
+                "summary": "active_goal.json could not be parsed; using Markdown fallback.",
+                "data": {},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    report = recovery_pressure_report(tmp_path, SchemaValidator(Path.cwd() / "schemas"))
+
+    damaged = report["chains"]["damaged_memory"]
+    assert damaged["covered"] is True
+    assert ".asteria/memory/recovery_events.jsonl" in damaged["sample_refs"]
+
+
 def _progress_event(
     event_id: str,
     phase: str,

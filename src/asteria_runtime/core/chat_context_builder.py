@@ -9,7 +9,6 @@ from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.agent_harness import AgentHarness
 from asteria_runtime.core.capability_invocation_policy import CapabilityInvocationPolicy
 from asteria_runtime.core.context_envelope import ContextEnvelope
-from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.permission_policy import permission_policy_profile
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.runtime_orchestration_catalog import build_runtime_orchestration_catalog
@@ -60,6 +59,20 @@ class ChatContextBuilder:
             )
         return self.root / ".asteria" / "context" / "context_envelope_chat.json"
 
+    def _has_root_guidance(self, project: dict[str, Any]) -> bool:
+        """Whether the project's declared guidance file is actually on disk.
+
+        project.json declares the path at init time; a declaration is not proof the file is still
+        there, and this flag tells the chat model whether guidance exists at all.
+        """
+        declared = str(project.get("root_guidance_path") or "").strip()
+        if not declared:
+            return False
+        try:
+            return (self.root / declared).exists()
+        except OSError:
+            return False
+
     def context(self, *, intent: str) -> dict[str, Any]:
         agent_dir = self.root / ".asteria"
         store = JsonStore(self.validator)
@@ -68,7 +81,6 @@ class ChatContextBuilder:
         run_store = RunStore(agent_dir, self.validator)
         current_run_id = run_store.current_session_id()
         current_run = run_store.load_run(current_run_id) if current_run_id else None
-        runtime_context = ContextLoader(self.root, self.validator).load()
         session_context = self._session_context(agent_dir, current_run_id, current_run)
         include_active_goal_memory = intent in {
             "progress_question",
@@ -142,8 +154,12 @@ class ChatContextBuilder:
             "agent_loop_dispatch": session_context.get("agent_loop_dispatch") or {},
             "active_goal_memory": active_goal_memory,
             "runtime_summary": {
-                "important_paths": runtime_context.get("important_paths", [])[:10],
-                "guidance": runtime_context.get("guidance", {}) != {},
+                # These live in project.json (init writes both). They were read off ContextLoader's
+                # payload, which has never returned either key, so this summary was pinned to
+                # {[], False} on every chat turn — the chat model was told the project has no
+                # important paths and no guidance, always. project.json is already loaded above.
+                "important_paths": [str(item) for item in project.get("important_paths", [])][:10],
+                "guidance": self._has_root_guidance(project),
             },
             "refs": [".asteria/project.json", ".asteria/policies.json"]
             + ([".asteria/memory/active_goal.md"] if active_goal_memory else [])

@@ -122,12 +122,21 @@ def _damaged_memory_evidence(root: Path) -> list[str]:
     return []
 
 
+# recovery_events.jsonl is the recovery journal, not a memory-entry file. It legitimately lives in
+# this directory with its own shape ({chain, summary, data}), so matching it against the
+# memory-entry schema reported healthy memory as damaged the moment any recovery event was written
+# — including a benign multi_run_conflict, whose whole point is that memory is intact.
+_NON_MEMORY_ENTRY_FILES = frozenset({"recovery_events.jsonl"})
+
+
 def _invalid_memory_jsonl_evidence(root: Path) -> list[str]:
     memory_dir = root / ".asteria" / "memory"
     if not memory_dir.exists():
         return []
     refs: list[str] = []
     for path in sorted(memory_dir.glob("*.jsonl")):
+        if path.name in _NON_MEMORY_ENTRY_FILES:
+            continue
         try:
             lines = path.read_text(encoding="utf-8").splitlines()
         except OSError:
