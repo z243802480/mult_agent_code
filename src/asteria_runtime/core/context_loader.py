@@ -99,11 +99,35 @@ class ContextLoader:
                 if isinstance(item, dict)
             ][:12],
             "completed_work": [str(item) for item in structured.get("completed_work", [])][:8],
-            "artifacts_already_produced": [
-                str(item) for item in structured.get("artifact_refs", [])
-            ][:10],
+            **self._artifact_status(
+                [str(item) for item in structured.get("artifact_refs", [])][:10]
+            ),
             "next_task": [str(item) for item in structured.get("next_task", [])][:5],
             "current_blockers": [str(item) for item in structured.get("current_blockers", [])][:5],
+        }
+
+    def _artifact_status(self, refs: list[str]) -> dict:
+        """Split recorded artifact refs by whether they still exist on disk.
+
+        Memory records artifacts by path, but nothing ever reconciled those paths against the
+        filesystem, so a file that was reverted, moved, or never landed kept being handed to the
+        doer as "already produced" — a stale claim the model has no way to check. Reporting the
+        misses under a separate key tells it the truth instead. Best-effort: a path we cannot stat
+        counts as present, since only a definite miss justifies contradicting the record.
+        """
+        present: list[str] = []
+        missing: list[str] = []
+        for ref in refs:
+            try:
+                candidate = Path(ref)
+                if not candidate.is_absolute():
+                    candidate = self.root / candidate
+                (present if candidate.exists() else missing).append(ref)
+            except OSError:
+                present.append(ref)
+        return {
+            "artifacts_already_produced": present,
+            "artifacts_recorded_but_missing": missing,
         }
 
     def _memory(self, agent_dir: Path) -> list[dict]:

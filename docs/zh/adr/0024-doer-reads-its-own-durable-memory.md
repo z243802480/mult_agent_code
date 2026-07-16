@@ -59,9 +59,11 @@
     弱模型现在能分辨新建 vs 覆盖、且明知"文件现已存在"，不再盲目重发 write_file（同路径重写会硬失败
     于 `overwrite=False`）。+1 集成测试（created→modified 分辨）；tool_registry/execute/run/gateway
     共 85 测绿·ruff/mypy 净。
-  - ⬜ **快照按 task 刷新仍待做**：`workspace_files` 快照冻结于 run 启动，多 task run 里后续 task 看不到
-    前一 task 刚写的文件（active_goal 仅在 run 结束后刷新，补不上 run 内跨 task 的空窗）。→ 在
-    `_model_driven_prompts` 前按当前工作区重扫 workspace_files（per-task 浅拷贝，勿污染共享 runtime_context）。
+  - ✅ **快照按 task 刷新已落地（2026-07-09·changelog §16）**：原症状=`workspace_files` 快照冻结于 run
+    启动，多 task run 里后续 task 看不到前一 task 刚写的文件（active_goal 仅在 run 结束后刷新，补不上
+    run 内跨 task 的空窗）。落地=`ContextLoader.workspace_files()` 抽为公开独立重扫，`ExecuteCommand._execute_task`
+    每 task 起手按 `context.root` 重扫覆盖（该 dict 已是 per-task，不污染共享 runtime_context；best-effort
+    不阻断任务）。测试 `test_workspace_files_rescan_reflects_files_written_after_load` 锁定。
 - ✅ **#3 项目记忆（AGENTS.md）有意接入已落地（2026-07-08）**：`ContextLoader.load()` 加 `root_guidance`
   键（`_root_guidance()` 读 `root/AGENTS.md`，字符预算 4000 远大于 workspace_files 的 1200），并从
   `_workspace_files` 里**排除 AGENTS.md**（避免正文重复 + 释放一个 20 文件槽位）。执行 prompt 现在**有意**

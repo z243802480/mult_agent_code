@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
-from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
 
 
 def _goal() -> dict:
@@ -97,3 +99,69 @@ def test_active_goal_memory_marks_cross_run_conflict_without_blocking_write(
         "Confirm which run should own the active long-task memory before accepting."
     ]
     SchemaValidator(Path("schemas")).validate("active_goal_memory", state)
+
+
+def test_artifact_refs_are_not_mangled_by_prose_redaction(tmp_path: Path) -> None:
+    # _clean rewrites internal jargon for human prose ("evidence" -> "work record"). It was also
+    # applied to artifact_refs, whose entries are real paths the doer is told it already produced,
+    # so any path containing a redacted substring was silently corrupted into a file that never
+    # existed. Paths must survive verbatim.
+    memory = ActiveGoalMemory(tmp_path)
+    artifacts = [
+        "src/evidence_utils.py",
+        "tests/test_run_id_parser.py",
+        ".asteria/runs/run-1/eval_report.json",
+        "src/model_route_picker.py",
+    ]
+
+    memory.write_from_run(
+        goal_spec=_goal(),
+        task_plan=_task_plan(),
+        run_status=_run("run-1"),
+        review_status="unknown",
+        completion="implemented_needs_review",
+        artifacts=artifacts,
+    )
+
+    state = memory.read_structured()
+    assert state["artifact_refs"] == artifacts
+    for path in artifacts:
+        assert f"- Artifact: `{path}`" in state["completed_work"]
+        assert path in memory.read_user_markdown()
+
+
+def test_write_rejects_a_writer_outside_the_schema_enum(tmp_path: Path) -> None:
+    # active_goal.json is a persisted runtime object with a schema, but nothing validated the
+    # production write path — which is how updated_by drifted outside its own enum unnoticed.
+    memory = ActiveGoalMemory(tmp_path)
+
+    with pytest.raises(SchemaValidationError):
+        memory.write_from_run(
+            goal_spec=_goal(),
+            task_plan=_task_plan(),
+            run_status=_run("run-1"),
+            review_status="unknown",
+            completion="implemented_needs_review",
+            updated_by="not_a_known_writer",
+        )
+
+    # A rejected write must leave nothing behind, so .json and .md cannot diverge.
+    assert not memory.json_path.exists()
+    assert not memory.path.exists()
+
+
+def test_session_continuation_is_an_accepted_writer(tmp_path: Path) -> None:
+    # session_continuation.py has always written this value; the enum just never listed it.
+    memory = ActiveGoalMemory(tmp_path)
+
+    memory.write_from_run(
+        goal_spec=_goal(),
+        task_plan=_task_plan(),
+        run_status=_run("run-1"),
+        review_status="unknown",
+        completion="implemented_needs_review",
+        updated_by="session_continuation",
+        update_reason="continued_in_session",
+    )
+
+    assert memory.read_structured()["updated_by"] == "session_continuation"

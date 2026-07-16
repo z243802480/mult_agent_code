@@ -95,12 +95,16 @@ def test_context_loader_feeds_back_active_goal_memory(tmp_path: Path) -> None:
         completion="implemented_needs_review",
         artifacts=["snake.py"],
     )
+    # The artifact has to actually exist for the loader to report it as produced: the projection
+    # now reconciles recorded refs against the filesystem rather than repeating the claim.
+    (tmp_path / "snake.py").write_text("# snake\n", encoding="utf-8")
 
     context = ContextLoader(tmp_path, validator()).load()
 
     active_goal = context["active_goal"]
     assert active_goal["current_goal"] == "Build a snake game"
     assert "snake.py" in active_goal["artifacts_already_produced"]
+    assert active_goal["artifacts_recorded_but_missing"] == []
     assert any("Create snake.py" in item or "done" in item for item in active_goal["completed_work"])
     assert {"title": "Create snake.py", "status": "done"} in active_goal["overall_plan"]
 
@@ -219,3 +223,24 @@ def test_context_loader_includes_bounded_task_failure_evidence(tmp_path: Path) -
     assert [failure["task_id"] for failure in failures] == ["task-0001", "task-0002"]
     assert failures[0]["contract_check"]["violations"] == ["verification did not pass"]
     assert failures[1]["recommendations"] == ["repair verification"]
+
+
+def test_context_loader_separates_artifacts_that_no_longer_exist(tmp_path: Path) -> None:
+    # Nothing reconciled recorded artifact paths against the filesystem, so a file that was
+    # reverted, moved, or never landed kept being handed to the doer as "already produced" — a
+    # stale claim it had no way to check. Misses belong under their own key, not in the produced
+    # list.
+    ActiveGoalMemory(tmp_path).write_from_run(
+        goal_spec={"goal_id": "g1", "normalized_goal": "Build a snake game"},
+        task_plan={"tasks": [{"task_id": "t0", "title": "Create files", "status": "done"}]},
+        run_status={"run_id": "run-1", "current_phase": "IMPLEMENTED"},
+        review_status="unknown",
+        completion="implemented_needs_review",
+        artifacts=["snake.py", "reverted.py"],
+    )
+    (tmp_path / "snake.py").write_text("# snake\n", encoding="utf-8")
+
+    active_goal = ContextLoader(tmp_path, validator()).load()["active_goal"]
+
+    assert active_goal["artifacts_already_produced"] == ["snake.py"]
+    assert active_goal["artifacts_recorded_but_missing"] == ["reverted.py"]

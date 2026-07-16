@@ -2,10 +2,19 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Sequence
 
+from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
+
+
+@lru_cache(maxsize=1)
+def _validator() -> SchemaValidator:
+    # Repo-root schemas are the ones the runtime reads; SchemaValidator falls back to the packaged
+    # copy when that directory is absent (installed wheel).
+    return SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
 
 
 @dataclass(frozen=True)
@@ -78,6 +87,11 @@ class ActiveGoalMemory:
             update_reason=update_reason,
             existing_memory=existing,
         )
+        # active_goal.json is a persisted runtime object with a schema, so it gets validated like
+        # every other one (AGENTS.md §4). Nothing checked this path before, which is how
+        # updated_by="session_continuation" drifted outside its own enum unnoticed. Validating
+        # before either file is written keeps the .json and .md from diverging on a bad write.
+        _validator().validate("active_goal_memory", structured)
         self.json_path.write_text(
             json.dumps(structured, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
@@ -179,7 +193,7 @@ class ActiveGoalMemory:
             ],
             "watch_items": [self._clean(item) for item in risks[:5]],
             "next_task": self._next_task_lines(open_tasks, next_actions, completion),
-            "artifact_refs": [self._clean(path) for path in artifacts[:10]],
+            "artifact_refs": [self._clean_path(path) for path in artifacts[:10]],
         }
 
     def _render_from_structured(self, memory: dict) -> str:
@@ -248,7 +262,7 @@ class ActiveGoalMemory:
                 for task in done_tasks[:10]
             )
         if artifacts:
-            lines.extend(f"- Artifact: `{self._clean(path)}`" for path in artifacts[:10])
+            lines.extend(f"- Artifact: `{self._clean_path(path)}`" for path in artifacts[:10])
         return lines or ["- No completed work has been recorded yet."]
 
     def _step_lines(self, steps: Sequence[object]) -> list[str]:
@@ -416,6 +430,10 @@ class ActiveGoalMemory:
         return [str(recovery.get("message") or "active_goal.json was regenerated after damage.")]
 
     def _clean(self, text: str) -> str:
+        """Rewrite internal jargon for human-facing prose (titles, summaries, blockers).
+
+        Never use this on a filesystem path — see ``_clean_path``.
+        """
         replacements = {
             ".asteria/": "internal report",
             "run_id": "session",
@@ -426,6 +444,17 @@ class ActiveGoalMemory:
         for old, new in replacements.items():
             cleaned = cleaned.replace(old, new)
         return cleaned
+
+    def _clean_path(self, text: str) -> str:
+        """Normalise a filesystem path for storage without rewriting its content.
+
+        Artifact refs are real paths the doer is told it already produced, so they must survive
+        verbatim. ``_clean``'s prose substitutions are substring-based and silently corrupt any
+        path containing them — ``src/evidence_utils.py`` became ``src/work record_utils.py`` and
+        ``tests/test_run_id_parser.py`` became ``tests/test_session_parser.py`` — which fed the
+        model paths that do not exist. Whitespace normalisation is all a path needs.
+        """
+        return text.replace("\n", " ").strip()
 
     def _record_recovery_event(
         self,

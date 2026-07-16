@@ -30,7 +30,7 @@
     "updated_at": { "type": "string" },
     "updated_by": {
       "type": "string",
-      "enum": ["run", "review", "accept", "repair", "resume"]
+      "enum": ["run", "review", "accept", "repair", "resume", "session_continuation"]
     },
     "update_reason": { "type": "string" },
     "current_goal": { "type": "string" },
