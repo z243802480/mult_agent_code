@@ -1,8 +1,11 @@
 # ADR-0029 · Runtime 活起来 = 中途 steer(turn 边界注入)+ warm worker(消冷启)
 
-- 状态：**Accepted（2026-07-15）。两机制代码落地 + 单测 + 真栈 E2E 全绿**（changelog 1.2.74：warm worker 真跑 glm+minimax 完成+事件正确路由；mid-run steer 打进活 run 被消费+模型加了 multiply+连带写测试）。**机制②(warm worker) 已翻默认 ON**（2026-07-16 用户 DecisionPoint·changelog 1.2.75·纯延迟收益·冷路透明回落·E2E 证零结局改变·`ASTERIA_STUDIO_WARM_WORKER=0`/`false` 退冷路）；**机制①(steer) 亦翻默认 ON**（2026-07-16 用户 DecisionPoint·changelog 1.2.76·两处默认门 server.mjs `MID_RUN_STEER_ENABLED` + runtime `agent_loop.mid_run_steer` 一并翻·各留 opt-out `=0`/`false` 或 policy `false`·无 steer.request 时逐字节同今日）。至此两机制均默认 ON（各带 opt-out 逃生口）。机制②(warm worker) 已落地**（changelog 1.2.71·flag `ASTERIA_STUDIO_WARM_WORKER`·默认 OFF·冷路回落·studio_worker.py + server.mjs `finalizeRuntimeJob`/`dispatchWarmRun`·benchmark 均值 320ms/run 省·worker 4 单测 + 跨进程 wire 验）。**机制①(steer) 已落地（后端环 + CLI + Studio UI）**（用户 2026-07-15 授权触环·changelog 1.2.72+1.2.73·`run_control.request_steer/take_steer` + `model_driven_turn` turn 边界注入 + `execute_command` flag 门控 `agent_loop.mid_run_steer`[默认 OFF] + `asteria steer` 命令 + BFF `/steer` 端点/`applyAutonomyForTier` 启用/`/api/health` 能力位 + Composer「现在插话」·flag `ASTERIA_STUDIO_MID_RUN_STEER` 默认 OFF·9 测 + BFF 真跑验端点/守卫）。**诚实边界：完整 Studio→活 run→注入 E2E 待真 provider 冒烟（同 warm worker）。**
+- 状态：**Accepted（2026-07-15）· 两机制均已落地 + 单测 + 真栈 E2E 全绿 + 均默认 ON（2026-07-16·各带 opt-out 逃生口）。**
+  - **机制②(warm worker)**：changelog 1.2.71 落地（`studio_worker.py` 常驻预热 + `server.mjs` `finalizeRuntimeJob`/`dispatchWarmRun`·忙/未就绪/自定义命令/崩 → 透明回落冷 spawn·benchmark 均值 320ms/run 省·worker 4 单测 + 跨进程 wire 验）；1.2.74 真栈 E2E（真跑 glm+minimax 完成 + 292 事件全路由到对的 session）；**1.2.75 翻默认 ON**（用户 DecisionPoint·纯延迟收益·E2E 证零结局改变·opt-out `ASTERIA_STUDIO_WARM_WORKER=0`/`false` 退冷路）。
+  - **机制①(steer)**：用户 2026-07-15 授权触环·changelog 1.2.72（后端环 + CLI）+ 1.2.73（Studio UI）落地（`run_control.request_steer/take_steer` + `model_driven_turn` turn 边界注入 + `execute_command` 门控 `agent_loop.mid_run_steer` + `asteria steer` 命令 + BFF `/steer` 端点/`applyAutonomyForTier`/`/api/health` 能力位 + Composer「现在插话」·9 测 + BFF 真跑验端点/守卫）；1.2.74 真栈 E2E（steer 打进活 run 被消费·模型加了 multiply 并连带写测试）；**1.2.76 翻默认 ON**（用户 DecisionPoint·**两处默认门一并翻**：BFF `MID_RUN_STEER_ENABLED` + runtime policy `agent_loop.mid_run_steer`·opt-out = env `=0`/`false` 或 policy `mid_run_steer:false`）。
+  - **诚实边界（默认 ON 后仍成立）**：steer 只在 turn 边界生效、**不做 mid-tool-batch**；无 `steer.request` 文件时逐字节同翻默认前。warm worker 并发 run 仍回落冷 spawn（池化 = 下方 option B·推迟）、model client 仍每 run 重建（import graph 是主导省项）。
 - 关联：[[0016]] 认知归模型/边界归 harness · [[0027]] 软保险丝续跑环(同为 turn 边界护栏族) · 记忆 `low-burden-set-and-forget-ux` · `claude-code-parity-teardown`（前端对标拆解·#3 即时感物理天花板）· `mainarea-is-agent-loop-view`
-- 授权：用户 2026-07-15 选「两条并行」= 授权**起草本提案**(纯文档)。**触环实现(机制①)待本 ADR 审定后单独授权**；warm worker(机制②)在环外，审定后即可落地。
+- 授权：用户 2026-07-15 选「两条并行」= 授权**起草本提案**(纯文档)，同日**另行授权触环实现机制①**（"授权开始做1"）；warm worker(机制②)在环外，审定即落。两机制的**默认 ON** 分别由用户 2026-07-16 DecisionPoint 拍板（1.2.75 / 1.2.76）——其中机制① 因**真改 UX**（run 会 mid-flight 吃新输入）而与纯延迟的机制② 分别决策。
 
 ## 背景
 
@@ -43,7 +46,7 @@
 采纳 **机制① 选项 A（文件驱动 steer）+ 机制② 选项 A（单 warm worker）**，**分阶段、按风险解耦落地**：
 
 - **先落机制②（环外·可即授权）**：warm worker 不碰认知环，是纯进程生命周期改动，即时感收益立竿见影。**本 ADR 审定即可实现。**
-- **后落机制①（触环·待单独授权）**：steer 修改 `model_driven_turn.py` 的锁定模块，必须先过下面的 ADR-0016 映射与合规清单，且**需用户对「触环」单独点头**后才动代码。
+- **后落机制①（触环·待单独授权）**：steer 修改 `model_driven_turn.py` 的锁定模块，必须先过下面的 ADR-0016 映射与合规清单，且**需用户对「触环」单独点头**后才动代码。〔本段为决策当时的排期记录；该授权已于 2026-07-15 同日取得，机制① 已落地并于 1.2.76 默认 ON——见顶部状态。〕
 
 ### 机制① 的 ADR-0016 三分类映射（触环改动必须自证）
 
@@ -75,7 +78,7 @@
 
 - 正面：即时感获得**两段**改善——warm worker 消掉冷启（首字从「冷启+首事件」变「仅首事件」）；steer 让「批处理 submit-and-watch」变「可中途改向的对话」，补齐对标 Claude Code 最深的一档。前端 Composer 的诚实排队可升级为「有活进程→现在插话(下一轮生效)/无活进程→排队 run 后发」。
 - 负面/风险：warm worker 削弱进程隔离（缓解=按 workspace 键复用 client + 遇错/满 N 回收）；steer 触锁定模块（缓解=最小 diff + 合规清单 + flag 回退）。
-- 迁移/验证要求：机制② 需一个 warm-worker 冷启对照 benchmark（同任务 冷 spawn vs warm 首字延迟）；机制① 需一个真栈 steer smoke（run 中写 `steer.request` → 断言下一 turn 的 messages 含该 user 消息且模型响应改向）。二者都在 flag 后、默认可回退。
+- 迁移/验证要求：机制② 需一个 warm-worker 冷启对照 benchmark（同任务 冷 spawn vs warm 首字延迟）；机制① 需一个真栈 steer smoke（run 中写 `steer.request` → 断言下一 turn 的 messages 含该 user 消息且模型响应改向）。**二者均已兑现**（benchmark `studio/scripts/warm-worker-benchmark.mjs` 均值 320ms/run 省；真栈 E2E 见 1.2.74）。二者都在 flag 后——**默认 ON 后回退口径为 opt-out**（env `=0`/`false` 或 policy `mid_run_steer:false`），非「默认即回退」。
 
 ## 回滚或替代条件
 
