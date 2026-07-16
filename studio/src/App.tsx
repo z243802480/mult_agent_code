@@ -7,6 +7,7 @@ import { SidePanel } from "./components/SidePanel";
 import { Composer } from "./components/Composer";
 import { MissionPaneHeader } from "./layout/MissionPaneHeader";
 import { cleanSessionTitle } from "./features/sidebar/sessionListUtils";
+import { useNotifications } from "./hooks/useNotifications";
 import { usePaneLayout } from "./hooks/usePaneLayout";
 import { useViewMode } from "./hooks/useViewMode";
 import { useDiffFocus } from "./hooks/useDiffFocus";
@@ -93,6 +94,16 @@ export function App() {
     runEvidence.setRunDetail,
   );
   reviewRef.current = review;
+
+  // OS notifications ("done and you're not looking") + favicon status dot (G1).
+  useNotifications({
+    isRunning: sessionEvents.isRunning,
+    waiting: sessionEvents.waiting,
+    interrupted: sessionEvents.interrupted,
+    sessionTitle: bootstrap.activeSession
+      ? cleanSessionTitle(bootstrap.activeSession.title)
+      : "新任务",
+  });
 
   const {
     panelWidth,

@@ -23,6 +23,12 @@ import {
   type PermissionTierId,
 } from "../permissionTiers";
 import type { ThemeSetting } from "../hooks/useTheme";
+import {
+  notificationsEnabled,
+  notificationPermission,
+  requestNotificationPermission,
+  setNotificationsEnabled,
+} from "../hooks/useNotifications";
 
 type SectionId = "permission" | "appearance" | "workspace" | "model" | "tools" | "rules" | "about";
 
@@ -49,6 +55,18 @@ function AppearanceSection({
   theme: ThemeSetting;
   onThemeChange: (next: ThemeSetting) => void;
 }) {
+  // Notifications (G1) — self-contained: the setting lives in localStorage, and enabling it is the
+  // user gesture that requests browser permission (requesting outside a gesture gets auto-denied).
+  const [notifyOn, setNotifyOn] = useState(notificationsEnabled);
+  const [permission, setPermission] = useState(notificationPermission);
+  async function toggleNotifications() {
+    const next = !notifyOn;
+    setNotifyOn(next);
+    setNotificationsEnabled(next);
+    if (next && permission === "default") {
+      setPermission(await requestNotificationPermission());
+    }
+  }
   return (
     <div className="settingsSection">
       <h3>外观</h3>
@@ -72,6 +90,25 @@ function AppearanceSection({
           </button>
         ))}
       </div>
+      <h3>通知</h3>
+      <p className="settingsSectionHint">
+        任务结束或等待你确认、且你不在看这个页面时，发送系统通知。标签页图标上的状态点始终开启。
+      </p>
+      <label className="settingsToggleRow">
+        <input
+          type="checkbox"
+          checked={notifyOn}
+          onChange={() => void toggleNotifications()}
+          aria-label="系统通知"
+        />
+        <span>系统通知</span>
+        {notifyOn && permission === "denied" && (
+          <span className="settingsToggleNote">浏览器已拒绝通知权限——仅保留标签页状态点。</span>
+        )}
+        {notifyOn && permission === "unsupported" && (
+          <span className="settingsToggleNote">当前环境不支持系统通知——仅保留标签页状态点。</span>
+        )}
+      </label>
     </div>
   );
 }

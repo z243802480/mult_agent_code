@@ -790,6 +790,25 @@
   grid-template-columns: repeat(3, 1fr);
 }
 
+/* Notifications toggle (G1) */
+.settingsToggleRow {
+  align-items: center;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  gap: 8px;
+}
+
+.settingsToggleRow input {
+  accent-color: var(--accent);
+}
+
+.settingsToggleNote {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .themeOption {
   align-items: center;
   background: var(--surface-1);
