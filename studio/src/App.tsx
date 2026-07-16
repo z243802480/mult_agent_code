@@ -28,6 +28,15 @@ import type { StudioSession } from "./types";
 
 export function App() {
   const [panelOpen, setPanelOpen] = useState(true);
+  // Header context ring → open the panel focused on the Context tab (transient tab focus).
+  const [inspectorTabSignal, setInspectorTabSignal] = useState<{
+    id: number;
+    tab: "preview" | "changes" | "context" | "agents" | "evidence";
+  } | null>(null);
+  const openContextPanel = useCallback(() => {
+    setPanelOpen(true);
+    setInspectorTabSignal((signal) => ({ id: (signal?.id ?? 0) + 1, tab: "context" }));
+  }, []);
   const paneLayout = usePaneLayout();
   const { viewMode, cycleViewMode } = useViewMode();
   const { theme, setTheme } = useTheme();
@@ -314,6 +323,8 @@ export function App() {
         connectivity={sessionEvents.connectivity}
         changeCount={review.gitStatus?.change_count ?? review.gitStatus?.changes?.length ?? 0}
         branch={review.gitStatus?.branch}
+        runDetail={runEvidence.runDetail}
+        onOpenContext={openContextPanel}
         onOpenWorkspace={() => bootstrap.setWorkspaceOpen(true)}
         onCycleViewMode={cycleViewMode}
         onTogglePanel={() => setPanelOpen((open) => !open)}
@@ -456,6 +467,7 @@ export function App() {
           <SidePanel
             event={runEvidence.selectedEvent}
             events={sessionEvents.events}
+            tabSignal={inspectorTabSignal}
             files={bootstrap.files}
             preview={review.preview}
             settings={bootstrap.settings}

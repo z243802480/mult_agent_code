@@ -10,8 +10,10 @@ import {
   ShieldCheck,
   WifiOff,
 } from "lucide-react";
-import type { SettingsPayload } from "../types";
+import type { RunDetailPayload, SettingsPayload } from "../types";
 import type { ConnectivityStatus } from "../api";
+import { ContextRing } from "../components/ContextRing";
+import { readContextUsage } from "../features/inspector/inspectorUtils";
 import { permissionTier } from "../permissionTiers";
 import { SideChatToggle } from "../features/sidechat/SideChatPanel";
 import { viewModeLabel, type StudioViewMode } from "../hooks/useViewMode";
@@ -32,6 +34,9 @@ type MissionPaneHeaderProps = {
   connectivity?: ConnectivityStatus;
   changeCount: number;
   branch?: string;
+  /** Latest run detail — feeds the ambient context-usage ring (null → no ring). */
+  runDetail?: RunDetailPayload | null;
+  onOpenContext?: () => void;
   onOpenWorkspace: () => void;
   onCycleViewMode: () => void;
   onTogglePanel: () => void;
@@ -55,6 +60,8 @@ export function MissionPaneHeader({
   connectivity,
   changeCount,
   branch,
+  runDetail,
+  onOpenContext,
   onOpenWorkspace,
   onCycleViewMode,
   onTogglePanel,
@@ -121,6 +128,9 @@ export function MissionPaneHeader({
         )}
       </div>
       <div className="topActions">
+        {onOpenContext && (
+          <ContextRing usage={readContextUsage(runDetail)} onClick={onOpenContext} />
+        )}
         <div className="headerPaneGroup">
           <button
             type="button"

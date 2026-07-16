@@ -83,6 +83,7 @@ export function Inspector({
   onOpenRun,
   onSelectRunEvent,
   viewMode,
+  tabSignal,
 }: {
   event: StudioEvent | null;
   events: StudioEvent[];
@@ -117,6 +118,8 @@ export function Inspector({
   onOpenRun: (runId: string) => Promise<void>;
   onSelectRunEvent: (event: StudioEvent) => void;
   viewMode: StudioViewMode;
+  /** External focus request (e.g. the header's context ring) — same pattern as expandSignal. */
+  tabSignal?: { id: number; tab: InspectorTabId } | null;
 }) {
   const [tab, setTab] = useState<InspectorTabId>(loadInspectorTab);
 
@@ -137,6 +140,11 @@ export function Inspector({
       // ignore
     }
   };
+
+  // External tab focus (header context ring → Context tab): transient, not saved as default.
+  useEffect(() => {
+    if (tabSignal) setTab(tabSignal.tab);
+  }, [tabSignal?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Selecting a process step in the thread focuses the Evidence tab (where its detail lives) — a
   // transient focus that does not overwrite the saved default.

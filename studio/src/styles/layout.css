@@ -368,6 +368,51 @@ h2 {
   gap: 10px;
 }
 
+/* Ambient context-usage ring (G2) — quiet chrome; hue escalates with pressure. */
+.contextRing {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  gap: 4px;
+  padding: 2px 4px;
+}
+
+.contextRing:hover {
+  color: var(--text-primary);
+}
+
+.contextRingTrack,
+.contextRingFill {
+  fill: none;
+  stroke-width: 2.5;
+}
+
+.contextRingTrack {
+  stroke: var(--border-strong);
+}
+
+.contextRingFill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+}
+
+.contextRing.elevated .contextRingFill {
+  stroke: var(--warn);
+}
+
+.contextRing.critical .contextRingFill {
+  stroke: var(--bad);
+}
+
+.contextRing.critical .contextRingPct {
+  color: var(--bad);
+}
+
 .topActions .routePill {
   align-items: center;
   background: var(--surface-2);
