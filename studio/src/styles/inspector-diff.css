@@ -631,6 +631,57 @@ button.aggregateDiffChip {
   padding: 12px 14px;
 }
 
+/* Syntax highlighting (G20): rehype-highlight emits hljs-* token classes; colors map to the
+   theme's --code-* palette so light/dark both follow the app theme (no bundled hljs stylesheet). */
+.markdownCode .hljs-keyword,
+.markdownCode .hljs-selector-tag,
+.markdownCode .hljs-literal,
+.markdownCode .hljs-deletion {
+  color: var(--code-keyword);
+}
+
+.markdownCode .hljs-string,
+.markdownCode .hljs-regexp,
+.markdownCode .hljs-addition,
+.markdownCode .hljs-meta .hljs-string {
+  color: var(--code-string);
+}
+
+.markdownCode .hljs-comment,
+.markdownCode .hljs-quote {
+  color: var(--code-comment);
+  font-style: italic;
+}
+
+.markdownCode .hljs-number,
+.markdownCode .hljs-symbol,
+.markdownCode .hljs-bullet,
+.markdownCode .hljs-link,
+.markdownCode .hljs-variable,
+.markdownCode .hljs-template-variable {
+  color: var(--code-number);
+}
+
+.markdownCode .hljs-title,
+.markdownCode .hljs-title.function_,
+.markdownCode .hljs-section,
+.markdownCode .hljs-name {
+  color: var(--code-title);
+}
+
+.markdownCode .hljs-type,
+.markdownCode .hljs-class .hljs-title,
+.markdownCode .hljs-title.class_,
+.markdownCode .hljs-built_in,
+.markdownCode .hljs-attr,
+.markdownCode .hljs-attribute,
+.markdownCode .hljs-selector-attr,
+.markdownCode .hljs-selector-class,
+.markdownCode .hljs-selector-id,
+.markdownCode .hljs-meta {
+  color: var(--code-type);
+}
+
 /* Hover-revealed copy button on code blocks (mainstream: ChatGPT/Claude/Cursor). */
 .markdownCodeWrap {
   position: relative;

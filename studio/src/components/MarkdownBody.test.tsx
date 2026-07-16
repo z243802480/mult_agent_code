@@ -47,8 +47,17 @@ describe("MarkdownBody (GFM correctness — the old hand parser faked or dropped
     const out = html("```python\nprint(1)\n```");
     expect(out).toContain("markdownCodeWrap");
     expect(out).toContain("markdownCode");
-    expect(out).toContain("print(1)");
+    // Highlighting splits the literal into token spans — assert content, not the raw substring.
+    expect(out).toContain("print");
     expect(out).toContain("复制");
+  });
+
+  it("colorizes fenced code with an explicit language, leaves untagged code plain", () => {
+    const tagged = html("```python\ndef add(a, b):\n    return a + b\n```");
+    expect(tagged).toContain("hljs-keyword");
+    // No language tag → no guessed colorization (detect is off), just plain code.
+    const plain = html("```\ndef add(a, b):\n    return a + b\n```");
+    expect(plain).not.toContain("hljs-keyword");
   });
 
   it("opens http links in a new tab and never emits javascript: targets", () => {

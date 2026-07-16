@@ -37,6 +37,14 @@
   --accent-subtle: rgba(77, 155, 230, 0.13);
   --accent-border: rgba(77, 155, 230, 0.34);
 
+  /* ── Code syntax palette (G20) — hues proven readable on near-black code surfaces ── */
+  --code-keyword: #ff7b72;
+  --code-string: #a5d6ff;
+  --code-comment: #8b949e;
+  --code-number: #79c0ff;
+  --code-title: #d2a8ff;
+  --code-type: #ffa657;
+
   /* ── Status ──────────────────────────────────────────────────── */
   --ok: #5fcf8e;
   /* Success green for TEXT. --ok is tuned for borders/fills (a bright accent); as small text on a
@@ -169,6 +177,14 @@
   --accent-fg: #ffffff;
   --accent-subtle: rgba(31, 116, 201, 0.1);
   --accent-border: rgba(31, 116, 201, 0.28);
+
+  /* Code syntax palette — darker saturated variants for white code surfaces */
+  --code-keyword: #cf222e;
+  --code-string: #0a3069;
+  --code-comment: #6e7781;
+  --code-number: #0550ae;
+  --code-title: #8250df;
+  --code-type: #953800;
 
   --ok: #1f9d57;
   /* Darker success green for text — clears 4.5:1 on white (5.4:1) and on the green-tinted active

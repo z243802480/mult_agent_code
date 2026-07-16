@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
 // Full GFM rendering (react-markdown + remark-gfm) instead of the previous hand-rolled line parser.
@@ -64,10 +65,20 @@ const components = {
   ),
 };
 
+// Syntax highlighting (G20 — mainstream code blocks are all colorized). `detect` stays OFF:
+// only fenced blocks with an explicit language get tokens, un-tagged code stays plain — no
+// guessed (possibly wrong) colorization. Colors come from our theme tokens (markdown CSS),
+// not a bundled highlight.js theme, so light/dark both follow the app theme.
+const rehypePlugins = [rehypeHighlight];
+
 export function MarkdownBody({ text }: { text: string }) {
   return (
     <div className="markdownBody">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={rehypePlugins}
+        components={components}
+      >
         {String(text || "")}
       </ReactMarkdown>
     </div>
