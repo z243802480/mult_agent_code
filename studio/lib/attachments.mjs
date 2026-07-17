@@ -10,7 +10,7 @@
 // Keep/Revert (a pasted screenshot is not a code change), and preview-server already serves the
 // workspace as static files with a complete image MIME table — so display needs no new channel.
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -78,7 +78,24 @@ export async function saveAttachment({ workspace, sessionId, buffer }) {
   const relative = attachmentRelPath(sessionId, buffer, mime);
   const absolute = path.join(workspace, relative);
   await fs.mkdir(path.dirname(absolute), { recursive: true });
-  await fs.writeFile(absolute, buffer);
+  // tmp + rename, not a bare writeFile. Pasting the same image twice fires two uploads at the same
+  // content-addressed path; a bare write truncates the file the first upload already finished, so a
+  // message sent in that window would hand the model a half-written PNG (same shape as the
+  // session.json torn-file race — see session-store.mjs). The tmp name is unique per WRITE, not per
+  // process: two uploads inside one server share a pid, and a shared tmp name races with itself.
+  const tmp = `${absolute}.${randomUUID()}.tmp`;
+  await fs.writeFile(tmp, buffer);
+  try {
+    await fs.rename(tmp, absolute);
+  } catch (error) {
+    // Windows fails concurrent renames onto one destination with EPERM (POSIX does not — found by
+    // probing, not by reading). The race is benign here and only here: the destination name is a
+    // hash of these exact bytes, so whoever won wrote the identical file. Confirm it landed whole
+    // before calling it a win — an EPERM with no complete file is a real failure.
+    await fs.rm(tmp, { force: true });
+    const landed = await fs.stat(absolute).catch(() => null);
+    if (!landed || landed.size !== buffer.length) throw error;
+  }
   return { ok: true, path: relative, mime, bytes: buffer.length };
 }
 

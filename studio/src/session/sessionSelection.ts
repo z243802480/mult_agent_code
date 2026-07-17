@@ -1,5 +1,6 @@
 /**
- * What re-selecting a session in the sidebar should reset.
+ * Whether re-selecting a session in the sidebar should reset the loaded transcript and the
+ * run-evidence selection.
  *
  * Extracted as a pure decision because both halves of it were regressions found in production:
  *
@@ -12,25 +13,12 @@
  *    scope was unreachable except by switching away and back.
  *
  * The two fixes pull in opposite directions on the same branch, which is exactly why the rule is
- * stated once, here, rather than inferred from a control-flow read of the component.
+ * stated once, here, rather than inferred from a control-flow read of the component. Restoring the
+ * saved view is NOT part of this decision — it is unconditional, so the caller just always does it.
  */
-export type SessionSelectionPlan = {
-  /** Drop the loaded transcript — only correct when the session actually changed. */
-  clearEvents: boolean;
-  /** Drop the run-evidence selection — same rule as the transcript. */
-  clearEvidenceSelection: boolean;
-  /** Restore the session's saved view. Always: this is `ui_state`'s only read-back path. */
-  applyUiState: boolean;
-};
-
-export function planSessionSelection(
+export function shouldResetForSession(
   activeSessionId: string | null | undefined,
   nextSessionId: string,
-): SessionSelectionPlan {
-  const sameSession = Boolean(activeSessionId) && nextSessionId === activeSessionId;
-  return {
-    clearEvents: !sameSession,
-    clearEvidenceSelection: !sameSession,
-    applyUiState: true,
-  };
+): boolean {
+  return !(Boolean(activeSessionId) && nextSessionId === activeSessionId);
 }

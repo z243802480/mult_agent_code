@@ -92,7 +92,13 @@ export function createChatRoutes({
       // channel (ChatCommand is the sole consumer). Letting the router send an image-bearing
       // message to a run would drop the image and leave the model working as if it had never seen
       // one — the same "answer about a picture you were never shown" failure the CLI refuses. An
-      // answer that saw the image beats a run that did not, so route here and say why.
+      // answer that saw the image beats a run that did not.
+      //
+      // This is the one branch that can override an EXPLICIT mode the user picked, so it must emit
+      // an audit like every other route does: the audit is this file's disclosure channel for
+      // "what actually happened is not what you asked for" (see the comment above intentAuditFor
+      // below — it exists because a route once ran a plan job while the audit still read "chat").
+      // Silently answering in chat after the user chose run would be that same lie.
       const route = {
         mode: "chat",
         source: "attachment",
@@ -101,7 +107,21 @@ export function createChatRoutes({
         intent_kind: "image_question",
         reason: "带图提问走对话路径回答——runtime 的 run/plan 目前没有图片通道。",
       };
-      return handleChatMode(activeSessionId, goal, route, null, "main", attachments);
+      const attachmentAudit = intentAuditFor(goal, requestedMode, permission, route);
+      if (requestedMode && requestedMode !== "auto" && requestedMode !== "chat") {
+        await appendEvent(activeSessionId, {
+          type: "intent_route",
+          status: "completed",
+          title: "Intent routing",
+          summary: `你选的是「${requestedMode}」，但这条消息带了图——图片只能走对话路径（runtime 的 run/plan 没有图片通道）。去掉图片再发可以按「${requestedMode}」执行。`,
+          phase: "route",
+          display_level: "main",
+          content_delta: "",
+          intent_route: route,
+          intent_audit: attachmentAudit,
+        });
+      }
+      return handleChatMode(activeSessionId, goal, route, attachmentAudit, "main", attachments);
     }
 
     const route = routeUserIntent(goal, requestedMode, permission);

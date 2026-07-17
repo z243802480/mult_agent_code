@@ -511,7 +511,16 @@ function TurnAttachments({ event }: { event: StudioEvent | undefined }) {
           rel="noreferrer"
           title={item}
         >
-          <img src={`/api/studio/attachments?path=${encodeURIComponent(item)}`} alt="用户附图" />
+          <img
+            src={`/api/studio/attachments?path=${encodeURIComponent(item)}`}
+            alt="用户附图"
+            // A transcript scrolls back over many turns; without these every historical image is
+            // fetched AND decoded at mount at full resolution to be shown in a 200×160 box. A 4K
+            // screenshot decodes to ~33MB of bitmap, and the immutable cache header only spares the
+            // second network trip, never the decode.
+            loading="lazy"
+            decoding="async"
+          />
         </a>
       ))}
     </div>

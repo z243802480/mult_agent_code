@@ -34,6 +34,7 @@ def _local_config(values: dict[str, str]):
 def _isolated_route_config(monkeypatch: pytest.MonkeyPatch) -> None:
     """Isolate from the developer's real ~/.asteria route config (empty by default)."""
     monkeypatch.delenv(f"{VISION_ENV_PREFIX}_PROVIDER", raising=False)
+    monkeypatch.delenv(f"{VISION_ENV_PREFIX}_NAME", raising=False)
     local, anyv = _local_config({})
     monkeypatch.setattr(factory, "local_route_value", local)
     monkeypatch.setattr(factory, "any_local_route_value", anyv)
@@ -62,9 +63,13 @@ def test_unconfigured_vision_route_is_not_inherited_from_the_global_provider(
     assert factory.create_vision_client(None, _validator()) is None
 
 
-def test_vision_provider_in_local_config_is_detected(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_vision_route_in_local_config_is_detected(monkeypatch: pytest.MonkeyPatch) -> None:
     local, anyv = _local_config(
-        {"AGENT_MODEL_PROVIDER": "zai", f"{VISION_ENV_PREFIX}_PROVIDER": "zhipu"}
+        {
+            "AGENT_MODEL_PROVIDER": "zai",
+            f"{VISION_ENV_PREFIX}_PROVIDER": "zhipu",
+            f"{VISION_ENV_PREFIX}_NAME": "glm-4.5v",
+        }
     )
     monkeypatch.setattr(factory, "local_route_value", local)
     monkeypatch.setattr(factory, "any_local_route_value", anyv)
@@ -72,9 +77,10 @@ def test_vision_provider_in_local_config_is_detected(monkeypatch: pytest.MonkeyP
     assert vision_route_configured() is True
 
 
-def test_explicit_vision_provider_is_detected(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_blank_vision_name_counts_as_unconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(f"{VISION_ENV_PREFIX}_PROVIDER", "zhipu")
-    assert vision_route_configured() is True
+    monkeypatch.setenv(f"{VISION_ENV_PREFIX}_NAME", "   ")
+    assert vision_route_configured() is False
 
 
 def test_blank_vision_provider_counts_as_unconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -107,6 +113,7 @@ def test_local_route_lookup_uses_the_exact_vision_name(monkeypatch: pytest.Monke
     monkeypatch.setattr(factory, "any_local_route_value", _spy)
     vision_route_configured()
 
+    # Exact vision names only — never the inheriting AGENT_MODEL_* fallback.
     assert seen == [(f"{VISION_ENV_PREFIX}_PROVIDER",)]
 
 
@@ -116,3 +123,30 @@ def _validator() -> object:
     from asteria_runtime.storage.schema_validator import SchemaValidator
 
     return SchemaValidator(Path("schemas"))
+
+
+def test_provider_alone_is_not_a_vision_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The half-fix this test exists for.
+
+    Forcing only PROVIDER to be explicit left NAME inheriting the global text model, so the probe
+    said "vision is configured" about a route pointing at glm-5 on the coding endpoint — the same
+    HTTP 400/1210 failure the explicit-provider rule was added to prevent, moved one field over.
+    """
+    local, anyv = _local_config({"AGENT_MODEL_NAME": "glm-5", "AGENT_MODEL_PROVIDER": "zai"})
+    monkeypatch.setattr(factory, "local_route_value", local)
+    monkeypatch.setattr(factory, "any_local_route_value", anyv)
+    monkeypatch.setenv(f"{VISION_ENV_PREFIX}_PROVIDER", "zhipu")
+
+    assert vision_route_configured() is False
+    assert factory.create_vision_client(None, _validator()) is None
+
+
+def test_provider_and_name_together_are_a_vision_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(f"{VISION_ENV_PREFIX}_PROVIDER", "zhipu")
+    monkeypatch.setenv(f"{VISION_ENV_PREFIX}_NAME", "glm-4.5v")
+    assert vision_route_configured() is True
+
+
+def test_name_alone_is_not_a_vision_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(f"{VISION_ENV_PREFIX}_NAME", "glm-4.5v")
+    assert vision_route_configured() is False

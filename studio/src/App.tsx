@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { planSessionSelection } from "./session/sessionSelection";
+import { shouldResetForSession } from "./session/sessionSelection";
 import { api } from "./api";
 import { Banner } from "./components/Shared";
 import { Sidebar } from "./components/Sidebar";
@@ -187,12 +187,16 @@ export function App() {
 
   const selectSession = useCallback(
     (session: StudioSession) => {
-      // Both halves of this rule are production regressions; planSessionSelection documents why.
-      const plan = planSessionSelection(bootstrap.activeSession?.session_id, session.session_id);
+      // Both halves of this rule are production regressions; shouldResetForSession documents why.
+      const reset = shouldResetForSession(bootstrap.activeSession?.session_id, session.session_id);
       bootstrap.setActiveSession(session);
-      if (plan.clearEvidenceSelection) runEvidence.clearSelection();
-      if (plan.clearEvents) sessionEvents.clearEvents();
-      if (plan.applyUiState) review.applySessionUiState(session);
+      if (reset) {
+        runEvidence.clearSelection();
+        sessionEvents.clearEvents();
+      }
+      // Unconditional: bootstrap auto-selects a session without coming through here, so this is
+      // ui_state's only read-back path.
+      review.applySessionUiState(session);
     },
     [bootstrap, runEvidence, sessionEvents, review],
   );

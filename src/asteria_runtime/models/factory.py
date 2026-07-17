@@ -85,31 +85,43 @@ def create_recap_client(
 VISION_ENV_PREFIX = "AGENT_MODEL_VISION"
 
 
-def _vision_provider() -> str:
-    """The EXPLICITLY configured vision provider, or "" — never inherited from the global route.
+def _explicit_vision_value(key: str) -> str:
+    """A vision field read from the vision route ONLY — never inherited from the global route.
 
-    Deliberately does not use :func:`_provider_from_env`. That helper (via ``local_route_value``)
-    falls back to ``AGENT_MODEL_PROVIDER`` when a per-prefix value is missing, which is right for
-    tiers — a tier with no provider of its own genuinely should ride the global route — but wrong
-    for a capability probe. Inheriting there means a user who never configured vision is reported
-    as having a vision route, the honest refusal never fires, and the image is sent to the global
-    text route, which is exactly the endpoint that answers HTTP 400 code 1210. "Not configured"
-    must mean not configured.
+    Deliberately avoids :func:`_provider_from_env` / ``local_route_value``, which fall back to
+    ``AGENT_MODEL_<KEY>`` when a per-prefix value is missing. That inheritance is right for tiers —
+    a tier with no provider of its own genuinely should ride the global route — and wrong here: a
+    user who never configured vision would be reported as having a vision route, the honest refusal
+    would never fire, and the image would go to the global text route, which is precisely the
+    endpoint that answers HTTP 400 code 1210.
     """
-    provider = os.getenv(f"{VISION_ENV_PREFIX}_PROVIDER") or any_local_route_value(
-        (f"{VISION_ENV_PREFIX}_PROVIDER",)
+    value = os.getenv(f"{VISION_ENV_PREFIX}_{key}") or any_local_route_value(
+        (f"{VISION_ENV_PREFIX}_{key}",)
     )
-    return provider.strip().lower()
+    return value.strip()
+
+
+def _vision_provider() -> str:
+    return _explicit_vision_value("PROVIDER").lower()
 
 
 def vision_route_configured() -> bool:
     """Whether a vision route exists, without building a client (no run_dir, no side effects).
 
-    Lets callers refuse an image question up front instead of doing context work first. Shares
-    :func:`_vision_provider` with :func:`create_vision_client` so the probe and the build can never
+    Requires BOTH provider and model name to be set on the vision route. Provider alone does not
+    make a route a vision route: with only ``AGENT_MODEL_VISION_PROVIDER`` set, the model name
+    still inherits the global ``AGENT_MODEL_NAME`` (a text model), so the probe would say "vision
+    is configured" about a route pointing at a text model — the same failure as the inheritance
+    this function exists to block, just moved one field over.
+
+    BASE_URL can still inherit, which is a narrower hole with a loud failure: the request reaches a
+    text endpoint and returns HTTP 400, which callers surface with the four variables to set. See
+    the brief's known-boundaries section.
+
+    Shares its reads with :func:`create_vision_client`, so the probe and the build can never
     disagree about whether a route exists.
     """
-    return bool(_vision_provider())
+    return bool(_vision_provider() and _explicit_vision_value("NAME"))
 
 
 def create_vision_client(
@@ -130,11 +142,10 @@ def create_vision_client(
     text-only model would either hard-fail mid-run or, worse, drop the image and let the model
     answer as if it had seen one. Callers must degrade honestly instead.
     """
-    provider = _vision_provider()
-    if not provider:
+    if not vision_route_configured():
         return None
     logger = ModelCallLogger(run_dir, validator)
-    return _create_provider_client(provider, VISION_ENV_PREFIX, logger, budget)
+    return _create_provider_client(_vision_provider(), VISION_ENV_PREFIX, logger, budget)
 
 
 def _warn_if_tier_silently_offline(
