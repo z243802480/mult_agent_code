@@ -24,6 +24,22 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  /**
+   * Upload a pasted image, returning its workspace-relative path.
+   *
+   * Raw bytes on their own endpoint, not folded into the message body: the message goes through a
+   * redaction pass that would mangle binary, and the JSON body cap is smaller than a screenshot.
+   * Does not throw on a rejected upload — the caller shows the reason.
+   */
+  uploadAttachment: async (sessionId: string, file: File) => {
+    const query = `session=${encodeURIComponent(sessionId)}`;
+    const res = await fetch(`/api/studio/attachments?${query}`, {
+      method: "POST",
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+      body: file,
+    });
+    return (await res.json()) as { ok: boolean; path?: string; error?: string };
+  },
   sessions: () => requestJson<{ ok: boolean; sessions: StudioSession[] }>("/api/studio/sessions"),
   createSession: () =>
     requestJson<{ ok: boolean; session: StudioSession }>("/api/studio/sessions", {
@@ -88,11 +104,12 @@ export const api = {
     permission: string,
     channel?: string,
     permissionMode?: string,
+    attachments?: string[],
   ) =>
     requestJson<AnyRecord>(`/api/studio/sessions/${encodeURIComponent(id)}/messages`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message, mode, permission, channel, permissionMode }),
+      body: JSON.stringify({ message, mode, permission, channel, permissionMode, attachments }),
     }),
   // G7 rewind 文件回滚: preview / restore a turn's shadow workspace snapshot.
   snapshotDiff: (snapshot: string) =>

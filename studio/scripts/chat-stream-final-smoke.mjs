@@ -23,10 +23,14 @@ class ChatResult:
         return {"schema_version":"0.1.0","answer":"## Wrong fallback\nThis non-stream answer must not replace streamed content."}
 
 class ChatCommand:
-    def __init__(self, root, question, history=None):
+    # Mirrors the real signature. The BFF passes every argument by keyword, so a double that omits
+    # one raises TypeError, the process exits non-zero, and the answer silently falls back — which
+    # is exactly how this smoke caught the attachments argument being added upstream.
+    def __init__(self, root, question, history=None, attachments=None):
         self.root = root
         self.question = question
         self.history = history
+        self.attachments = attachments
 
     def run(self):
         sink = os.environ.get("ASTERIA_STUDIO_EVENT_SINK")

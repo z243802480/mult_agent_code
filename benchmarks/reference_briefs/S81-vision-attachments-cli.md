@@ -51,6 +51,45 @@ Reference-first brief。授权：2026-07-17 用户"那就把 G17 做了吧，先
 - 不碰 `openai_compatible.py`（探针证明零改动即通；另一会话正在改该文件）。
 - 不碰 `execute_command.py` / `run_command.py`（DO_NOT_TOUCH），本刀只走 chat 路径。
 
+---
+
+# 刀二 — Studio 前端粘贴（2026-07-17 续写）
+
+授权：用户"那就把 G17 做了吧，先 CLI 一刀"→ 刀一已落（1.2.96），刀二为其自然续。
+
+## 测绘结论（读码所得·非推断）
+
+- **Studio 的 chat 不走 CLI**：`chat-answer.mjs:270-294` 把 `{question, history}` 打成 base64 塞进
+  `ASTERIA_STUDIO_CHAT_PAYLOAD` 环境变量，内联 python 直接 `import ChatCommand`。
+  ⇒ 附件只需在 payload 里加一个 `attachments: [路径]`，**绕开** `chat-routes.mjs:63`
+  `redactText(String(body?.message))` 那个有损漏斗，也绕开 `server.mjs:2063` 的 64KB JSON 闸
+  （payload 里只有短路径，图片本体走独立上传端点）。
+- **存储落点已被证成立**：`workspace-paths.mjs:11-20` `isSafeWorkspacePath` **不拦 `.asteria/`**；
+  `MemoryPanel.tsx:87-88` 已有直读 `.asteria/` 的投产先例；`fileChanges.ts:63-66` 有意把 `.asteria/`
+  排除出 Keep/Revert（正是附件想要的：不该出现在改动面板里）。
+- **回显零新通道**：`preview-server.mjs` 随 boot 起在 port+1，`:119` 无扩展名白名单、`:136` 二进制读、
+  `:24-32` 完整图片 MIME 表、`:169-174` 正确 content-type ⇒ 直接当图片 CDN 用。
+- **上传原语已有**：`server.mjs:2080 readRequestBodyRaw`（25MB）。
+
+## 交付（DoD）
+
+1. BFF `POST /api/studio/attachments?session=&name=` 收原始二进制 → 按内容 hash 存
+   `.asteria/attachments/<session>/<hash>.<ext>` → 返回 workspace 相对路径。
+   守卫：仅图片扩展名 + 体积上限 + session id 校验 + 内容嗅探（不信 name）。
+2. `Composer` `onPaste` 抓剪贴板图片 → 上传 → 附件 chip（可删）；发送时随 body 带路径。
+3. `chat-routes.submitUserGoal` 读 `body.attachments` → 逐条 `isSafeWorkspacePath` 校验 →
+   透传到 `chat-answer` → payload → `ChatCommand(attachments=...)`。
+4. 回显：`user_message` 事件带附件路径，主线程渲染缩略图（经 preview-server）。
+5. 验收 = **真栈**：Studio 里粘一张画着已知数字的图 + 提问 → 模型答出该数字。
+
+## 非目标 / 已知边界（刀二不做）
+
+- **纯图无文字发送**：`chat-routes.mjs:68` `if (!goal)` 挡空消息。允许空问题需给模型一个
+  编造的默认提问（"描述这张图"）——那是替用户说话，不做。要求配文字，诚实记录此差距。
+- 拖拽上传 / 文件选择按钮（粘贴是主流主路径，先做这条）。
+- 非图片附件（PDF/文本）——后端 `ATTACHMENT_MIME_TYPES` 只认图片。
+- 附件清理策略（与 G7 快照同理，本地磁盘，有意留白）。
+
 ## 未验证 / 风险
 
 - minimax 视觉能力未测；连续同角色消息 vs 单条 parts 数组的兼容性未测（本刀用**独立图片消息**，

@@ -484,6 +484,40 @@ export function PendingTurn({
   );
 }
 
+/** Workspace-relative image paths this user turn carried, or [] for an ordinary message. */
+export function turnAttachmentPaths(event: StudioEvent | undefined): string[] {
+  const raw = (event?.data as Record<string, unknown> | undefined)?.attachments;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+/**
+ * The images the user actually sent, echoed on their own turn.
+ *
+ * Served by the main server rather than the preview server: the answer refers to this image, so it
+ * has to be visible wherever the transcript is — including the single-port production build, where
+ * the preview server's availability is not something this component can assume.
+ */
+function TurnAttachments({ event }: { event: StudioEvent | undefined }) {
+  const paths = turnAttachmentPaths(event);
+  if (!paths.length) return null;
+  return (
+    <div className="turnAttachments">
+      {paths.map((item) => (
+        <a
+          key={item}
+          href={`/api/studio/attachments?path=${encodeURIComponent(item)}`}
+          target="_blank"
+          rel="noreferrer"
+          title={item}
+        >
+          <img src={`/api/studio/attachments?path=${encodeURIComponent(item)}`} alt="用户附图" />
+        </a>
+      ))}
+    </div>
+  );
+}
+
 export function ConversationTurn({
   steps,
   selected,
@@ -596,6 +630,7 @@ export function ConversationTurn({
       {isGoalTurn && (
         <div className="turnUser">
           <div className="turnUserBubble">
+            <TurnAttachments event={goalEvent} />
             <p>{userText}</p>
             <span className="turnUserTime">{time}</span>
             {isLast && !isRunning && onEditMessage && userText && (

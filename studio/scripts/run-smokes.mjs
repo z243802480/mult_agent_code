@@ -55,6 +55,7 @@ const HERMETIC = [
   "session-id-smoke.mjs",
   "session-lifecycle-smoke.mjs",
   "session-replay-export-smoke.mjs",
+  "attachment-upload-smoke.mjs",
   "snapshot-rollback-smoke.mjs",
   "session-main-path-contract.mjs",
   "side-chat-smoke.mjs",

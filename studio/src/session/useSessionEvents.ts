@@ -129,6 +129,7 @@ export function useSessionEvents(
     mode: string,
     permission: string,
     permissionMode?: string,
+    attachments?: string[],
   ): Promise<boolean> {
     if (!activeSession) return false;
     // A new goal supersedes any earlier verdict about a dead job — re-probe from scratch.
@@ -142,6 +143,7 @@ export function useSessionEvents(
         permission,
         undefined,
         permissionMode,
+        attachments,
       );
       const refreshed = await api.sessions();
       setSessions(refreshed.sessions ?? []);
@@ -152,7 +154,7 @@ export function useSessionEvents(
       toast.error("无法发送你的消息——它未被送达。", {
         action: {
           label: "重试",
-          onClick: () => void sendGoal(message, mode, permission, permissionMode),
+          onClick: () => void sendGoal(message, mode, permission, permissionMode, attachments),
         },
       });
       return false;

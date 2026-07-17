@@ -1820,3 +1820,19 @@
     transition: none;
   }
 }
+
+/* G17 刀二 — images the user pasted, echoed on their own turn. */
+.turnAttachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.turnAttachments img {
+  max-width: 200px;
+  max-height: 160px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  display: block;
+}

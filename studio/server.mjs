@@ -21,6 +21,12 @@ import {
   workspaceBasename,
   isAbsoluteWorkspacePath,
 } from "./lib/workspace-paths.mjs";
+import {
+  MAX_ATTACHMENT_BYTES,
+  attachmentMimeFor,
+  resolveAttachmentRequest,
+  saveAttachment,
+} from "./lib/attachments.mjs";
 import { createPreviewSubsystem, normalizeProxyTarget } from "./lib/preview-server.mjs";
 import { createEventBus } from "./lib/event-bus.mjs";
 import { parseSessionText, writeSessionJson } from "./lib/session-store.mjs";
@@ -179,6 +185,39 @@ async function handleApi(request, response, url) {
   }
   if (request.method === "POST" && url.pathname === "/api/studio/sessions") {
     sendJson(response, 200, { ok: true, session: await createSession() });
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/api/studio/attachments") {
+    const absolute = resolveAttachmentRequest(workspace, url.searchParams.get("path"));
+    if (!absolute) {
+      sendJson(response, 400, { ok: false, error: "invalid attachment path" });
+      return;
+    }
+    try {
+      const bytes = await fs.readFile(absolute);
+      response.writeHead(200, {
+        "Content-Type": attachmentMimeFor(absolute),
+        // Content-addressed: the bytes at this path can never change.
+        "Cache-Control": "public, max-age=31536000, immutable",
+      });
+      response.end(bytes);
+    } catch {
+      sendJson(response, 404, { ok: false, error: "attachment not found" });
+    }
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/studio/attachments") {
+    const sessionId = String(url.searchParams.get("session") || "");
+    if (!isSafeId(sessionId)) {
+      sendJson(response, 400, { ok: false, error: "invalid session id" });
+      return;
+    }
+    const buffer = await readRequestBodyBinary(request, MAX_ATTACHMENT_BYTES);
+    if (buffer === null) {
+      sendJson(response, 413, { ok: false, error: "attachment too large" });
+      return;
+    }
+    sendJson(response, 200, await saveAttachment({ workspace, sessionId, buffer }));
     return;
   }
   if (request.method === "POST" && url.pathname === "/api/studio/sessions/import") {
@@ -2077,6 +2116,40 @@ function readRequestJson(request) {
 // Session import bundles can be large (a long task = many events), so they need a much higher cap
 // than readRequestJson's 64KB. Still bounded (25MB) to avoid unbounded memory. Returns null if the
 // body exceeds the cap (route replies 413) rather than silently truncating.
+/**
+ * Body as raw bytes. readRequestBodyRaw decodes to utf8, which silently mangles binary uploads.
+ *
+ * Resolves BEFORE destroying on overflow: `request.destroy()` with no error argument emits
+ * 'aborted'/'close' but neither 'end' nor 'error', so a promise that only listens for those two
+ * never settles and the caller hangs forever.
+ */
+function readRequestBodyBinary(request, maxBytes) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    let size = 0;
+    let settled = false;
+    const settle = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    request.on("data", (chunk) => {
+      if (settled) return;
+      size += chunk.length;
+      if (size > maxBytes) {
+        settle(null);
+        request.destroy();
+        return;
+      }
+      chunks.push(Buffer.from(chunk));
+    });
+    request.on("end", () => settle(Buffer.concat(chunks)));
+    request.on("error", () => settle(null));
+    request.on("aborted", () => settle(null));
+    request.on("close", () => settle(null));
+  });
+}
+
 function readRequestBodyRaw(request, maxBytes = 25_000_000) {
   return new Promise((resolve) => {
     const chunks = [];

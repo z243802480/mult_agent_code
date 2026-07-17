@@ -22,6 +22,7 @@ import { buildRouteMessageWithChatContext } from "./chat-route-context.mjs";
 import { mapPermissionLevel, withPermissionLevel } from "./permission-level.mjs";
 import { redact, redactText } from "./text-utils.mjs";
 import { readJsonlTail } from "./run-io.mjs";
+import { sanitizeAttachmentPaths } from "./attachments.mjs";
 import { friendlyErrorText, friendlyErrorTitle, friendlyErrorSummary } from "./friendly-error.mjs";
 import { latestDecisions } from "./run-evidence-transforms.mjs";
 import { isSafeId } from "./workspace-paths.mjs";
@@ -61,6 +62,13 @@ export function createChatRoutes({
     const session = await ensureSession(sessionId);
     const activeSessionId = resolvedSessionId(session, sessionId);
     const goal = redactText(String(body?.message || "")).trim();
+    // Paths only — the bytes were uploaded separately. Re-validated here because they made a round
+    // trip through the client: a crafted path must not make the runtime read some other file and
+    // hand it to the model.
+    const attachments = sanitizeAttachmentPaths(
+      resolvedSessionId(session, sessionId),
+      body?.attachments,
+    );
     const channel = String(body?.channel || "").toLowerCase();
     const requestedMode = String(body?.mode || "auto");
     const permission = String(body?.permission || "ask");
@@ -76,7 +84,24 @@ export function createChatRoutes({
         intent_kind: "side_ask",
         reason: "Side chat keeps questions off the main thread.",
       };
-      return handleChatMode(activeSessionId, goal, route, null, "side");
+      return handleChatMode(activeSessionId, goal, route, null, "side", attachments);
+    }
+
+    if (attachments.length) {
+      // Only the chat path can carry an image: the runtime's run/plan commands have no attachment
+      // channel (ChatCommand is the sole consumer). Letting the router send an image-bearing
+      // message to a run would drop the image and leave the model working as if it had never seen
+      // one — the same "answer about a picture you were never shown" failure the CLI refuses. An
+      // answer that saw the image beats a run that did not, so route here and say why.
+      const route = {
+        mode: "chat",
+        source: "attachment",
+        permission: "read_only",
+        confidence: "explicit",
+        intent_kind: "image_question",
+        reason: "带图提问走对话路径回答——runtime 的 run/plan 目前没有图片通道。",
+      };
+      return handleChatMode(activeSessionId, goal, route, null, "main", attachments);
     }
 
     const route = routeUserIntent(goal, requestedMode, permission);
@@ -608,6 +633,7 @@ export function createChatRoutes({
     route = null,
     audit = null,
     displayLevel = "main",
+    attachments = [],
   ) {
     await appendEvent(sessionId, {
       type: "user_message",
@@ -618,8 +644,11 @@ export function createChatRoutes({
       phase: displayLevel === "side" ? "chat" : "understand",
       display_level: displayLevel,
       ui_intent: displayLevel === "side" ? "side_chat" : undefined,
+      // Echoed on the user's own turn: what was sent has to be visible in the transcript, or the
+      // answer refers to an image nobody can see afterwards.
+      data: attachments.length ? { attachments } : undefined,
     });
-    startChatJob(sessionId, goal, route, audit, displayLevel);
+    startChatJob(sessionId, goal, route, audit, displayLevel, attachments);
     return {
       ok: true,
       chat: true,
@@ -628,7 +657,14 @@ export function createChatRoutes({
     };
   }
 
-  function startChatJob(sessionId, goal, route = null, audit = null, displayLevel = "main") {
+  function startChatJob(
+    sessionId,
+    goal,
+    route = null,
+    audit = null,
+    displayLevel = "main",
+    attachments = [],
+  ) {
     const jobId = `chat-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     const job = {
       job_id: jobId,
@@ -652,7 +688,13 @@ export function createChatRoutes({
           const ctx = await readChatContext(sessionId).catch(() => ({}));
           answerInput = `${sideAskContextHint(ctx)}\n\nUser question:\n${goal}`;
         }
-        const answer = await buildChatAnswer(answerInput, sessionId, route, markLifecycleStarted);
+        const answer = await buildChatAnswer(
+          answerInput,
+          sessionId,
+          route,
+          markLifecycleStarted,
+          attachments,
+        );
         if (answer.usedModel) await hideManualChatModelStart(sessionId);
         else if (!lifecycleStarted) await appendChatFallbackLifecycle(sessionId, answer);
         await appendEvent(sessionId, {

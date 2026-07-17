@@ -18,6 +18,7 @@ import {
 } from "../permissionTiers";
 import type { WorkspaceFile } from "../types";
 import { loadQueue, saveQueue } from "../session/composerQueue";
+import { api } from "../api";
 
 const MENTION_LIMIT = 8;
 
@@ -31,6 +32,24 @@ function activeMention(text: string, caret: number): { start: number; query: str
   const query = upto.slice(at + 1);
   if (/\s/.test(query)) return null;
   return { start: at, query };
+}
+
+export type PastedAttachment = { path: string; name: string; previewUrl: string };
+
+/**
+ * Images on the clipboard, in paste order. Returns [] for an ordinary text paste.
+ *
+ * Reads `items` rather than `files` because a screenshot copied from a browser or an editor
+ * arrives as an item with no entry in `files` on some platforms.
+ */
+export function clipboardImages(data: DataTransfer | null): File[] {
+  const out: File[] = [];
+  for (const item of Array.from(data?.items ?? [])) {
+    if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+    const file = item.getAsFile();
+    if (file) out.push(file);
+  }
+  return out;
 }
 
 function basename(pathValue: string): string {
@@ -101,6 +120,8 @@ export function Composer({
     mode: string,
     permission: string,
     permissionMode?: string,
+    /** Workspace-relative paths of images already uploaded for this turn. */
+    attachments?: string[],
   ) => Promise<boolean | void>;
   onSideAsk?: (message: string) => Promise<void>;
   sideAsk?: boolean;
@@ -129,6 +150,9 @@ export function Composer({
   );
   const permission = legacyPermission(permissionMode);
   const [sending, setSending] = useState(false);
+  const [attachments, setAttachments] = useState<PastedAttachment[]>([]);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(0);
   // Messages typed while a run is in flight (I9). They wait honestly for the run to finish, then
   // auto-send at the turn boundary — we never claim to inject mid-step, which the runtime can't honor.
   // Seeded from (and mirrored to) per-session storage: these used to live in memory only, so a
@@ -227,13 +251,22 @@ export function Composer({
       setMessage("");
       return;
     }
+    const sent = attachments.map((item) => item.path);
     setMessage("");
     setSending(true);
     try {
+      let delivered: boolean | void = true;
       if (sideAsk && onSideAsk) {
         await onSideAsk(text);
       } else {
-        await onSend(text, mode, permission, permissionMode);
+        delivered = await onSend(text, mode, permission, permissionMode, sent);
+      }
+      // Clear only once the turn is actually away. Dropping the images on a failed send would make
+      // the user hunt down and re-paste screenshots they can no longer see — same rule as the
+      // comment tray.
+      if (delivered !== false) {
+        attachments.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+        setAttachments([]);
       }
     } finally {
       setSending(false);
@@ -259,6 +292,51 @@ export function Composer({
     wasRunning.current = isRunning;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRunning, runStateKnown, queue.length, sending]);
+
+  async function onPaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const images = clipboardImages(event.clipboardData);
+    if (!images.length) return; // ordinary text paste — leave it to the browser
+    event.preventDefault();
+    if (!sessionId) {
+      setAttachError("还没有会话——先发一条消息再贴图。");
+      return;
+    }
+    setAttachError(null);
+    setUploading((n) => n + images.length);
+    for (const file of images) {
+      try {
+        const result = await api.uploadAttachment(sessionId, file);
+        if (result?.ok && result.path) {
+          setAttachments((list) =>
+            list.some((item) => item.path === result.path!)
+              ? list // content-addressed: pasting the same screenshot twice is one attachment
+              : [
+                  ...list,
+                  {
+                    path: result.path!,
+                    name: file.name || basename(result.path!),
+                    previewUrl: URL.createObjectURL(file),
+                  },
+                ],
+          );
+        } else {
+          setAttachError(String(result?.error || "图片上传失败。"));
+        }
+      } catch {
+        setAttachError("图片上传失败——请重试。");
+      } finally {
+        setUploading((n) => Math.max(0, n - 1));
+      }
+    }
+  }
+
+  function removeAttachment(target: string) {
+    setAttachments((list) => {
+      const hit = list.find((item) => item.path === target);
+      if (hit) URL.revokeObjectURL(hit.previewUrl);
+      return list.filter((item) => item.path !== target);
+    });
+  }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     // Mention menu owns the keyboard while open: navigate + insert instead of send/stop.
@@ -383,6 +461,25 @@ export function Composer({
           ))}
         </div>
       )}
+      {(attachments.length > 0 || uploading > 0 || attachError) && (
+        <div className="composerAttachments">
+          {attachments.map((item) => (
+            <span key={item.path} className="composerAttachment" title={item.path}>
+              <img src={item.previewUrl} alt="" />
+              <em>{item.name}</em>
+              <button
+                type="button"
+                onClick={() => removeAttachment(item.path)}
+                aria-label={`移除 ${item.name}`}
+              >
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+          {uploading > 0 && <span className="composerAttachmentNote">上传中…</span>}
+          {attachError && <span className="composerAttachmentNote bad">{attachError}</span>}
+        </div>
+      )}
       <div className="composerInputWrap">
         <textarea
           ref={textareaRef}
@@ -393,6 +490,7 @@ export function Composer({
           }}
           onClick={(event) => syncMention(message, event.currentTarget.selectionStart)}
           onKeyDown={onKeyDown}
+          onPaste={(event) => void onPaste(event)}
           placeholder={placeholder}
           rows={1}
         />

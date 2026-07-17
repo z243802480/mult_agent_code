@@ -675,3 +675,63 @@
   justify-content: flex-end;
   gap: 6px;
 }
+
+/* G17 刀二 — pasted image attachments waiting to be sent. */
+.composerAttachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px 0;
+}
+
+.composerAttachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 3px 6px 3px 3px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.composerAttachment img {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex: none;
+}
+
+.composerAttachment em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composerAttachment button {
+  display: inline-flex;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px;
+  flex: none;
+}
+
+.composerAttachment button:hover {
+  color: var(--text);
+}
+
+.composerAttachmentNote {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.composerAttachmentNote.bad {
+  color: var(--danger);
+}

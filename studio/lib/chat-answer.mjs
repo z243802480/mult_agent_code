@@ -142,19 +142,25 @@ export function createChatAnswer({
     });
   }
 
-  async function buildChatAnswer(message, sessionId, route = null, onLifecycleStart = null) {
+  async function buildChatAnswer(
+    message,
+    sessionId,
+    route = null,
+    onLifecycleStart = null,
+    attachments = [],
+  ) {
     const m = message.trim();
     const lower = m.toLowerCase();
 
     if (isRuntimeMetaQuestion(lower)) return chatAnswer(await chatRuntimeAnswer(m, sessionId));
     if (hasAny(lower, ["who are you", "\u4f60\u662f\u8c01", "\u81ea\u6211\u4ecb\u7ecd"]))
-      return await chatGeneralAnswer(m, sessionId, onLifecycleStart);
+      return await chatGeneralAnswer(m, sessionId, onLifecycleStart, attachments);
     if (isModeHelpQuestion(lower)) return chatAnswer(CHAT_MODES);
 
     // The backend intent router (routeUserIntent) already decided this message stays in chat rather
     // than becoming a run/plan, so buildChatAnswer must NOT re-guess "is this a task?" with a keyword
     // heuristic and short-circuit to a canned template. Answer conversationally via the model.
-    return await chatGeneralAnswer(m, sessionId, onLifecycleStart);
+    return await chatGeneralAnswer(m, sessionId, onLifecycleStart, attachments);
   }
 
   function chatAnswer(content, route = null, usedModel = false) {
@@ -186,7 +192,12 @@ export function createChatAnswer({
     return await chatStatusAnswer(sessionId);
   }
 
-  async function chatGeneralAnswer(message, sessionId, onLifecycleStart = null) {
+  async function chatGeneralAnswer(
+    message,
+    sessionId,
+    onLifecycleStart = null,
+    attachments = [],
+  ) {
     const context = await readChatContext(sessionId).catch(() => ({}));
     const kind = classifyChatRequest(message);
     const prompt = [
@@ -200,7 +211,7 @@ export function createChatAnswer({
     if (chatBackend === "model") {
       const lifecycle = await appendChatModelStart(sessionId, route, "streaming");
       if (onLifecycleStart) onLifecycleStart();
-      const answered = await chatModelAnswer(prompt, message, sessionId);
+      const answered = await chatModelAnswer(prompt, message, sessionId, attachments);
       const streamedAnswer = extractVisibleChatAnswerFromEvents(sessionId);
       const finalAnswer = streamedAnswer || answered;
       if (finalAnswer) return chatAnswer(appendModelNotice(finalAnswer, route, true), route, true);
@@ -260,7 +271,7 @@ export function createChatAnswer({
     }
   }
 
-  async function chatModelAnswer(systemPrompt, message, sessionId) {
+  async function chatModelAnswer(systemPrompt, message, sessionId, attachments = []) {
     if (process.env.ASTERIA_STUDIO_FAKE_CHAT_ERROR) {
       throw new Error(process.env.ASTERIA_STUDIO_FAKE_CHAT_ERROR);
     }
@@ -272,6 +283,9 @@ export function createChatAnswer({
         JSON.stringify({
           question: `System instruction:\n${systemPrompt}\n\nUser question:\n${message}`,
           history,
+          // Workspace-relative paths, not bytes: the payload rides an environment variable, and
+          // base64 images would blow past the OS env size limit.
+          attachments,
         }),
         "utf8",
       ).toString("base64");
@@ -280,7 +294,7 @@ export function createChatAnswer({
         "from pathlib import Path",
         "from asteria_runtime.commands.chat_command import ChatCommand",
         "data = json.loads(base64.b64decode(os.environ['ASTERIA_STUDIO_CHAT_PAYLOAD']).decode('utf-8'))",
-        "result = ChatCommand(root=Path(os.environ['ASTERIA_STUDIO_ROOT']), question=data['question'], history=data.get('history')).run()",
+        "result = ChatCommand(root=Path(os.environ['ASTERIA_STUDIO_ROOT']), question=data['question'], history=data.get('history'), attachments=[Path(p) for p in data.get('attachments') or []]).run()",
         "print(json.dumps(result.to_dict(), ensure_ascii=False))",
       ].join("; ");
       const completed = await runCommand([python, "-c", script], getRuntimeRoot(), {
