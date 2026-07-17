@@ -7,7 +7,10 @@ from typing import Protocol
 @dataclass(frozen=True)
 class ChatMessage:
     role: str
-    content: str
+    # str for text; list of OpenAI content parts (``{"type": "text"|"image_url", ...}``) for
+    # multimodal. The list form always passed through to_payload/_payload/json.dumps untouched —
+    # widening the annotation only lets type-checking see what the wire already did.
+    content: str | list[dict]
     name: str | None = None
 
     def to_payload(self) -> dict:

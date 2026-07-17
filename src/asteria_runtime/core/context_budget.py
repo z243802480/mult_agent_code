@@ -127,8 +127,8 @@ def estimate_request_context(request: Any) -> ContextEstimate:
     metadata = getattr(request, "metadata", {}) or {}
     for message in getattr(request, "messages", []) or []:
         role_tokens = estimate_text_tokens(getattr(message, "role", ""))
-        content = str(getattr(message, "content", "") or "")
-        tokens = role_tokens + estimate_text_tokens(content) + 4
+        content, image_tokens = _split_multimodal_content(getattr(message, "content", ""))
+        tokens = role_tokens + estimate_text_tokens(content) + image_tokens + 4
         section = _section_for_message(message, content, metadata)
         sections[section] = sections.get(section, 0) + tokens
         digest = _content_hash(content)
@@ -141,6 +141,37 @@ def estimate_request_context(request: Any) -> ContextEstimate:
         sections={key: value for key, value in sections.items() if value > 0},
         duplicate_content_hashes=duplicate_hashes[:10],
     )
+
+
+#: Coarse per-image stand-in. Real cost is provider- and resolution-dependent (tiled, ~85 tokens
+#: for a low-detail thumbnail up to well over 1k for a large high-detail image), and this estimator
+#: is deliberately provider-agnostic. The number matters far less than NOT char-counting base64.
+IMAGE_TOKENS_APPROX = 1_000
+
+
+def _split_multimodal_content(raw: Any) -> tuple[str, int]:
+    """Split message content into (text to estimate, tokens attributed to images).
+
+    Multimodal content is a list of OpenAI parts. Stringifying it — as this estimator used to —
+    char-counts the base64 payload as prose: a 1MB image becomes ~350k tokens, which alone pushes
+    ``context_window_ratio`` past the 0.9 hard stop and aborts the run with a fabricated
+    "budget exhausted" reason. Attribute images a flat approximation instead.
+    """
+    if isinstance(raw, list):
+        texts: list[str] = []
+        image_tokens = 0
+        for part in raw:
+            if not isinstance(part, dict):
+                texts.append(str(part))
+                continue
+            if part.get("type") == "text":
+                texts.append(str(part.get("text") or ""))
+            else:
+                # Any non-text part (image_url today, audio/file later) is opaque binary-ish
+                # payload whose characters must never be counted as prose.
+                image_tokens += IMAGE_TOKENS_APPROX
+        return "\n".join(texts), image_tokens
+    return str(raw or ""), 0
 
 
 def estimate_text_tokens(text: str) -> int:

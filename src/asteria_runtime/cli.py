@@ -297,6 +297,14 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         help=MODEL_STRATEGY_HELP,
     )
+    chat_parser.add_argument(
+        "--image",
+        action="append",
+        default=[],
+        metavar="PATH",
+        dest="images",
+        help="Attach an image to the question (repeatable). Requires a configured vision route.",
+    )
     chat_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
 
     route_parser = subcommands.add_parser(
@@ -1739,6 +1747,7 @@ def _run_cli() -> None:
             question=args.question,
             permission_level=args.permission_level,
             model_strategy=args.model_strategy,
+            attachments=[Path(item) for item in getattr(args, "images", []) or []],
         ).run()
         if args.json:
             print(json.dumps(chat_result.to_dict(), ensure_ascii=False, indent=2))

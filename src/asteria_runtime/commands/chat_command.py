@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,9 +12,32 @@ from asteria_runtime.core.chat_intent_policy import ChatIntentPolicy
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_chat_prompt_envelope
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
-from asteria_runtime.models.factory import create_model_client
+from asteria_runtime.models.factory import (
+    VISION_ENV_PREFIX,
+    create_model_client,
+    create_vision_client,
+    vision_route_configured,
+)
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.tools.defaults import create_default_tool_registry
+
+
+ATTACHMENT_MIME_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+}
+
+#: Local sanity bound, not a provider limit (providers cap base64 payloads at their own,
+#: undocumented-here sizes). Keeps a stray multi-hundred-MB file from being read into memory and
+#: base64-inflated 4/3 before anyone notices.
+MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024
+
+
+class AttachmentError(Exception):
+    """An attachment could not be read or is unusable."""
 
 
 @dataclass(frozen=True)
@@ -118,12 +142,17 @@ class ChatCommand:
         model_strategy: str = "auto",
         model_client: ModelClient | None = None,
         history: list[dict[str, str]] | None = None,
+        attachments: list[Path] | None = None,
     ) -> None:
         self.root = root.resolve()
         self.question = question
         self.permission_level = permission_level
         self.model_strategy = model_strategy
         self.model_client = model_client
+        # Image attachments travel as their own multimodal user message. They force the vision
+        # route: a real probe showed the configured strong route (coding endpoint) rejects images
+        # with HTTP 400 code 1210, so there is nothing to fall back to.
+        self.attachments = [Path(item) for item in (attachments or [])]
         # Optional prior turns (role in {user, assistant}). CLI stays single-shot (no history);
         # Studio passes the recent turns it already persists so chat is no longer single-turn amnesiac.
         self.history = self._normalize_history(history)
@@ -168,6 +197,26 @@ class ChatCommand:
                     },
                 },
             )
+        # Resolve attachments before any context work: a typo'd path or an unconfigured vision
+        # route should fail immediately, not after building and persisting a context envelope.
+        attachment_messages: list[ChatMessage] = []
+        if self.attachments:
+            try:
+                attachment_messages = self._attachment_messages()
+            except AttachmentError as exc:
+                return self._attachment_blocked(str(exc), [])
+            if self.model_client is None and not vision_route_configured():
+                return self._attachment_blocked(
+                    "This question has image attachments, but no vision model route is "
+                    "configured, and the default route is text-only — sending the image there "
+                    "would fail outright.",
+                    [
+                        f"Configure a vision route: {VISION_ENV_PREFIX}_PROVIDER, "
+                        f"{VISION_ENV_PREFIX}_NAME, {VISION_ENV_PREFIX}_BASE_URL, "
+                        f"{VISION_ENV_PREFIX}_API_KEY.",
+                        "Ask without `--image` to use the normal text route.",
+                    ],
+                )
         chat_intent = ChatIntentPolicy().classify(self.question)
         context, context_envelope, context_envelope_path = ChatContextBuilder(
             self.root,
@@ -190,7 +239,11 @@ class ChatCommand:
             tool_names=create_default_tool_registry().names(),
         )
         prompt_ref = prompt_envelope.context_ref()
-        client = self.model_client or create_model_client(run_dir, self.validator)
+        client = self.model_client
+        if client is None and self.attachments:
+            client = create_vision_client(run_dir, self.validator)
+        if client is None:
+            client = create_model_client(run_dir, self.validator)
         role_contract = role_contract_for(
             role="ChatAgent",
             purpose="chat",
@@ -203,6 +256,10 @@ class ChatCommand:
                 messages=[
                     ChatMessage(role="system", content=self._system_prompt()),
                     *self.history,
+                    # Images go BEFORE the envelope on purpose: FakeModelClient and the acceptance
+                    # scenarios read `messages[-1].content` as the JSON envelope, so the envelope
+                    # must stay last.
+                    *attachment_messages,
                     ChatMessage(
                         role="user",
                         content=json.dumps(
@@ -253,6 +310,50 @@ class ChatCommand:
             next_actions=self._next_actions(answer, context),
             session_context=context["session_context"],
             debug_details=debug_details,
+        )
+
+    def _attachment_messages(self) -> list[ChatMessage]:
+        """One multimodal user message carrying every attached image.
+
+        Raises :class:`AttachmentError` rather than degrading: a missing/oversized image must not
+        silently disappear from a question that asks about it.
+        """
+        parts: list[dict] = []
+        for path in self.attachments:
+            resolved = path if path.is_absolute() else (self.root / path)
+            if not resolved.is_file():
+                raise AttachmentError(f"Attachment not found: {path}")
+            suffix = resolved.suffix.lower()
+            mime = ATTACHMENT_MIME_TYPES.get(suffix)
+            if not mime:
+                raise AttachmentError(
+                    f"Unsupported attachment type '{suffix or resolved.name}'. "
+                    f"Supported: {', '.join(sorted(ATTACHMENT_MIME_TYPES))}."
+                )
+            payload = resolved.read_bytes()
+            if len(payload) > MAX_ATTACHMENT_BYTES:
+                raise AttachmentError(
+                    f"Attachment {path} is {len(payload) // 1024}KB, over the "
+                    f"{MAX_ATTACHMENT_BYTES // 1024}KB limit."
+                )
+            encoded = base64.b64encode(payload).decode("ascii")
+            parts.append(
+                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}"}}
+            )
+        if not parts:
+            return []
+        parts.append({"type": "text", "text": self.question})
+        return [ChatMessage(role="user", content=parts)]
+
+    def _attachment_blocked(self, reason: str, next_actions: list[str]) -> ChatResult:
+        """Refuse the turn instead of answering without the image the user asked about."""
+        return ChatResult(
+            question=self.question,
+            answer=reason,
+            root=self.root,
+            permission_level=self.permission_level,
+            model_strategy=self.model_strategy,
+            next_actions=next_actions,
         )
 
     def _model_tier(self, default_tier: str = "medium") -> str:

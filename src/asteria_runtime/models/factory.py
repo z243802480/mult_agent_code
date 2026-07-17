@@ -78,6 +78,42 @@ def create_recap_client(
         return None
 
 
+VISION_ENV_PREFIX = "AGENT_MODEL_VISION"
+
+
+def vision_route_configured() -> bool:
+    """Whether a vision route exists, without building a client (no run_dir, no side effects).
+
+    Lets callers refuse an image question up front instead of doing context work first.
+    """
+    return bool(_provider_from_env(VISION_ENV_PREFIX))
+
+
+def create_vision_client(
+    run_dir: Path | None,
+    validator: SchemaValidator,
+    budget: BudgetController | None = None,
+) -> ModelClient | None:
+    """Client for the vision route, or ``None`` when no vision route is configured.
+
+    Deliberately NOT a member of ``MODEL_TIERS``: tiers are a cost axis (strong/medium/cheap) that
+    drives ``model_strategy`` preference and the strong→medium timeout fallback, so folding a
+    capability into it would corrupt both. This mirrors :func:`create_recap_client` — a
+    purpose-specific client resolved outside the tier system.
+
+    Returning ``None`` rather than falling back matters: a real probe (2026-07-17) showed the
+    configured strong route (glm-5 on the coding endpoint) rejects images outright with
+    ``HTTP 400 code 1210: messages.content.type ... ['text']``. Silently routing an image to a
+    text-only model would either hard-fail mid-run or, worse, drop the image and let the model
+    answer as if it had seen one. Callers must degrade honestly instead.
+    """
+    provider = _provider_from_env(VISION_ENV_PREFIX)
+    if not provider:
+        return None
+    logger = ModelCallLogger(run_dir, validator)
+    return _create_provider_client(provider, VISION_ENV_PREFIX, logger, budget)
+
+
 def _warn_if_tier_silently_offline(
     routes: dict[str, ModelRoute],
     default_route: ModelRoute | None = None,
