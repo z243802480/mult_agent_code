@@ -316,13 +316,44 @@ function ModelSection({
   const routeHealth = (doctor.routes ?? {}) as AnyRecord;
   const routeReqs = (doctor.route_requirements ?? {}) as AnyRecord;
   const tiers = Object.keys(routeHealth);
+  const pins = (settings?.modelNames ?? {}) as Record<string, string>;
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [pinning, setPinning] = useState<string | null>(null);
+  const [pinError, setPinError] = useState<string | null>(null);
+
+  async function savePin(tier: string, value: string) {
+    // The whole map every time, not one key: the endpoint stores what it is sent, so a cleared box
+    // must arrive as an absent key rather than as a stale one left behind by a merge.
+    const next = { ...pins, [tier]: value.trim() };
+    setPinning(tier);
+    setPinError(null);
+    try {
+      const result = await api.updateSettings({ modelNames: next });
+      if (!result.ok) {
+        setPinError(result.error || "无法保存。");
+        return;
+      }
+      onSaved(result.settings);
+    } catch (err) {
+      setPinError(String((err as Error).message || err));
+    } finally {
+      setPinning(null);
+    }
+  }
+
   return (
     <div className="settingsSection">
       <h3 className="settingsSectionTitle">模型与提供方</h3>
       <ModelStrategySection settings={settings} onSaved={onSaved} />
       {tiers.length > 0 && (
         <div className="settingsProviderReadiness">
-          <p className="muted">提供方就绪状态——设置下面的环境变量，然后重新打开 Studio。</p>
+          <p className="muted">
+            每档用哪个模型。留空即使用已配置的那个；填写则本工作区的新任务都改用你填的模型
+            （提供方和密钥不变）。
+          </p>
+          <p className="muted">
+            提供方本身仍通过环境变量配置——某档显示未就绪时，设置它提示的变量再重新打开 Studio。
+          </p>
           <div className="settingsRowList">
             {tiers.map((tier) => {
               const route = (routeHealth[tier] ?? {}) as AnyRecord;
@@ -331,12 +362,40 @@ function ModelSection({
               const provider = String(route.provider ?? "");
               const reqs = (Array.isArray(routeReqs[tier]) ? routeReqs[tier] : []) as string[];
               const need = (missing.length ? missing : reqs).join(", ");
+              const resolved = String(route.model ?? "");
+              const saved = pins[tier] ?? "";
+              const draft = drafts[tier] ?? saved;
               return (
                 <div className="settingsRow" key={tier}>
                   <div className="settingsRowMain">
                     <strong>{tier}</strong>
                     <span className="muted">{provider || (configured ? "已配置" : "未配置")}</span>
                   </div>
+                  <input
+                    className="settingsRowInput"
+                    type="text"
+                    // The tier's currently resolved model, so an empty box shows what "leave it
+                    // alone" actually means instead of making the user guess.
+                    placeholder={resolved || "使用已配置的模型"}
+                    aria-label={`${tier} 档模型`}
+                    value={draft}
+                    disabled={pinning === tier}
+                    onChange={(event) =>
+                      setDrafts((prev) => ({ ...prev, [tier]: event.target.value }))
+                    }
+                    // Saved on commit, not per keystroke — one POST per character would hammer the
+                    // BFF and make the field fight the user's typing.
+                    onBlur={() => {
+                      if (draft.trim() !== saved) void savePin(tier, draft);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.currentTarget.blur();
+                      if (event.key === "Escape") {
+                        setDrafts((prev) => ({ ...prev, [tier]: saved }));
+                        event.currentTarget.blur();
+                      }
+                    }}
+                  />
                   <span className={configured ? "settingsRowMeta good" : "settingsRowMeta warn"}>
                     {configured ? "就绪" : `请设置 ${need || "提供方环境变量"}`}
                   </span>
@@ -344,6 +403,7 @@ function ModelSection({
               );
             })}
           </div>
+          {pinError && <p className="settingsError">{pinError}</p>}
         </div>
       )}
       <p className="muted">近期活动——运行时在近期任务中实际使用的模型。</p>

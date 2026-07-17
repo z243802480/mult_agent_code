@@ -23,6 +23,9 @@ export function mapPermissionLevel(mode) {
 // values already on disk, not for what a client is allowed to write.
 export const MODEL_STRATEGY_IDS = ["auto", "quality", "economy", "local"];
 
+// Mirrors models/routing.py MODEL_TIERS and the CLI's --model-name tier validation.
+export const MODEL_TIERS = ["strong", "medium", "cheap"];
+
 // An unknown value degrades to the same default argparse applies, so a stale or hand-edited
 // settings.json can never make a run fail to start.
 export function mapModelStrategy(strategy) {
@@ -38,10 +41,11 @@ export function mapModelStrategy(strategy) {
 // (studio_worker defaults to "balanced", so an "ask first" run would quietly get auto-repair,
 // auto-replan and auto-accept); for the strategy it silently ignores what the user picked.
 // See [[permission-mode-two-sources-of-truth]].
-export function warmRunParams(mode, strategy) {
+export function warmRunParams(mode, strategy, modelNames) {
   return {
     permission_level: mapPermissionLevel(mode),
     model_strategy: mapModelStrategy(strategy),
+    model_name_overrides: mapModelNames(modelNames),
   };
 }
 
@@ -51,6 +55,39 @@ export function withPermissionLevel(command, level) {
 
 export function withModelStrategy(command, strategy) {
   return withRunFlag(command, "--model-strategy", strategy);
+}
+
+// The CLI takes one `--model-name TIER=MODEL` per pinned tier, so this is the one run choice that is
+// several flags rather than one. Built here in a single pass — `withRunFlag` refuses to add a flag
+// the command already carries, so calling it once per tier would silently drop every tier after the
+// first. Sorted so the command is stable across saves (an unstable command would make
+// `sameCommand` warm-eligibility flap for no reason).
+export function withModelNames(command, modelNames) {
+  const names = mapModelNames(modelNames);
+  const tiers = Object.keys(names).sort();
+  if (!tiers.length || !Array.isArray(command)) return command;
+  if (command.includes("--model-name")) return command;
+  const runIndex = command.indexOf("run");
+  if (runIndex < 0) return command;
+  const flags = tiers.flatMap((tier) => ["--model-name", `${tier}=${names[tier]}`]);
+  return [...command.slice(0, runIndex + 1), ...flags, ...command.slice(runIndex + 1)];
+}
+
+// Mirrors normalize_model_name_overrides in core/run_config.py: unknown tiers and blank values are
+// dropped rather than rejected, so a stale settings.json can never stop a run from starting. The
+// settings endpoint is where a bad value is refused — by the time it reaches here it is data, and
+// data we cannot use is data we ignore.
+export function mapModelNames(modelNames) {
+  if (!modelNames || typeof modelNames !== "object") return {};
+  const mapped = {};
+  for (const [tier, name] of Object.entries(modelNames)) {
+    const normalizedTier = String(tier || "").trim().toLowerCase();
+    const normalizedName = String(name ?? "").trim();
+    if (MODEL_TIERS.includes(normalizedTier) && normalizedName) {
+      mapped[normalizedTier] = normalizedName;
+    }
+  }
+  return mapped;
 }
 
 // Only the `run` subcommand (including `run --continue-session`) accepts these flags. Exact-token

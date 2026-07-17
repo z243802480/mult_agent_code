@@ -20,9 +20,11 @@ import path from "node:path";
 import { intentAuditFor, routeUserIntent } from "../intent-router.mjs";
 import { buildRouteMessageWithChatContext } from "./chat-route-context.mjs";
 import {
+  mapModelNames,
   mapModelStrategy,
   mapPermissionLevel,
   warmRunParams,
+  withModelNames,
   withModelStrategy,
   withPermissionLevel,
 } from "./run-flags.mjs";
@@ -228,11 +230,16 @@ export function createChatRoutes({
     // The tier is per-message (the Composer cycles it); the model strategy is a persisted default
     // (the Settings panel owns it), so it is read here at submit time rather than taken from the
     // request body — a strategy changed mid-session applies to the next run, not only to new tabs.
-    const modelStrategy = mapModelStrategy((await loadStudioSettings())?.modelStrategy);
+    const settings = (await loadStudioSettings()) || {};
+    const modelStrategy = mapModelStrategy(settings.modelStrategy);
+    const modelNames = mapModelNames(settings.modelNames);
     const baseCommand = executionRoute?.command || runtimeCommand(mode, goal);
-    const command = withModelStrategy(
-      withPermissionLevel(baseCommand, mapPermissionLevel(permissionMode)),
-      modelStrategy,
+    const command = withModelNames(
+      withModelStrategy(
+        withPermissionLevel(baseCommand, mapPermissionLevel(permissionMode)),
+        modelStrategy,
+      ),
+      modelNames,
     );
     // The warm worker doesn't run a command — it rebuilds one from JSON fields, and the only shape it
     // can rebuild is runtimeCommand(mode, goal). So it may stand in for this run exactly when the
@@ -240,7 +247,7 @@ export function createChatRoutes({
     // orchestration route build it?" — most routes hand back the plain run command anyway) means any
     // future flag added to a run cold-spawns instead of being silently dropped by the worker.
     const warmParams = sameCommand(baseCommand, runtimeCommand(mode, goal))
-      ? warmRunParams(permissionMode, modelStrategy)
+      ? warmRunParams(permissionMode, modelStrategy, modelNames)
       : null;
 
     if (mode !== "plan" && permission !== "allow") {

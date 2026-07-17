@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import {
   MODEL_STRATEGY_IDS,
+  MODEL_TIERS,
+  mapModelNames,
   mapModelStrategy,
   mapPermissionLevel,
   warmRunParams,
+  withModelNames,
   withModelStrategy,
   withPermissionLevel,
 } from "../lib/run-flags.mjs";
@@ -167,11 +170,74 @@ check("warmRunParams degrades unknown values the same way the flags do", () => {
   assert.deepEqual(warmRunParams("nonsense", "nonsense"), {
     permission_level: "balanced",
     model_strategy: "auto",
+    model_name_overrides: {},
   });
-  assert.deepEqual(warmRunParams("ask_everything", "quality"), {
+  assert.deepEqual(warmRunParams("ask_everything", "quality", { strong: "glm-4.6" }), {
     permission_level: "ask",
     model_strategy: "quality",
+    model_name_overrides: { strong: "glm-4.6" },
   });
+});
+
+check("mapModelNames drops what the runtime would drop", () => {
+  assert.deepEqual(mapModelNames({ strong: "glm-4.6" }), { strong: "glm-4.6" });
+  assert.deepEqual(mapModelNames({ STRONG: "  glm-4.6  " }), { strong: "glm-4.6" });
+  assert.deepEqual(mapModelNames({ bogus: "x" }), {}); // unknown tier
+  assert.deepEqual(mapModelNames({ strong: "" }), {}); // blank is "no pin", not a model named ""
+  assert.deepEqual(mapModelNames({ strong: null }), {});
+  assert.deepEqual(mapModelNames("nope"), {});
+  assert.deepEqual(mapModelNames(null), {});
+});
+
+// The trap this test exists for: withRunFlag bails out when the command already carries the flag, so
+// looping it per tier would emit ONLY the first pin and silently drop the rest.
+check("every pinned tier reaches the command, not just the first", () => {
+  const cmd = withModelNames(["python", "-m", "asteria_runtime", "run", "--root", "ws", "goal"], {
+    strong: "glm-4.6",
+    medium: "MiniMax-M2",
+    cheap: "glm-4.5-air",
+  });
+  const pairs = cmd.filter((_, i) => cmd[i - 1] === "--model-name");
+  assert.deepEqual(pairs, ["cheap=glm-4.5-air", "medium=MiniMax-M2", "strong=glm-4.6"]);
+  assert.equal(cmd[cmd.length - 1], "goal", "the goal must stay last");
+});
+
+check("withModelNames leaves a command alone when there is nothing to pin", () => {
+  const cmd = ["python", "-m", "asteria_runtime", "run", "--root", "ws", "goal"];
+  assert.deepEqual(withModelNames(cmd, {}), cmd);
+  assert.deepEqual(withModelNames(cmd, { bogus: "x" }), cmd); // normalizes to nothing
+  assert.deepEqual(withModelNames(cmd, null), cmd);
+  const review = ["python", "-m", "asteria_runtime", "review", "--root", "ws"];
+  assert.deepEqual(withModelNames(review, { strong: "x" }), review); // no run token
+});
+
+// Same invariant as the tier/strategy pair above, extended to the third choice: the cold path (N
+// flags) and the warm path (a JSON map) must agree tier by tier. This one has more room to drift —
+// one is a flat token list, the other a map — so it is checked structurally, not by string compare.
+check("cold flags and warm map agree tier-by-tier on every pin shape", () => {
+  const shapes = [
+    {},
+    { strong: "glm-4.6" },
+    { strong: "glm-4.6", cheap: "glm-4.5-air" },
+    { strong: "a", medium: "b", cheap: "c" },
+    { strong: "  spaced  ", bogus: "dropped", medium: "" },
+    null,
+  ];
+  for (const shape of shapes) {
+    const base = ["python", "-m", "asteria_runtime", "run", "--root", "ws", "goal"];
+    const cold = withModelNames(base, shape);
+    const warm = warmRunParams("auto", "auto", shape).model_name_overrides;
+    const fromCold = {};
+    cold.forEach((token, index) => {
+      if (cold[index - 1] !== "--model-name") return;
+      const [tier, ...rest] = token.split("=");
+      fromCold[tier] = rest.join("=");
+    });
+    assert.deepEqual(fromCold, warm, `cold/warm pins differ for ${JSON.stringify(shape)}`);
+    for (const tier of Object.keys(warm)) {
+      assert.ok(MODEL_TIERS.includes(tier), `warm map leaked a non-tier key: ${tier}`);
+    }
+  }
 });
 
 console.log(`\n${passed} checks passed`);

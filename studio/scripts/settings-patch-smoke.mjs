@@ -52,6 +52,40 @@ try {
   expect(both.ok && both.settings.permissionMode === "ask_everything", "combined save lost the tier");
   expect(both.settings.modelStrategy === "quality", "combined save lost the strategy");
 
+  // G8-b: per-tier model pins are the third field, and the one with structure.
+  expect(
+    JSON.stringify(both.settings.modelNames) === "{}",
+    `fresh workspace must have no pins, got ${JSON.stringify(both.settings.modelNames)}`,
+  );
+  const pinned = await post({ modelNames: { strong: "glm-4.6", cheap: "glm-4.5-air" } });
+  expect(pinned.ok, `modelNames save failed: ${JSON.stringify(pinned)}`);
+  expect(
+    pinned.settings.modelNames.strong === "glm-4.6" &&
+      pinned.settings.modelNames.cheap === "glm-4.5-air",
+    `pins did not save: ${JSON.stringify(pinned.settings.modelNames)}`,
+  );
+  expect(pinned.settings.permissionMode === "ask_everything", "pin save clobbered the tier");
+  expect(pinned.settings.modelStrategy === "quality", "pin save clobbered the strategy");
+
+  // A cleared box means "stop pinning this tier" — storing "" would read as a model named "".
+  const cleared = await post({ modelNames: { strong: "", cheap: "glm-4.5-air" } });
+  expect(
+    !("strong" in cleared.settings.modelNames) && cleared.settings.modelNames.cheap,
+    `blank must drop the key, got ${JSON.stringify(cleared.settings.modelNames)}`,
+  );
+
+  const badTierPin = await post({ modelNames: { bogus: "x" } });
+  expect(badTierPin.ok === false, "an unknown tier must be rejected, not coerced");
+  const badShape = await post({ modelNames: ["strong"] });
+  expect(badShape.ok === false, "modelNames must be an object, not an array");
+  const badName = await post({ modelNames: { strong: 42 } });
+  expect(badName.ok === false, "a non-string model name must be rejected");
+  const stillPinned = await get();
+  expect(
+    JSON.stringify(stillPinned.settings.modelNames) === JSON.stringify({ cheap: "glm-4.5-air" }),
+    `rejected pin saves mutated state: ${JSON.stringify(stillPinned.settings.modelNames)}`,
+  );
+
   // Rejected at the door, never coerced — a silently-corrected save would show a value nobody picked.
   const badStrategy = await post({ modelStrategy: "gpt-9" });
   expect(badStrategy.ok === false, "an unknown strategy must be rejected, not coerced");

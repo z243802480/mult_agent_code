@@ -105,6 +105,7 @@ export type SettingsPayload = {
   workMode: string;
   permissionMode: string;
   modelStrategy: string;
+  modelNames?: Record<string, string>;
   shell: string;
   streamMode: string;
   workspace: string;

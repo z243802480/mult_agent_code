@@ -1000,6 +1000,33 @@
   white-space: nowrap;
 }
 
+/* Per-tier model pin. Sits between the tier's identity and its readiness, so it flexes while both
+   of those keep their intrinsic width. Mirrors .sessionSearchInput's tokens rather than inventing
+   a second input look. */
+.settingsRowInput {
+  background: transparent;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.14));
+  border-radius: var(--radius-sm);
+  color: inherit;
+  flex: 1 1 auto;
+  font-size: 12px;
+  min-width: 0;
+  padding: 4px 8px;
+}
+
+.settingsRowInput::placeholder {
+  color: var(--text-muted);
+}
+
+.settingsRowInput:focus {
+  outline: none;
+  border-color: var(--text-muted);
+}
+
+.settingsRowInput:disabled {
+  opacity: 0.6;
+}
+
 .settingsRowMeta {
   color: var(--text-secondary);
   font-size: 12px;

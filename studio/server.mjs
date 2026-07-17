@@ -36,7 +36,12 @@ import { createJobRegistry } from "./lib/jobs.mjs";
 import { createRunDetailReader } from "./lib/run-detail-reader.mjs";
 import { createChatAnswer } from "./lib/chat-answer.mjs";
 import { createChatRoutes } from "./lib/chat-routes.mjs";
-import { MODEL_STRATEGY_IDS, mapModelStrategy } from "./lib/run-flags.mjs";
+import {
+  MODEL_STRATEGY_IDS,
+  MODEL_TIERS,
+  mapModelNames,
+  mapModelStrategy,
+} from "./lib/run-flags.mjs";
 import { latestMainFinalEvent } from "./lib/run-evidence-transforms.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -513,6 +518,31 @@ async function handleApi(request, response, url) {
         return;
       }
       patch.modelStrategy = strategy;
+    }
+    if (body?.modelNames !== undefined) {
+      const names = body.modelNames;
+      if (!names || typeof names !== "object" || Array.isArray(names)) {
+        sendJson(response, 400, { ok: false, error: "modelNames must be an object" });
+        return;
+      }
+      const cleaned = {};
+      for (const [tier, name] of Object.entries(names)) {
+        if (!MODEL_TIERS.includes(String(tier))) {
+          sendJson(response, 400, { ok: false, error: `invalid model tier: ${tier}` });
+          return;
+        }
+        if (name !== null && typeof name !== "string") {
+          sendJson(response, 400, { ok: false, error: `model name for ${tier} must be a string` });
+          return;
+        }
+        // A blank box means "stop pinning this tier", so it drops the key rather than storing "" —
+        // an empty string here would read downstream as a model literally named "".
+        const trimmed = String(name ?? "").trim();
+        if (trimmed) cleaned[String(tier)] = trimmed;
+      }
+      // Whole-object write, not a per-tier merge: the panel always sends every tier it knows about,
+      // so a merge would make an un-pinned tier impossible to clear.
+      patch.modelNames = cleaned;
     }
     if (!Object.keys(patch).length) {
       sendJson(response, 400, { ok: false, error: "no writable setting in request" });
@@ -1880,9 +1910,10 @@ async function buildSettingsPayload() {
   return {
     workMode: "engineering",
     permissionMode,
-    // Degraded through the same function the run path uses, so the panel can never show a strategy
+    // Degraded through the same functions the run path uses, so the panel can never show a choice
     // the runtime would not actually receive.
     modelStrategy: mapModelStrategy(persisted.modelStrategy),
+    modelNames: mapModelNames(persisted.modelNames),
     shell: "PowerShell",
     streamMode: "runtime-model-events",
     workspace,
