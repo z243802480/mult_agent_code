@@ -14,21 +14,37 @@ import { promises as fs } from "node:fs";
 
 /** Parse session.json text; on failure, salvage the longest valid object prefix (trailing-garbage
  *  corruption). Returns null when nothing parseable remains. */
+/**
+ * Whether a parsed value is actually a session rather than merely valid JSON.
+ *
+ * The salvage below accepts the longest prefix that PARSES, which is not the same as the longest
+ * prefix that is a session: a mangled file could yield an array, a number, or an object whose id
+ * was never written. Callers all treat null as "unreadable" and rebuild from the session id they
+ * already hold, so handing them a non-session would be strictly worse than handing them nothing.
+ */
+function isSessionShape(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return typeof value.session_id === "string" && value.session_id.length > 0;
+}
+
 export function parseSessionText(raw) {
   const text = String(raw ?? "").trim();
   if (!text) return null;
   try {
-    return JSON.parse(text);
+    const parsed = JSON.parse(text);
+    if (isSessionShape(parsed)) return parsed;
   } catch {
     // fall through to salvage
   }
   let end = text.lastIndexOf("}");
   while (end > 0) {
     try {
-      return JSON.parse(text.slice(0, end + 1));
+      const parsed = JSON.parse(text.slice(0, end + 1));
+      if (isSessionShape(parsed)) return parsed;
     } catch {
-      end = text.lastIndexOf("}", end - 1);
+      // keep walking back
     }
+    end = text.lastIndexOf("}", end - 1);
   }
   return null;
 }

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { planSessionSelection } from "./session/sessionSelection";
 import { api } from "./api";
 import { Banner } from "./components/Shared";
 import { Sidebar } from "./components/Sidebar";
@@ -23,7 +24,7 @@ import { ToastViewport } from "./components/ToastViewport";
 import { WorkspaceSwitcher } from "./components/WorkspaceSwitcher";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { toast } from "./components/toast";
-import { isPermissionTierId, legacyPermission, DEFAULT_PERMISSION_TIER } from "./permissionTiers";
+import { isPermissionTierId, legacyPermission, resolvePermissionTier } from "./permissionTiers";
 import { useTheme } from "./hooks/useTheme";
 import { DiffCommentTray } from "./components/DiffCommentTray";
 import { setDiffCommentSession } from "./session/diffComments";
@@ -142,8 +143,7 @@ export function App() {
         toast.error("没有可评审的文本改动。");
         return;
       }
-      const candidate = bootstrap.settings?.permissionMode;
-      const tier = isPermissionTierId(candidate) ? candidate : DEFAULT_PERMISSION_TIER;
+      const tier = resolvePermissionTier(bootstrap.settings?.permissionMode);
       await sessionEvents.sendGoal(
         buildAiReviewPrompt(diffs, { truncated }),
         "chat",
@@ -187,22 +187,12 @@ export function App() {
 
   const selectSession = useCallback(
     (session: StudioSession) => {
-      const sameSession = session.session_id === bootstrap.activeSession?.session_id;
+      // Both halves of this rule are production regressions; planSessionSelection documents why.
+      const plan = planSessionSelection(bootstrap.activeSession?.session_id, session.session_id);
       bootstrap.setActiveSession(session);
-      // Re-selecting the ALREADY-ACTIVE session must not reset the transcript. clearEvents() here
-      // wiped it, but the session id did not change, so the subscription effect never re-ran — and
-      // the live subscription's dedup set had already marked every event as seen, so nothing ever
-      // refilled the state. Result: thread stuck on the empty state until the user switched away
-      // and back (hit every time after a reload, because bootstrap auto-selects the latest session
-      // and the user's first click usually IS that session).
-      if (!sameSession) {
-        runEvidence.clearSelection();
-        sessionEvents.clearEvents();
-      }
-      // Always restore the saved view. Bootstrap auto-selects a session without coming through
-      // here, so this call is the only thing that reads ui_state back — early-returning past it
-      // left the user's saved diff layout/stage/scope reachable only by switching away and back.
-      review.applySessionUiState(session);
+      if (plan.clearEvidenceSelection) runEvidence.clearSelection();
+      if (plan.clearEvents) sessionEvents.clearEvents();
+      if (plan.applyUiState) review.applySessionUiState(session);
     },
     [bootstrap, runEvidence, sessionEvents, review],
   );
@@ -532,8 +522,7 @@ export function App() {
           midRunSteer={midRunSteer}
           onSteer={sessionEvents.steerRun}
           onSend={(message) => {
-            const candidate = bootstrap.settings?.permissionMode;
-            const tier = isPermissionTierId(candidate) ? candidate : DEFAULT_PERMISSION_TIER;
+            const tier = resolvePermissionTier(bootstrap.settings?.permissionMode);
             return sessionEvents.sendGoal(message, "auto", legacyPermission(tier), tier);
           }}
         />

@@ -158,6 +158,13 @@ id_rsa
 id_ed25519
 ```
 
+`.git/` 的**唯一例外（2026-07-17 显式 sanction）**：G7 影子快照（`studio/lib/git.mjs`）经
+`GIT_INDEX_FILE` 指向临时索引调 `git` 写对象库，并在 `refs/asteria/snapshots/` 下打 ref。
+这**不是**该条禁令要防的事——禁令防的是改写用户的版本历史或偷读凭证。快照**只增不改**：
+用户的暂存区、HEAD、分支、既有 ref 零扰动，`.asteria/` 双向排除，且全程经 `git` 自己的命令
+（不手写 `.git/` 里的文件）。**此例外仅限该文件的三个快照函数**；其余任何对 `.git/` 的读写
+仍然禁止，尤其禁止手动改 HEAD/分支/索引或读 `.git/config` 里的凭证。
+
 Agents must not:
 
 - Read secrets without explicit approval.
