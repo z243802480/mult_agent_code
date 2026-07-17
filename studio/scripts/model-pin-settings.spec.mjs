@@ -41,7 +41,13 @@ test.beforeEach(async () => {
 test.afterEach(async () => {
   server?.kill("SIGTERM");
   await new Promise((resolve) => setTimeout(resolve, 200));
-  if (workspace) await fs.rm(workspace, { recursive: true, force: true });
+  // Windows releases handles lazily, and this spec's workspace is touched by more processes than
+  // the others' (the server's `doctor` subprocess runs on every overview fetch). Without the
+  // retries the rmdir hits EBUSY and fails the test in teardown — a red that says nothing about
+  // the product. maxRetries/retryDelay exist for exactly this. See [[studio-smokes-not-in-ci]].
+  if (workspace) {
+    await fs.rm(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 });
+  }
 });
 
 async function openModelSettings(page) {
