@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mapPermissionLevel, withPermissionLevel } from "../lib/permission-level.mjs";
+import { mapPermissionLevel, warmRunParams, withPermissionLevel } from "../lib/permission-level.mjs";
 
 let passed = 0;
 function check(name, fn) {
@@ -86,6 +86,30 @@ check("no level -> command unchanged", () => {
 check("review command (no run token) unchanged", () => {
   const cmd = ["python", "-m", "asteria_runtime", "review", "--root", "ws"];
   assert.deepEqual(withPermissionLevel(cmd, "balanced"), cmd);
+});
+
+// The whole point of warmRunParams: the cold path (a CLI flag) and the warm path (a JSON field) must
+// carry the SAME tier. If they ever drift, the failure is silent and it always errs toward MORE
+// autonomy (studio_worker defaults to "balanced"), so no user would see it happen.
+check("warm request and cold command agree on the tier, for every mode", () => {
+  for (const mode of ["ask_everything", "reviewed_auto", "auto", "nonsense", ""]) {
+    const cold = withPermissionLevel(
+      ["python", "-m", "asteria_runtime", "run", "--root", "ws", "goal"],
+      mapPermissionLevel(mode),
+    );
+    const flagIndex = cold.indexOf("--permission-level");
+    assert.notEqual(flagIndex, -1, `cold command carries no tier for ${mode}`);
+    assert.equal(
+      cold[flagIndex + 1],
+      warmRunParams(mode).permission_level,
+      `cold/warm disagree for ${mode}`,
+    );
+  }
+});
+
+check("warmRunParams degrades an unknown tier the same way the flag does", () => {
+  assert.deepEqual(warmRunParams("nonsense"), { permission_level: "balanced" });
+  assert.deepEqual(warmRunParams("ask_everything"), { permission_level: "ask" });
 });
 
 console.log(`\n${passed} checks passed`);

@@ -19,7 +19,7 @@ import { existsSync, statSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { intentAuditFor, routeUserIntent } from "../intent-router.mjs";
 import { buildRouteMessageWithChatContext } from "./chat-route-context.mjs";
-import { mapPermissionLevel, withPermissionLevel } from "./permission-level.mjs";
+import { mapPermissionLevel, warmRunParams, withPermissionLevel } from "./permission-level.mjs";
 import { redact, redactText } from "./text-utils.mjs";
 import { readJsonlTail } from "./run-io.mjs";
 import { sanitizeAttachmentPaths } from "./attachments.mjs";
@@ -217,15 +217,21 @@ export function createChatRoutes({
 
     // Thread the user's chosen tier through to the runtime (it otherwise runs at the CLI default).
     // The same command is used for both the confirm-card (pending) and direct-start paths below.
-    const command = withPermissionLevel(
-      executionRoute?.command || runtimeCommand(mode, goal),
-      mapPermissionLevel(permissionMode),
-    );
+    const baseCommand = executionRoute?.command || runtimeCommand(mode, goal);
+    const command = withPermissionLevel(baseCommand, mapPermissionLevel(permissionMode));
+    // The warm worker doesn't run a command — it rebuilds one from JSON fields, and the only shape it
+    // can rebuild is runtimeCommand(mode, goal). So it may stand in for this run exactly when the
+    // command IS that. Comparing the command itself (rather than trusting a proxy like "did an
+    // orchestration route build it?" — most routes hand back the plain run command anyway) means any
+    // future flag added to a run cold-spawns instead of being silently dropped by the worker.
+    const warmParams = sameCommand(baseCommand, runtimeCommand(mode, goal))
+      ? warmRunParams(permissionMode)
+      : null;
 
     if (mode !== "plan" && permission !== "allow") {
       const preview = permissionPreviewForMode(mode);
       const pendingJobId = `pending-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-      pendingJobs.set(pendingJobId, { sessionId: activeSessionId, mode, goal, command });
+      pendingJobs.set(pendingJobId, { sessionId: activeSessionId, mode, goal, command, warmParams });
       await appendEvent(activeSessionId, {
         type: "permission_request",
         status: "waiting_user",
@@ -245,7 +251,7 @@ export function createChatRoutes({
       };
     }
 
-    startRuntimeJob(activeSessionId, mode, goal, command);
+    startRuntimeJob(activeSessionId, mode, goal, command, { warmParams });
     return {
       ok: true,
       session: { ...session, session_id: activeSessionId },
@@ -577,6 +583,10 @@ export function createChatRoutes({
     };
   }
 
+  function sameCommand(a, b) {
+    return Array.isArray(a) && Array.isArray(b) && JSON.stringify(a) === JSON.stringify(b);
+  }
+
   function orchestrationCommandFor(studioMode, goal, options = {}) {
     // A new user message is a new goal — plan it fresh over the current workspace, like Claude Code /
     // Cursor handle every turn. The old "continue-session" shortcut skipped GoalSpec/Plan and reused the
@@ -815,7 +825,9 @@ export function createChatRoutes({
         display_level: "main",
         resolved_job_id: jobId,
       });
-      startRuntimeJob(sessionId, pending.mode, pending.goal, pending.command);
+      startRuntimeJob(sessionId, pending.mode, pending.goal, pending.command, {
+        warmParams: pending.warmParams,
+      });
       return { ok: true, started: true };
     }
     if (action === "deny") {

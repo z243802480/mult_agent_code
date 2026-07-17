@@ -1032,7 +1032,7 @@ function handleWarmStdout(w, text) {
 
 // Returns true if the warm worker accepted the run (caller then skips the cold spawn); false on any
 // unavailability so the caller falls back to a cold subprocess.
-function dispatchWarmRun({ job, jobId, sessionId, mode, goal, command, stopTail }) {
+function dispatchWarmRun({ job, jobId, sessionId, mode, goal, command, stopTail, warmParams }) {
   const w = ensureWarmWorker();
   if (!w || !w.ready || w.busy || !w.child || !w.child.stdin || !w.child.stdin.writable)
     return false;
@@ -1047,6 +1047,10 @@ function dispatchWarmRun({ job, jobId, sessionId, mode, goal, command, stopTail 
     event_sink: sessionPath(sessionId, "events.jsonl"),
     session_id: sessionId,
     phase: phaseForMode(mode),
+    // The cold path carries the tier as `--permission-level`; the worker reads JSON, so it must be
+    // spelled out here or studio_worker silently falls back to "balanced" — an autonomy UPGRADE for
+    // anyone who picked "ask first". The caller owns the value (see warmRunParams).
+    ...warmParams,
   };
   try {
     w.child.stdin.write(`${JSON.stringify(request)}\n`);
@@ -1094,8 +1098,26 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options 
 
   // ADR-0029 ②: a plain run/goal can go to the warm worker (imports already paid). A custom command
   // (continue/resume/follow-up) or any worker unavailability falls through to the cold spawn below.
-  if (WARM_WORKER_ENABLED && !commandOverride && (mode === "run" || mode === "goal")) {
-    if (dispatchWarmRun({ job, jobId, sessionId, mode, goal, command, stopTail })) return;
+  //
+  // Eligibility is the CALLER's explicit claim, not `!commandOverride` as it was until 1.2.103. Every
+  // caller passes a command (has done since the chat routes moved to lib/ in ae3e358, a day BEFORE
+  // the warm worker landed), so that guard was never once false and the worker — enabled, pre-warmed,
+  // holding a process — handled zero runs from birth. Only a caller knows whether its command is a
+  // plain run the worker can reproduce from `warmParams`, or a custom one it cannot.
+  if (WARM_WORKER_ENABLED && options.warmParams && (mode === "run" || mode === "goal")) {
+    if (
+      dispatchWarmRun({
+        job,
+        jobId,
+        sessionId,
+        mode,
+        goal,
+        command,
+        stopTail,
+        warmParams: options.warmParams,
+      })
+    )
+      return;
   }
 
   const child = spawn(command[0], command.slice(1), {

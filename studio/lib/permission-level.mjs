@@ -11,6 +11,18 @@ export function mapPermissionLevel(mode) {
   return "balanced";
 }
 
+// The warm worker (ADR-0029 ②) takes a JSON request, not a CLI command, so it cannot read the
+// `--permission-level` flag `withPermissionLevel` splices in. It needs the same tier as DATA.
+//
+// Both paths derive from `mapPermissionLevel(mode)` — the same pure function on the same input — so
+// they cannot disagree. Do NOT parse the level back out of the built command instead: that is a
+// second source of truth, and dropping it is not a loud failure. It is a silent autonomy upgrade
+// (studio_worker defaults to "balanced", so an "ask first" run would quietly get auto-repair,
+// auto-replan and auto-accept). See [[permission-mode-two-sources-of-truth]].
+export function warmRunParams(mode) {
+  return { permission_level: mapPermissionLevel(mode) };
+}
+
 export function withPermissionLevel(command, level) {
   if (!level || !Array.isArray(command)) return command;
   if (command.includes("--permission-level")) return command;
