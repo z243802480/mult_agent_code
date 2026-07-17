@@ -1527,6 +1527,63 @@
   margin-top: 4px;
 }
 
+/* G6 刀二 — editing the plan body. Reuses .planCommentEditor's look (same box, same textarea) so
+   the two feedback surfaces read as one affordance; only the indent and height differ, because this
+   one edits the whole list rather than hanging off a single step. */
+.planChecklistActions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin: 2px 0 4px 20px;
+}
+
+.planEditButton {
+  align-items: center;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 4px;
+  padding: 2px 4px;
+}
+
+.planEditButton:hover {
+  color: var(--text-primary);
+}
+
+.planRevisionPending {
+  font-size: 11px;
+}
+
+.planRevisionEditor {
+  background: var(--surface-2);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  margin: 3px 0 6px 20px;
+  padding: 6px;
+}
+
+.planRevisionEditor textarea {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 12px;
+  line-height: 1.6;
+  outline: none;
+  resize: vertical;
+  width: 100%;
+}
+
+.planRevisionEditorActions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
 .planItem.done {
   color: var(--text-muted);
 }

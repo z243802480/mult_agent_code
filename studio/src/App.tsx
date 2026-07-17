@@ -29,6 +29,7 @@ import { useTheme } from "./hooks/useTheme";
 import { DiffCommentTray } from "./components/DiffCommentTray";
 import { setDiffCommentSession } from "./session/diffComments";
 import { setPlanCommentSession } from "./session/planComments";
+import { setPlanRevisionSession } from "./session/planRevision";
 import { buildAiReviewPrompt } from "./session/aiReview";
 import type { StudioSession } from "./types";
 
@@ -105,6 +106,7 @@ export function App() {
   useEffect(() => {
     setDiffCommentSession(bootstrap.activeSession?.session_id ?? "");
     setPlanCommentSession(bootstrap.activeSession?.session_id ?? "");
+    setPlanRevisionSession(bootstrap.activeSession?.session_id ?? "");
   }, [bootstrap.activeSession?.session_id]);
 
   // G5 AI 自审: assemble the current workspace diff into a read-only chat-mode review request.

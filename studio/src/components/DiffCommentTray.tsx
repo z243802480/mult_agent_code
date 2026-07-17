@@ -12,6 +12,13 @@ import {
   removePlanComment,
   usePlanComments,
 } from "../session/planComments";
+import {
+  clearPlanRevision,
+  countChangedLines,
+  formatPlanRevisionMessage,
+  usePlanRevision,
+  type PlanRevision,
+} from "../session/planRevision";
 
 /**
  * Pending feedback tray (G4 diff 行评 + G6 计划步骤意见) — GitHub "pending review" semantics:
@@ -35,22 +42,37 @@ export function pickCommentChannel(
   return midRunSteer && hasSteer ? "steer" : "blocked";
 }
 
-/** The one batched message: each pending kind contributes its own section. */
+/**
+ * The one batched message: each pending kind contributes its own section. The rewritten plan goes
+ * LAST — the per-step comments are constraints on the plan being replaced, so the model should read
+ * them before the plan they apply to.
+ */
 export function buildFeedbackMessage(
   diffComments: Parameters<typeof formatCommentsMessage>[0],
   planComments: Parameters<typeof formatPlanCommentsMessage>[0],
+  planRevision?: PlanRevision | null,
 ): string {
   return [
     diffComments.length ? formatCommentsMessage(diffComments) : null,
     planComments.length ? formatPlanCommentsMessage(planComments) : null,
+    planRevision ? formatPlanRevisionMessage(planRevision) : null,
   ]
     .filter(Boolean)
     .join("\n\n");
 }
 
-function trayLabel(diffCount: number, planCount: number): string {
-  if (diffCount && planCount)
-    return `${diffCount + planCount} 条意见待提交（diff ${diffCount} · 计划 ${planCount}）`;
+// The rewritten plan joins the existing breakdown as one more part; the mixed-batch wording is
+// deliberately left byte-identical to 刀一's, because changing copy the user already reads is not
+// this knife's job.
+function trayLabel(diffCount: number, planCount: number, revisionCount: number): string {
+  const parts: string[] = [];
+  if (diffCount) parts.push(`diff ${diffCount}`);
+  if (planCount) parts.push(`计划 ${planCount}`);
+  if (revisionCount) parts.push("改过的计划");
+  if (parts.length > 1) {
+    return `${diffCount + planCount + revisionCount} 条意见待提交（${parts.join(" · ")}）`;
+  }
+  if (revisionCount) return "改过的计划待提交";
   if (planCount) return `${planCount} 条计划意见待提交`;
   return `${diffCount} 条 diff 行评论待提交`;
 }
@@ -70,9 +92,10 @@ export function DiffCommentTray({
 }) {
   const diffComments = useDiffComments();
   const planComments = usePlanComments();
+  const planRevision = usePlanRevision();
   const [open, setOpen] = useState(false);
   const [sending, setSending] = useState(false);
-  if (!diffComments.length && !planComments.length) return null;
+  if (!diffComments.length && !planComments.length && !planRevision) return null;
 
   const channel = pickCommentChannel(isRunning, midRunSteer, Boolean(onSteer));
   const blocked = channel === "blocked";
@@ -80,10 +103,11 @@ export function DiffCommentTray({
   function clearAll() {
     clearDiffComments();
     clearPlanComments();
+    clearPlanRevision();
   }
 
   async function submit() {
-    const message = buildFeedbackMessage(diffComments, planComments);
+    const message = buildFeedbackMessage(diffComments, planComments, planRevision);
     setSending(true);
     try {
       const result =
@@ -108,6 +132,16 @@ export function DiffCommentTray({
       text: item.text,
       remove: () => removePlanComment(item.id),
     })),
+    ...(planRevision
+      ? [
+          {
+            id: "plan-revision",
+            anchor: `改过的计划（${countChangedLines(planRevision)} 处不同）`,
+            text: planRevision.text,
+            remove: clearPlanRevision,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -120,7 +154,7 @@ export function DiffCommentTray({
       >
         {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
         <MessageSquare size={13} />
-        <span>{trayLabel(diffComments.length, planComments.length)}</span>
+        <span>{trayLabel(diffComments.length, planComments.length, planRevision ? 1 : 0)}</span>
       </button>
       {open && (
         <ul className="diffCommentTrayList">

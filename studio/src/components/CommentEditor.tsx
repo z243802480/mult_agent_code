@@ -14,6 +14,8 @@ export function CommentEditor({
   placeholder,
   submitLabel,
   className,
+  initialValue = "",
+  rows = 2,
   onSave,
   onCancel,
 }: {
@@ -21,10 +23,13 @@ export function CommentEditor({
   submitLabel: string;
   /** Surface-specific wrapper class; actions get `${className}Actions`. */
   className: string;
+  /** Seeds the draft. A comment starts blank; an EDIT starts as the thing being edited (G6 刀二). */
+  initialValue?: string;
+  rows?: number;
   onSave: (text: string) => void;
   onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(initialValue);
   const save = () => {
     if (draft.trim()) onSave(draft);
   };
@@ -34,7 +39,7 @@ export function CommentEditor({
         autoFocus
         value={draft}
         placeholder={placeholder}
-        rows={2}
+        rows={rows}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
