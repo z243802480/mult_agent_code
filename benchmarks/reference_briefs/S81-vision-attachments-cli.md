@@ -92,16 +92,17 @@ Reference-first brief。授权：2026-07-17 用户"那就把 G17 做了吧，先
 
 ## 已知边界：视觉档字段的部分继承（1.2.100 记录）
 
- 现在要求 **PROVIDER + NAME 都显式**（provider 一个字段证明不了「这是个
-视觉档」——只配 provider 时 NAME 会继承全局文本模型）。但 **BASE_URL / API_KEY 仍会经
- 继承全局值**：只配 provider+name、不配 BASE_URL 时，全局
-（coding 端点）会**压过**  传入的视觉默认 
-（ 的  排在全局回落之后）。
+`vision_route_configured` 现在要求 **PROVIDER + NAME 都显式**——provider 一个字段证明不了
+「这是个视觉档」：只配 provider 时 NAME 会继承全局文本模型，探测仍会说"配好了"。
 
-**为什么接受这个洞**：失败是响亮的（请求打到文本端点 → HTTP 400/1210 →  的
-try/except 转成诚实拒答并列出四个变量），不是静默错答。彻底堵死要么改 （另一会话在改
-该文件），要么给视觉档单独构造 settings 绕开 provider dispatch——都超出本刀。**跟着拒答提示
-配齐四项即可。**
+但 **BASE_URL / API_KEY 仍会经 `openai_compatible._env` 继承全局值**：只配 provider+name、
+不配 BASE_URL 时，全局 `AGENT_MODEL_BASE_URL`（coding 端点）会**压过** `from_env` 传入的
+视觉默认 `https://open.bigmodel.cn/api/paas/v4`——因为 `_env` 的 `default` 排在全局回落之后。
+
+**为什么接受这个洞**：失败是**响亮的**——请求打到文本端点 → HTTP 400/1210 → `chat_command`
+的 try/except 转成诚实拒答并列出四个变量，不是静默错答。彻底堵死要么改 `_env`（`openai_compatible.py`
+是另一会话在改的文件），要么给视觉档单独构造 settings 绕开 provider dispatch——都超出本刀。
+**跟着拒答提示把四项配齐即可。**
 
 ## 未验证 / 风险
 
