@@ -38,7 +38,9 @@ P2：G15 回放导出（1.2.90）、G14 记忆只读（1.2.91）、**G17 图片�
   相容的形态="用户意见喂给模型重出计划"=**刀一（已落地）**；刀二=harness 直改计划=与该形态张力。
 - G8 模型选择器——**run_config 通道已有**（非"缺字段"）。真缺口在下一层：`policy["model_routing"]`
   零生产消费者。机制与两条可选路径见路线 §G8。
-- G12/G13/G16/G19 待真实证据或 ADR；**OS 沙箱 = 唯一剩余 P0**；主观视觉手感需用户目视。
+- G12/G13/G16/G19 均 P2，**四者卡点各不相同**（G12 runtime 无 scheduler / G13 candidate-merge 底座在但无
+  N 路语义 / G16 仅 localhost / G19 runtime 有隔离但 Studio 无表达）——逐条见路线表，别打包成一句。
+- **OS 沙箱 = 唯一剩余 P0**；主观视觉手感需用户目视。
 
 当前 Brief / 审计签字：docs/zh/reports/S77-commercial-readiness-audit-20260704.md（实现≈71%、市场化 37→利基 43-45）。⚠️ **该报告的 P1④「自主环未闭合」/ P1⑥「DebugAgent 占位」已过期**——三环+软保险丝第四环已闭合且随权限档默认开（changelog 1.2.31/1.2.33/1.2.38），`agents/debug_agent.py` 已删（RA7b）。读该报告须对照 changelog。
 执行顺序：Part B 前端拉齐剩余（G6刀二/G8 待 DecisionPoint·其余按证据）→ P0 沙箱（唯一剩余 P0·按内部发动机定位已降级）→ 利基 Beta
