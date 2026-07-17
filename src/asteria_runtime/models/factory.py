@@ -7,7 +7,11 @@ from pathlib import Path
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.models.base import ModelClient
 from asteria_runtime.models.fake import FakeModelClient
-from asteria_runtime.models.local_route_config import configured_route_tiers, local_route_value
+from asteria_runtime.models.local_route_config import (
+    any_local_route_value,
+    configured_route_tiers,
+    local_route_value,
+)
 from asteria_runtime.models.local import local_provider_names, local_settings_from_env
 from asteria_runtime.models.minimax import MiniMaxOpenAICompatibleClient, MiniMaxSettings, ModelProviderError
 from asteria_runtime.models.model_call_logger import ModelCallLogger
@@ -81,12 +85,31 @@ def create_recap_client(
 VISION_ENV_PREFIX = "AGENT_MODEL_VISION"
 
 
+def _vision_provider() -> str:
+    """The EXPLICITLY configured vision provider, or "" — never inherited from the global route.
+
+    Deliberately does not use :func:`_provider_from_env`. That helper (via ``local_route_value``)
+    falls back to ``AGENT_MODEL_PROVIDER`` when a per-prefix value is missing, which is right for
+    tiers — a tier with no provider of its own genuinely should ride the global route — but wrong
+    for a capability probe. Inheriting there means a user who never configured vision is reported
+    as having a vision route, the honest refusal never fires, and the image is sent to the global
+    text route, which is exactly the endpoint that answers HTTP 400 code 1210. "Not configured"
+    must mean not configured.
+    """
+    provider = os.getenv(f"{VISION_ENV_PREFIX}_PROVIDER") or any_local_route_value(
+        (f"{VISION_ENV_PREFIX}_PROVIDER",)
+    )
+    return provider.strip().lower()
+
+
 def vision_route_configured() -> bool:
     """Whether a vision route exists, without building a client (no run_dir, no side effects).
 
-    Lets callers refuse an image question up front instead of doing context work first.
+    Lets callers refuse an image question up front instead of doing context work first. Shares
+    :func:`_vision_provider` with :func:`create_vision_client` so the probe and the build can never
+    disagree about whether a route exists.
     """
-    return bool(_provider_from_env(VISION_ENV_PREFIX))
+    return bool(_vision_provider())
 
 
 def create_vision_client(
@@ -107,7 +130,7 @@ def create_vision_client(
     text-only model would either hard-fail mid-run or, worse, drop the image and let the model
     answer as if it had seen one. Callers must degrade honestly instead.
     """
-    provider = _provider_from_env(VISION_ENV_PREFIX)
+    provider = _vision_provider()
     if not provider:
         return None
     logger = ModelCallLogger(run_dir, validator)

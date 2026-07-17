@@ -106,15 +106,6 @@ class ContextBudgetSnapshot:
         }
 
 
-def estimate_request_context_tokens(messages: Iterable[Any]) -> int:
-    total = 0
-    for message in messages:
-        total += estimate_text_tokens(getattr(message, "role", ""))
-        total += estimate_text_tokens(getattr(message, "content", ""))
-        total += 4
-    return max(1, total)
-
-
 def estimate_request_context(request: Any) -> ContextEstimate:
     """Estimate request context with coarse section attribution.
 

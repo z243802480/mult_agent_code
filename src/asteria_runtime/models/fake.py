@@ -505,4 +505,7 @@ class FakeModelClient:
         )
 
     def _estimate_tokens(self, request: ChatRequest) -> int:
-        return max(1, sum(len(message.content) for message in request.messages) // 4)
+        # len() on multimodal content counts PARTS, not characters — a 1.4MB image would be
+        # charged 2. Reuse the shared estimator so the fake provider's synthetic usage stays in
+        # the same ballpark as a real one instead of silently reporting ~0 for images.
+        return estimate_request_context(request).total_tokens

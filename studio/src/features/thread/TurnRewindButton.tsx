@@ -49,7 +49,10 @@ export function TurnRewindButton({
   onFilesRestored?: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
+  // WHICH action is running, not just whether one is. A shared boolean made every button report
+  // the same progress: starting a conversation rewind flipped the neighbouring file button to
+  // "读取差异…", telling the user a diff was loading when it was not.
+  const [busyAction, setBusyAction] = useState<"rewind" | "preview" | "restore" | null>(null);
   const [preview, setPreview] = useState<SnapshotPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const plan = planTurnRewind(runDetail, isRunning);
@@ -57,16 +60,17 @@ export function TurnRewindButton({
   if (isLast) return null;
   if (viewMode === "focus") return null;
 
+  const busy = busyAction !== null;
   const disabled = plan.disabled || busy;
 
   async function confirmRewind() {
     if (!plan.action || disabled) return;
-    setBusy(true);
+    setBusyAction("rewind");
     try {
       await onRewind(turnIndex, plan.action);
       close();
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   }
 
@@ -78,7 +82,7 @@ export function TurnRewindButton({
 
   async function loadFilePreview() {
     if (!snapshotHash || busy) return;
-    setBusy(true);
+    setBusyAction("preview");
     setPreviewError(null);
     try {
       const result = await api.snapshotDiff(snapshotHash);
@@ -87,13 +91,13 @@ export function TurnRewindButton({
     } catch {
       setPreviewError("无法读取快照差异——请重试。");
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   }
 
   async function confirmRestoreFiles() {
     if (!snapshotHash || busy) return;
-    setBusy(true);
+    setBusyAction("restore");
     try {
       const result = await api.restoreSnapshot(snapshotHash);
       if (result?.ok) {
@@ -108,7 +112,7 @@ export function TurnRewindButton({
     } catch {
       toast.error("回滚失败——请重试。");
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   }
 
@@ -170,7 +174,7 @@ export function TurnRewindButton({
                 onClick={() => void confirmRestoreFiles()}
                 disabled={busy}
               >
-                {busy ? "回滚中…" : "回滚文件"}
+                {busyAction === "restore" ? "回滚中…" : "回滚文件"}
               </button>
             )}
           </div>
@@ -194,7 +198,7 @@ export function TurnRewindButton({
               onClick={() => void loadFilePreview()}
             >
               <History size={12} />
-              {busy ? "读取差异…" : "回滚文件…"}
+              {busyAction === "preview" ? "读取差异…" : "回滚文件…"}
             </button>
             <button
               type="button"
@@ -202,7 +206,7 @@ export function TurnRewindButton({
               onClick={() => void confirmRewind()}
               disabled={busy || plan.disabled}
             >
-              {plan.label}
+              {busyAction === "rewind" ? "执行中…" : plan.label}
             </button>
           </div>
         </div>

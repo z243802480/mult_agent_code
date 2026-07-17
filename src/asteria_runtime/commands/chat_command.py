@@ -210,12 +210,7 @@ class ChatCommand:
                     "This question has image attachments, but no vision model route is "
                     "configured, and the default route is text-only — sending the image there "
                     "would fail outright.",
-                    [
-                        f"Configure a vision route: {VISION_ENV_PREFIX}_PROVIDER, "
-                        f"{VISION_ENV_PREFIX}_NAME, {VISION_ENV_PREFIX}_BASE_URL, "
-                        f"{VISION_ENV_PREFIX}_API_KEY.",
-                        "Ask without `--image` to use the normal text route.",
-                    ],
+                    self._vision_setup_actions(),
                 )
         chat_intent = ChatIntentPolicy().classify(self.question)
         context, context_envelope, context_envelope_path = ChatContextBuilder(
@@ -241,7 +236,15 @@ class ChatCommand:
         prompt_ref = prompt_envelope.context_ref()
         client = self.model_client
         if client is None and self.attachments:
-            client = create_vision_client(run_dir, self.validator)
+            try:
+                client = create_vision_client(run_dir, self.validator)
+            except Exception as exc:  # noqa: BLE001 — provider/settings errors are config errors
+                # Without this the raw provider error reaches the CLI's generic handler, which
+                # advises setting AGENT_MODEL_PROVIDER — the wrong variable for a vision route.
+                return self._attachment_blocked(
+                    f"The vision route is configured but could not be used: {exc}",
+                    self._vision_setup_actions(),
+                )
         if client is None:
             client = create_model_client(run_dir, self.validator)
         role_contract = role_contract_for(
@@ -320,9 +323,12 @@ class ChatCommand:
         """
         parts: list[dict] = []
         for path in self.attachments:
+            # Relative paths resolve against --root, not the shell cwd, so the error has to name
+            # the path actually looked for — "not found: shot.png" is useless when shot.png is
+            # sitting right there in the cwd.
             resolved = path if path.is_absolute() else (self.root / path)
             if not resolved.is_file():
-                raise AttachmentError(f"Attachment not found: {path}")
+                raise AttachmentError(f"Attachment not found: {resolved}")
             suffix = resolved.suffix.lower()
             mime = ATTACHMENT_MIME_TYPES.get(suffix)
             if not mime:
@@ -330,13 +336,15 @@ class ChatCommand:
                     f"Unsupported attachment type '{suffix or resolved.name}'. "
                     f"Supported: {', '.join(sorted(ATTACHMENT_MIME_TYPES))}."
                 )
-            payload = resolved.read_bytes()
-            if len(payload) > MAX_ATTACHMENT_BYTES:
+            # stat() before read_bytes(): checking len(payload) would mean the oversized file is
+            # already resident, so the limit would report the problem it was supposed to prevent.
+            size = resolved.stat().st_size
+            if size > MAX_ATTACHMENT_BYTES:
                 raise AttachmentError(
-                    f"Attachment {path} is {len(payload) // 1024}KB, over the "
+                    f"Attachment {resolved} is {size // 1024}KB, over the "
                     f"{MAX_ATTACHMENT_BYTES // 1024}KB limit."
                 )
-            encoded = base64.b64encode(payload).decode("ascii")
+            encoded = base64.b64encode(resolved.read_bytes()).decode("ascii")
             parts.append(
                 {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}"}}
             )
@@ -344,6 +352,22 @@ class ChatCommand:
             return []
         parts.append({"type": "text", "text": self.question})
         return [ChatMessage(role="user", content=parts)]
+
+    def _vision_setup_actions(self) -> list[str]:
+        """What to actually set. Every vision var is inherited-blind, so name them all.
+
+        TIMEOUT_SECONDS is on the list because it is not optional in practice: reasoning-capable
+        vision models routinely exceed the 90s default, and a user who follows this list literally
+        would otherwise hit a timeout with no hint that the knob exists.
+        """
+        return [
+            f"Configure a vision route: {VISION_ENV_PREFIX}_PROVIDER (e.g. zhipu), "
+            f"{VISION_ENV_PREFIX}_NAME (e.g. glm-4.5v), {VISION_ENV_PREFIX}_BASE_URL, "
+            f"{VISION_ENV_PREFIX}_API_KEY.",
+            f"Vision models can be slow — raise {VISION_ENV_PREFIX}_TIMEOUT_SECONDS "
+            "(default 90) if requests time out.",
+            "Ask without `--image` to use the normal text route.",
+        ]
 
     def _attachment_blocked(self, reason: str, next_actions: list[str]) -> ChatResult:
         """Refuse the turn instead of answering without the image the user asked about."""

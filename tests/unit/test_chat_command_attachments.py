@@ -64,6 +64,32 @@ def test_oversized_attachment_raises(tmp_path: Path) -> None:
         _cmd(tmp_path, [big])._attachment_messages()
 
 
+def test_size_limit_is_checked_before_the_file_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The limit exists to stop an oversized file from being read into memory at all. Checking
+    # len(payload) would mean the file is already resident — the limit would then report the very
+    # problem it is supposed to prevent. Poison read_bytes: the refusal must not depend on it.
+    big = tmp_path / "big.png"
+    big.write_bytes(b"\x89PNG" + b"0" * (MAX_ATTACHMENT_BYTES + 1))
+
+    def _explode(*_args: object, **_kwargs: object) -> bytes:
+        raise AssertionError("read_bytes() must not run for an oversized attachment")
+
+    monkeypatch.setattr(Path, "read_bytes", _explode)
+    with pytest.raises(AttachmentError, match="limit"):
+        _cmd(tmp_path, [big])._attachment_messages()
+
+
+def test_missing_attachment_error_names_the_path_actually_searched(tmp_path: Path) -> None:
+    # Relative paths resolve against --root, not the cwd; echoing the bare input would tell a user
+    # "not found: shot.png" while shot.png sits in front of them in a different directory.
+    result = ChatCommand(tmp_path, "q", attachments=[Path("shot.png")])
+    with pytest.raises(AttachmentError) as exc:
+        result._attachment_messages()
+    assert str(tmp_path / "shot.png") in str(exc.value)
+
+
 def test_no_attachments_means_no_extra_messages(tmp_path: Path) -> None:
     assert ChatCommand(tmp_path, "q")._attachment_messages() == []
 
