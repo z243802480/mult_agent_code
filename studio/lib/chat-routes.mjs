@@ -19,7 +19,13 @@ import { existsSync, statSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { intentAuditFor, routeUserIntent } from "../intent-router.mjs";
 import { buildRouteMessageWithChatContext } from "./chat-route-context.mjs";
-import { mapPermissionLevel, warmRunParams, withPermissionLevel } from "./permission-level.mjs";
+import {
+  mapModelStrategy,
+  mapPermissionLevel,
+  warmRunParams,
+  withModelStrategy,
+  withPermissionLevel,
+} from "./run-flags.mjs";
 import { redact, redactText } from "./text-utils.mjs";
 import { readJsonlTail } from "./run-io.mjs";
 import { sanitizeAttachmentPaths } from "./attachments.mjs";
@@ -38,6 +44,7 @@ export function createChatRoutes({
   liveJobs,
   startRuntimeJob,
   applyAutonomyForTier,
+  loadStudioSettings,
   runtimeCommand,
   ensureSession,
   resolvedSessionId,
@@ -215,17 +222,25 @@ export function createChatRoutes({
     // the run is about to read (before the command is built), never the shared template.
     await applyAutonomyForTier(permissionMode);
 
-    // Thread the user's chosen tier through to the runtime (it otherwise runs at the CLI default).
+    // Thread the user's choices through to the runtime (it otherwise runs at the CLI defaults).
     // The same command is used for both the confirm-card (pending) and direct-start paths below.
+    //
+    // The tier is per-message (the Composer cycles it); the model strategy is a persisted default
+    // (the Settings panel owns it), so it is read here at submit time rather than taken from the
+    // request body — a strategy changed mid-session applies to the next run, not only to new tabs.
+    const modelStrategy = mapModelStrategy((await loadStudioSettings())?.modelStrategy);
     const baseCommand = executionRoute?.command || runtimeCommand(mode, goal);
-    const command = withPermissionLevel(baseCommand, mapPermissionLevel(permissionMode));
+    const command = withModelStrategy(
+      withPermissionLevel(baseCommand, mapPermissionLevel(permissionMode)),
+      modelStrategy,
+    );
     // The warm worker doesn't run a command — it rebuilds one from JSON fields, and the only shape it
     // can rebuild is runtimeCommand(mode, goal). So it may stand in for this run exactly when the
     // command IS that. Comparing the command itself (rather than trusting a proxy like "did an
     // orchestration route build it?" — most routes hand back the plain run command anyway) means any
     // future flag added to a run cold-spawns instead of being silently dropped by the worker.
     const warmParams = sameCommand(baseCommand, runtimeCommand(mode, goal))
-      ? warmRunParams(permissionMode)
+      ? warmRunParams(permissionMode, modelStrategy)
       : null;
 
     if (mode !== "plan" && permission !== "allow") {

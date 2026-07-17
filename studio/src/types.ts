@@ -104,6 +104,7 @@ export type FilePreview = {
 export type SettingsPayload = {
   workMode: string;
   permissionMode: string;
+  modelStrategy: string;
   shell: string;
   streamMode: string;
   workspace: string;

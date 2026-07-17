@@ -36,6 +36,7 @@ import { createJobRegistry } from "./lib/jobs.mjs";
 import { createRunDetailReader } from "./lib/run-detail-reader.mjs";
 import { createChatAnswer } from "./lib/chat-answer.mjs";
 import { createChatRoutes } from "./lib/chat-routes.mjs";
+import { MODEL_STRATEGY_IDS, mapModelStrategy } from "./lib/run-flags.mjs";
 import { latestMainFinalEvent } from "./lib/run-evidence-transforms.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -137,6 +138,7 @@ const {
   liveJobs,
   startRuntimeJob,
   applyAutonomyForTier,
+  loadStudioSettings,
   runtimeCommand,
   ensureSession,
   resolvedSessionId,
@@ -492,12 +494,31 @@ async function handleApi(request, response, url) {
   }
   if (request.method === "POST" && url.pathname === "/api/studio/settings") {
     const body = await readRequestJson(request);
-    const mode = String(body?.permissionMode || "");
-    if (!PERMISSION_TIER_IDS.includes(mode)) {
-      sendJson(response, 400, { ok: false, error: "invalid permissionMode" });
+    // Patch semantics: each panel saves only the field it owns. A field that is present must be
+    // valid (rejected at the door, never coerced — a silently-corrected save would show the user a
+    // value they did not pick); a field that is absent is left alone.
+    const patch = {};
+    if (body?.permissionMode !== undefined) {
+      const mode = String(body.permissionMode || "");
+      if (!PERMISSION_TIER_IDS.includes(mode)) {
+        sendJson(response, 400, { ok: false, error: "invalid permissionMode" });
+        return;
+      }
+      patch.permissionMode = mode;
+    }
+    if (body?.modelStrategy !== undefined) {
+      const strategy = String(body.modelStrategy || "");
+      if (!MODEL_STRATEGY_IDS.includes(strategy)) {
+        sendJson(response, 400, { ok: false, error: "invalid modelStrategy" });
+        return;
+      }
+      patch.modelStrategy = strategy;
+    }
+    if (!Object.keys(patch).length) {
+      sendJson(response, 400, { ok: false, error: "no writable setting in request" });
       return;
     }
-    await saveStudioSettings({ permissionMode: mode });
+    await saveStudioSettings(patch);
     sendJson(response, 200, { ok: true, settings: await buildSettingsPayload() });
     return;
   }
@@ -1047,9 +1068,10 @@ function dispatchWarmRun({ job, jobId, sessionId, mode, goal, command, stopTail,
     event_sink: sessionPath(sessionId, "events.jsonl"),
     session_id: sessionId,
     phase: phaseForMode(mode),
-    // The cold path carries the tier as `--permission-level`; the worker reads JSON, so it must be
-    // spelled out here or studio_worker silently falls back to "balanced" — an autonomy UPGRADE for
-    // anyone who picked "ask first". The caller owns the value (see warmRunParams).
+    // The cold path carries the user's choices as CLI flags; the worker reads JSON, so they must be
+    // spelled out here or studio_worker silently falls back to its own defaults — for the tier that
+    // is an autonomy UPGRADE for anyone who picked "ask first", and for the model strategy it means
+    // the picked strategy is ignored. The caller owns the values (see warmRunParams).
     ...warmParams,
   };
   try {
@@ -1823,7 +1845,7 @@ function sessionPath(sessionId, file = "") {
 }
 
 // Single canonical permission tier vocabulary (mirrors studio/src/permissionTiers.ts and the
-// runtime --permission-level contract via lib/permission-level.mjs). The persisted default seeds
+// runtime --permission-level contract via lib/run-flags.mjs). The persisted default seeds
 // the Composer; the dead legacy display string "ask-for-write" has been removed.
 const PERMISSION_TIER_IDS = ["ask_everything", "reviewed_auto", "auto"];
 
@@ -1848,8 +1870,8 @@ async function saveStudioSettings(patch) {
 }
 
 // One source of truth for the settings payload — GET and POST both return this so the displayed
-// value is always the one actually in effect. permissionMode is the only persisted/writable field
-// in this slice; everything else stays server-derived.
+// value is always the one actually in effect. permissionMode and modelStrategy are the persisted/
+// writable fields; everything else stays server-derived.
 async function buildSettingsPayload() {
   const persisted = await loadStudioSettings();
   const permissionMode = PERMISSION_TIER_IDS.includes(persisted.permissionMode)
@@ -1858,6 +1880,9 @@ async function buildSettingsPayload() {
   return {
     workMode: "engineering",
     permissionMode,
+    // Degraded through the same function the run path uses, so the panel can never show a strategy
+    // the runtime would not actually receive.
+    modelStrategy: mapModelStrategy(persisted.modelStrategy),
     shell: "PowerShell",
     streamMode: "runtime-model-events",
     workspace,

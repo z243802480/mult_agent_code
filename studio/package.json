@@ -21,7 +21,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "smoke:run-detail": "node scripts/run-detail-smoke.mjs",
     "test:intent-router": "node scripts/intent-router-unit.mjs",
-    "test:permission-level": "node scripts/permission-level-unit.mjs",
+    "test:run-flags": "node scripts/run-flags-unit.mjs",
     "smoke:intent-routing": "node scripts/intent-routing-smoke.mjs",
     "smoke:chat-fallback": "node scripts/chat-fallback-smoke.mjs",
     "smoke:chat-lifecycle": "node scripts/chat-lifecycle-smoke.mjs",

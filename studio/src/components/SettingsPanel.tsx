@@ -22,6 +22,12 @@ import {
   isPermissionTierId,
   type PermissionTierId,
 } from "../permissionTiers";
+import {
+  MODEL_STRATEGIES,
+  DEFAULT_MODEL_STRATEGY,
+  resolveModelStrategy,
+  type ModelStrategyId,
+} from "../modelStrategies";
 import type { ThemeSetting } from "../hooks/useTheme";
 import {
   notificationsEnabled,
@@ -230,7 +236,81 @@ function WorkspaceSection({
   );
 }
 
-function ModelSection({ overview }: { overview: OverviewPayload | null }) {
+function ModelStrategySection({
+  settings,
+  onSaved,
+}: {
+  settings: SettingsPayload | null;
+  onSaved: (next: SettingsPayload) => void;
+}) {
+  const saved = resolveModelStrategy(settings?.modelStrategy);
+  const [busy, setBusy] = useState<ModelStrategyId | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function choose(id: ModelStrategyId) {
+    if (id === saved || busy) return;
+    setBusy(id);
+    setError(null);
+    try {
+      const result = await api.updateSettings({ modelStrategy: id });
+      if (!result.ok) {
+        setError(result.error || "无法保存。");
+        return;
+      }
+      onSaved(result.settings);
+    } catch (err) {
+      setError(String((err as Error).message || err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <>
+      <p className="muted">挑模型时的取舍偏好。运行时始终按每一步的需要来选，这里只是给它一个倾向。</p>
+      <div className="permTierList" role="radiogroup" aria-label="模型档位">
+        {MODEL_STRATEGIES.map((strategy) => {
+          const active = saved === strategy.id;
+          return (
+            <button
+              key={strategy.id}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              className={active ? "permTierOption active" : "permTierOption"}
+              disabled={Boolean(busy)}
+              onClick={() => void choose(strategy.id)}
+            >
+              <span className="permTierHead">
+                <strong>{strategy.label}</strong>
+                {strategy.id === DEFAULT_MODEL_STRATEGY && (
+                  <span className="permTierDefault">推荐</span>
+                )}
+                {busy === strategy.id ? (
+                  <Loader2 size={14} className="spinning" />
+                ) : active ? (
+                  <Check size={15} className="permTierCheck" />
+                ) : null}
+              </span>
+              <small>{strategy.detail}</small>
+            </button>
+          );
+        })}
+      </div>
+      {error && <p className="settingsError">{error}</p>}
+    </>
+  );
+}
+
+function ModelSection({
+  overview,
+  settings,
+  onSaved,
+}: {
+  overview: OverviewPayload | null;
+  settings: SettingsPayload | null;
+  onSaved: (next: SettingsPayload) => void;
+}) {
   const routes = (overview?.modelRoutes ?? []) as AnyRecord[];
   const doctor = (overview?.doctor ?? {}) as AnyRecord;
   const routeHealth = (doctor.routes ?? {}) as AnyRecord;
@@ -239,6 +319,7 @@ function ModelSection({ overview }: { overview: OverviewPayload | null }) {
   return (
     <div className="settingsSection">
       <h3 className="settingsSectionTitle">模型与提供方</h3>
+      <ModelStrategySection settings={settings} onSaved={onSaved} />
       {tiers.length > 0 && (
         <div className="settingsProviderReadiness">
           <p className="muted">提供方就绪状态——设置下面的环境变量，然后重新打开 Studio。</p>
@@ -427,7 +508,7 @@ export function SettingsPanel({
       case "workspace":
         return <WorkspaceSection settings={settings} onChangeWorkspace={onChangeWorkspace} />;
       case "model":
-        return <ModelSection overview={overview} />;
+        return <ModelSection overview={overview} settings={settings} onSaved={onSaved} />;
       case "tools":
         return <ToolsSection />;
       case "rules":
