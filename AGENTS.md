@@ -43,7 +43,9 @@ P2：G15 回放导出（1.2.90）、G14 记忆只读（1.2.91）、**G17 图片�
   ⇒ **runtime 也没这能力**，不是「Studio 无表达」）。**四者性质各异，别打包成一句**——逐条见路线表。
 - **跨 run 无守卫（现存缺陷·待用户定夺）**：核实 G19 时撞出——`startRuntimeJob` 无 running-job 检查 +
   `_PROMOTION_APPLY_LOCK` 仅进程内 + promote 拷回共享 source_root ⇒ 同 workspace 两会话可互覆盖且无检测。
-  **守卫缺失已坐实，损坏未观测**（需真凭证）。可独立于 G19 修。详见路线表 §4 G19 条。
+  **活体探针已证（1.2.109·真 BFF·零凭证）**：两会话真起两个 run、全程同时 running、落在**两个不同 OS
+  进程**（暖 worker + 冷 spawn，或双冷 spawn）⇒ 进程内 RLock 结构上拦不住。**损坏本身仍未观测**（零凭证
+  的 run 死在模型调用·`promote()` 没跑到）。可独立于 G19 修。详见路线表 §4 G19 条。
 - **OS 沙箱 = 唯一剩余 P0**；主观视觉手感需用户目视。
 
 当前 Brief / 审计签字：docs/zh/reports/S77-commercial-readiness-audit-20260704.md（实现≈71%、市场化 37→利基 43-45）。⚠️ **该报告的 P1④「自主环未闭合」/ P1⑥「DebugAgent 占位」已过期**——三环+软保险丝第四环已闭合且随权限档默认开（changelog 1.2.31/1.2.33/1.2.38），`agents/debug_agent.py` 已删（RA7b）。读该报告须对照 changelog。
