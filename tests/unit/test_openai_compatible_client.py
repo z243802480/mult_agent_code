@@ -242,6 +242,46 @@ def policy(max_model_calls: int = 10) -> dict:
     }
 
 
+def _json_request() -> ChatRequest:
+    return ChatRequest(
+        purpose="task_execution",
+        model_tier="strong",
+        messages=[ChatMessage(role="user", content="Write tasks.json")],
+        response_format="json",
+        worker_transport="json",
+        max_output_tokens=100,
+    )
+
+
+def _settings(provider: str) -> OpenAICompatibleSettings:
+    return OpenAICompatibleSettings(
+        api_key="test-key",
+        base_url="https://example.test/v1",
+        model_name="test-model",
+        provider=provider,
+        streaming_enabled=False,
+    )
+
+
+@pytest.mark.parametrize("provider", ["zhipu", "zai", "glm", "bigmodel", "z-ai", "ZAI"])
+def test_glm_family_skips_json_object_mode_to_avoid_json_substring_corruption(
+    provider: str,
+) -> None:
+    """GLM/Zhipu's json_object response mode deletes the literal lowercase "json" substring from
+    string values it emits (tasks.json -> tasks., import json -> import ), silently corrupting any
+    task that touches .json files. We must NOT opt GLM-family providers into that mode."""
+    client = OpenAICompatibleClient(_settings(provider))
+    payload = client._payload(_json_request())
+    assert "response_format" not in payload
+
+
+@pytest.mark.parametrize("provider", ["openai-compatible", "minimax", "openai"])
+def test_non_glm_providers_still_request_json_object_mode(provider: str) -> None:
+    client = OpenAICompatibleClient(_settings(provider))
+    payload = client._payload(_json_request())
+    assert payload["response_format"] == {"type": "json_object"}
+
+
 def test_openai_compatible_client_sends_chat_request_and_logs_success(tmp_path: Path) -> None:
     transport = FakeTransport(
         HttpResponse(

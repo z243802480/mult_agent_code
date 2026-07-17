@@ -17,6 +17,17 @@ class OpenAICompatibleProviderError(RuntimeError):
     pass
 
 
+# GLM / Zhipu (open.bigmodel.cn, z.ai) OpenAI-compatible endpoints have a server-side bug in
+# ``response_format={"type":"json_object"}`` mode: the constrained JSON decoder deletes the
+# literal lowercase substring "json" from string VALUES it emits — "tasks.json" -> "tasks.",
+# "import json" -> "import ", while uppercase "JSON" survives. This silently corrupts any task
+# that writes a .json file or imports the json module, sending the model into a "file corrupted"
+# repair spiral. MiniMax's json_object mode does not exhibit this. We do not need provider JSON
+# mode anyway: the JSON turn contract prompt + parse_json_object() at the runtime boundary already
+# tolerate fenced / lightly-malformed JSON. So skip json_object for GLM-family providers.
+_GLM_FAMILY_PROVIDERS = frozenset({"zhipu", "zai", "glm", "bigmodel", "z-ai"})
+
+
 @dataclass(frozen=True)
 class OpenAICompatibleSettings:
     api_key: str
@@ -163,7 +174,11 @@ class OpenAICompatibleClient:
             payload["temperature"] = request.temperature
         if request.max_output_tokens is not None:
             payload["max_completion_tokens"] = request.max_output_tokens
-        if request.response_format == "json" and request.worker_transport != "tool_use":
+        if (
+            request.response_format == "json"
+            and request.worker_transport != "tool_use"
+            and self.provider.lower() not in _GLM_FAMILY_PROVIDERS
+        ):
             payload["response_format"] = {"type": "json_object"}
         if request.tools:
             payload["tools"] = request.tools
