@@ -39,7 +39,7 @@ P2：G15 回放导出（1.2.90）、G14 记忆只读（1.2.91）、G17 刀一（
 - G8 模型选择器——"能用"是纯接线；"诚实可持久"缺 run_config 字段（`run_config.py:116`
   `_model_routing_overrides()` 硬编码 `return {}`）。只做前者会造第二个"权限档两份真源"bug。
 - G12/G13/G16/G19 待真实证据或 ADR；**OS 沙箱 = 唯一剩余 P0**；主观视觉手感需用户目视。
-- F5 回归自审只完成 3/8 角度（1.2.94·五角度撞额度上限·待补跑）。
+- ~~F5 回归自审只完成 3/8 角度~~ **三个正确性角度已补跑并修 6 条（1.2.97）**，含一条 high（视觉档探测继承全局路由 → 诚实降级被绕过）。剩 Efficiency/Altitude 两角度未跑（低优先）。
 
 当前 Brief / 审计签字：docs/zh/reports/S77-commercial-readiness-audit-20260704.md（实现≈71%、市场化 37→利基 43-45）。⚠️ **该报告的 P1④「自主环未闭合」/ P1⑥「DebugAgent 占位」已过期**——三环+软保险丝第四环已闭合且随权限档默认开（changelog 1.2.31/1.2.33/1.2.38），`agents/debug_agent.py` 已删（RA7b）。读该报告须对照 changelog。
 执行顺序：Part B 前端拉齐剩余（G17 刀二前端粘贴 → G6刀二/G8 待 DecisionPoint）→ P0 沙箱（唯一剩余 P0·按内部发动机定位已降级）→ 利基 Beta
