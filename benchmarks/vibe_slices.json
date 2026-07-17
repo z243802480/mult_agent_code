@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "B10",
+  "active_slice": "G17",
   "active_phase": "大重塑 Part B（前端拉齐 + 诚实化收敛）",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
