@@ -12,6 +12,7 @@
  */
 
 import { useSyncExternalStore } from "react";
+import { createSessionScopedStore, type StorageLike } from "./sessionScopedStore";
 
 export type DiffCommentAnchor = {
   /** Repo-relative path of the commented file. */
@@ -36,18 +37,10 @@ export const MAX_COMMENTS = 30;
 export const MAX_COMMENT_CHARS = 2_000;
 const MAX_EXCERPT_CHARS = 160;
 
-type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
-
-function storage(): StorageLike | null {
-  try {
-    return typeof localStorage === "undefined" ? null : localStorage;
-  } catch {
-    return null;
-  }
-}
+const store = createSessionScopedStore<DiffComment>({ keyPrefix: KEY_PREFIX, sanitize });
 
 export function commentsKey(sessionId: string): string {
-  return `${KEY_PREFIX}${sessionId}`;
+  return store.key(sessionId);
 }
 
 function sanitize(items: unknown): DiffComment[] {
@@ -71,70 +64,37 @@ function sanitize(items: unknown): DiffComment[] {
   return out;
 }
 
-export function loadComments(
-  sessionId: string,
-  store: StorageLike | null = storage(),
-): DiffComment[] {
-  if (!sessionId || !store) return [];
-  try {
-    const raw = store.getItem(commentsKey(sessionId));
-    if (!raw) return [];
-    return sanitize(JSON.parse(raw));
-  } catch {
-    // Corrupt entry: behave as if nothing was pending rather than taking the diff view down.
-    return [];
-  }
+export function loadComments(sessionId: string, storage?: StorageLike | null): DiffComment[] {
+  return store.load(sessionId, storage);
 }
 
 export function saveComments(
   sessionId: string,
   comments: DiffComment[],
-  store: StorageLike | null = storage(),
+  storage?: StorageLike | null,
 ): void {
-  if (!sessionId || !store) return;
-  try {
-    if (!comments.length) {
-      store.removeItem(commentsKey(sessionId));
-      return;
-    }
-    store.setItem(commentsKey(sessionId), JSON.stringify(sanitize(comments)));
-  } catch {
-    // Quota exceeded / storage disabled: comments still work in memory for this tab.
-  }
+  store.save(sessionId, comments, storage);
 }
 
-// ---------------------------------------------------------------------------
-// Module store: one active session at a time (the app renders exactly one).
 // Deep consumers (InlineFileDiff in the thread, DiffPreviewSection in the panel) call the hook and
 // the mutators directly — no prop drilling through six layers for a cross-cutting concern.
-// ---------------------------------------------------------------------------
-
-let activeSessionId = "";
-let current: DiffComment[] = [];
-const listeners = new Set<() => void>();
-
-function emit(): void {
-  for (const listener of listeners) listener();
-}
 
 /** Called by the app shell whenever the active session changes; reloads that session's comments. */
 export function setDiffCommentSession(sessionId: string): void {
-  if (sessionId === activeSessionId) return;
-  activeSessionId = sessionId;
-  current = loadComments(sessionId);
-  emit();
+  store.setSession(sessionId);
 }
 
 export function getDiffComments(): DiffComment[] {
-  return current;
+  return store.getItems();
 }
 
 let nextId = 1;
 
 export function addDiffComment(anchor: DiffCommentAnchor, text: string): void {
   const trimmed = text.trim();
+  const current = store.getItems();
   if (!trimmed || !anchor.file || current.length >= MAX_COMMENTS) return;
-  current = [
+  store.setItems([
     ...current,
     {
       id: `c-${Date.now().toString(36)}-${nextId++}`,
@@ -144,34 +104,24 @@ export function addDiffComment(anchor: DiffCommentAnchor, text: string): void {
       excerpt: anchor.excerpt.slice(0, MAX_EXCERPT_CHARS),
       text: trimmed.slice(0, MAX_COMMENT_CHARS),
     },
-  ];
-  saveComments(activeSessionId, current);
-  emit();
+  ]);
 }
 
 export function removeDiffComment(id: string): void {
+  const current = store.getItems();
   const next = current.filter((item) => item.id !== id);
   if (next.length === current.length) return;
-  current = next;
-  saveComments(activeSessionId, current);
-  emit();
+  store.setItems(next);
 }
 
 export function clearDiffComments(): void {
-  if (!current.length) return;
-  current = [];
-  saveComments(activeSessionId, current);
-  emit();
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+  if (!store.getItems().length) return;
+  store.setItems([]);
 }
 
 /** Reactive view of the active session's pending comments. */
 export function useDiffComments(): DiffComment[] {
-  return useSyncExternalStore(subscribe, getDiffComments, () => current);
+  return useSyncExternalStore(store.subscribe, store.getItems, store.getSnapshot);
 }
 
 // ---------------------------------------------------------------------------

@@ -43,6 +43,17 @@ export const PERMISSION_TIERS: PermissionTier[] = [
 
 export const DEFAULT_PERMISSION_TIER: PermissionTierId = "reviewed_auto";
 
+/**
+ * A settings value coerced to a tier, falling back to the default.
+ *
+ * The `isPermissionTierId(x) ? x : DEFAULT_PERMISSION_TIER` dance was written out at three call
+ * sites in App.tsx. Which tier an unrecognised value degrades to is a safety decision — it belongs
+ * in one place, not copied wherever a tier is read.
+ */
+export function resolvePermissionTier(value: unknown): PermissionTierId {
+  return isPermissionTierId(value) ? value : DEFAULT_PERMISSION_TIER;
+}
+
 export function isPermissionTierId(value: unknown): value is PermissionTierId {
   return value === "ask_everything" || value === "reviewed_auto" || value === "auto";
 }

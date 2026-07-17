@@ -1,4 +1,5 @@
 // G6 刀一 — plan-step comments: the checklist carries a per-step comment entry, pending comments
+import { fakeStorage } from "../../testing/fakeStorage";
 // render under their step, and the shared tray batches them (alone or together with diff line
 // comments) into one structured message. Static-markup harness + pure functions, same as G4.
 import React from "react";
@@ -9,20 +10,6 @@ import type { PlanModel } from "./planModel";
 import { DiffCommentTray, buildFeedbackMessage } from "../../components/DiffCommentTray";
 import { addDiffComment, setDiffCommentSession } from "../../session/diffComments";
 import { addPlanComment, setPlanCommentSession } from "../../session/planComments";
-
-function fakeStorage(): Storage {
-  const map = new Map<string, string>();
-  return {
-    getItem: (k: string) => map.get(k) ?? null,
-    setItem: (k: string, v: string) => void map.set(k, v),
-    removeItem: (k: string) => void map.delete(k),
-    clear: () => map.clear(),
-    key: (i: number) => [...map.keys()][i] ?? null,
-    get length() {
-      return map.size;
-    },
-  } as Storage;
-}
 
 const plan: PlanModel = {
   items: [

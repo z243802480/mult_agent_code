@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fakeStorage } from "../testing/fakeStorage";
 import {
   addDiffComment,
   clearDiffComments,
@@ -13,16 +14,6 @@ import {
   setDiffCommentSession,
   type DiffComment,
 } from "./diffComments";
-
-function fakeStorage() {
-  const map = new Map<string, string>();
-  return {
-    getItem: (key: string) => map.get(key) ?? null,
-    setItem: (key: string, value: string) => void map.set(key, value),
-    removeItem: (key: string) => void map.delete(key),
-    dump: () => map,
-  };
-}
 
 const comment = (over: Partial<DiffComment> = {}): DiffComment => ({
   id: "c-1",

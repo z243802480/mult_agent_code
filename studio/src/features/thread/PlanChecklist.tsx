@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { CommentEditor } from "../../components/CommentEditor";
 import {
   Check,
   ChevronRight,
@@ -33,16 +34,8 @@ export function PlanChecklist({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [editorAt, setEditorAt] = useState<number | null>(null);
-  const [draft, setDraft] = useState("");
   const comments = usePlanComments();
   const blocked = plan.counts.blocked;
-
-  function saveDraft(step: number, title: string) {
-    if (!draft.trim()) return;
-    addPlanComment(step, title, draft);
-    setDraft("");
-    setEditorAt(null);
-  }
 
   return (
     <div className={`planChecklist ${open ? "open" : ""}`}>
@@ -78,10 +71,7 @@ export function PlanChecklist({
                       className="planItemComment"
                       title="对这一步写意见"
                       aria-label={`对计划第 ${step} 步写意见`}
-                      onClick={() => {
-                        setDraft("");
-                        setEditorAt(editorAt === index ? null : index);
-                      }}
+                      onClick={() => setEditorAt(editorAt === index ? null : index)}
                     >
                       <MessageSquarePlus size={12} />
                     </button>
@@ -101,39 +91,16 @@ export function PlanChecklist({
                     </div>
                   ))}
                   {editorAt === index && (
-                    <div className="planCommentEditor">
-                      <textarea
-                        autoFocus
-                        value={draft}
-                        placeholder="对这一步写意见…（Ctrl+Enter 保存）"
-                        rows={2}
-                        onChange={(e) => setDraft(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                            e.preventDefault();
-                            saveDraft(step, item.title);
-                          }
-                          if (e.key === "Escape") setEditorAt(null);
-                        }}
-                      />
-                      <div className="planCommentEditorActions">
-                        <button
-                          type="button"
-                          className="diffActionButton"
-                          onClick={() => setEditorAt(null)}
-                        >
-                          取消
-                        </button>
-                        <button
-                          type="button"
-                          className="diffActionButton primary"
-                          disabled={!draft.trim()}
-                          onClick={() => saveDraft(step, item.title)}
-                        >
-                          添加意见
-                        </button>
-                      </div>
-                    </div>
+                    <CommentEditor
+                      className="planCommentEditor"
+                      placeholder="对这一步写意见…（Ctrl+Enter 保存）"
+                      submitLabel="添加意见"
+                      onSave={(text: string) => {
+                        addPlanComment(step, item.title, text);
+                        setEditorAt(null);
+                      }}
+                      onCancel={() => setEditorAt(null)}
+                    />
                   )}
                 </li>
               );

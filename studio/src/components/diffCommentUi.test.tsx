@@ -1,4 +1,5 @@
 // G4 评论即指令 — component behaviour: the per-line affordance carries a correctly anchored
+import { fakeStorage } from "../testing/fakeStorage";
 // comment, pending comments render under their rows, and the tray routes the batched message
 // through the right existing channel (steer while running / new turn when idle / honestly blocked).
 // The test harness renders static markup (no jsdom), so anchoring + routing are verified via the
@@ -19,20 +20,6 @@ const SAMPLE_DIFF = [
   "+const b = 2;",
   " const c = 3;",
 ].join("\n");
-
-function fakeStorage(): Storage {
-  const map = new Map<string, string>();
-  return {
-    getItem: (k: string) => map.get(k) ?? null,
-    setItem: (k: string, v: string) => void map.set(k, v),
-    removeItem: (k: string) => void map.delete(k),
-    clear: () => map.clear(),
-    key: (i: number) => [...map.keys()][i] ?? null,
-    get length() {
-      return map.size;
-    },
-  } as Storage;
-}
 
 beforeEach(() => {
   vi.stubGlobal("localStorage", fakeStorage());

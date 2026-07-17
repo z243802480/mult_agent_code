@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fakeStorage } from "../testing/fakeStorage";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Composer } from "./Composer";
 import { queueKey } from "../session/composerQueue";
@@ -6,20 +7,6 @@ import { queueKey } from "../session/composerQueue";
 // The queue chips (G9): each queued message is editable (click = pull back into the composer),
 // removable, and reorderable — Cursor's queued messages reorder; Claude Code users filed issues
 // about queued messages being uneditable (#71726).
-
-function fakeStorage(seed: Record<string, string>): Storage {
-  const map = new Map(Object.entries(seed));
-  return {
-    getItem: (k: string) => map.get(k) ?? null,
-    setItem: (k: string, v: string) => void map.set(k, v),
-    removeItem: (k: string) => void map.delete(k),
-    clear: () => map.clear(),
-    key: (i: number) => [...map.keys()][i] ?? null,
-    get length() {
-      return map.size;
-    },
-  } as Storage;
-}
 
 const SESSION = "session-queue-test";
 

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fakeStorage } from "../testing/fakeStorage";
 import {
   addPlanComment,
   clearPlanComments,
@@ -11,16 +12,6 @@ import {
   savePlanComments,
   setPlanCommentSession,
 } from "./planComments";
-
-function fakeStorage() {
-  const map = new Map<string, string>();
-  return {
-    getItem: (key: string) => map.get(key) ?? null,
-    setItem: (key: string, value: string) => void map.set(key, value),
-    removeItem: (key: string) => void map.delete(key),
-    dump: () => map,
-  };
-}
 
 describe("planComments persistence", () => {
   it("round-trips per session, drops malformed entries, never throws on corrupt JSON", () => {

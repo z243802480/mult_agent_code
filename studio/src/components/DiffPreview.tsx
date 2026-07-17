@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { CommentEditor } from "./CommentEditor";
 import { MessageSquarePlus, X } from "lucide-react";
 import type { DiffComment, DiffCommentAnchor } from "../session/diffComments";
 
@@ -119,47 +120,6 @@ function commentsForAnchor(
 ): DiffComment[] {
   if (!anchor || anchor.line == null) return [];
   return comments.filter((item) => item.side === anchor.side && item.line === anchor.line);
-}
-
-function CommentEditor({
-  onSave,
-  onCancel,
-}: {
-  onSave: (text: string) => void;
-  onCancel: () => void;
-}) {
-  const [draft, setDraft] = useState("");
-  return (
-    <div className="diffCommentEditor">
-      <textarea
-        autoFocus
-        value={draft}
-        placeholder="对这一行写意见…（Ctrl+Enter 保存）"
-        rows={2}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-            e.preventDefault();
-            if (draft.trim()) onSave(draft);
-          }
-          if (e.key === "Escape") onCancel();
-        }}
-      />
-      <div className="diffCommentEditorActions">
-        <button type="button" className="diffActionButton" onClick={onCancel}>
-          取消
-        </button>
-        <button
-          type="button"
-          className="diffActionButton primary"
-          disabled={!draft.trim()}
-          onClick={() => onSave(draft)}
-        >
-          添加评论
-        </button>
-      </div>
-    </div>
-  );
 }
 
 function pickStageText(
@@ -312,6 +272,9 @@ export function DiffPreview({
                 ))}
                 {editorAt === index && anchor && (
                   <CommentEditor
+                    className="diffCommentEditor"
+                    placeholder="对这一行写意见…（Ctrl+Enter 保存）"
+                    submitLabel="添加评论"
                     onSave={(text) => {
                       onAddComment?.(anchor, text);
                       setEditorAt(null);

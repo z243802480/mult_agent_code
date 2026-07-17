@@ -9,6 +9,7 @@
  */
 
 import { useSyncExternalStore } from "react";
+import { createSessionScopedStore, type StorageLike } from "./sessionScopedStore";
 
 export type PlanComment = {
   id: string;
@@ -25,18 +26,10 @@ export const MAX_PLAN_COMMENTS = 20;
 export const MAX_PLAN_COMMENT_CHARS = 2_000;
 const MAX_TITLE_CHARS = 120;
 
-type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
-
-function storage(): StorageLike | null {
-  try {
-    return typeof localStorage === "undefined" ? null : localStorage;
-  } catch {
-    return null;
-  }
-}
+const store = createSessionScopedStore<PlanComment>({ keyPrefix: KEY_PREFIX, sanitize });
 
 export function planCommentsKey(sessionId: string): string {
-  return `${KEY_PREFIX}${sessionId}`;
+  return store.key(sessionId);
 }
 
 function sanitize(items: unknown): PlanComment[] {
@@ -59,63 +52,33 @@ function sanitize(items: unknown): PlanComment[] {
   return out;
 }
 
-export function loadPlanComments(
-  sessionId: string,
-  store: StorageLike | null = storage(),
-): PlanComment[] {
-  if (!sessionId || !store) return [];
-  try {
-    const raw = store.getItem(planCommentsKey(sessionId));
-    if (!raw) return [];
-    return sanitize(JSON.parse(raw));
-  } catch {
-    return [];
-  }
+export function loadPlanComments(sessionId: string, storage?: StorageLike | null): PlanComment[] {
+  return store.load(sessionId, storage);
 }
 
 export function savePlanComments(
   sessionId: string,
   comments: PlanComment[],
-  store: StorageLike | null = storage(),
+  storage?: StorageLike | null,
 ): void {
-  if (!sessionId || !store) return;
-  try {
-    if (!comments.length) {
-      store.removeItem(planCommentsKey(sessionId));
-      return;
-    }
-    store.setItem(planCommentsKey(sessionId), JSON.stringify(sanitize(comments)));
-  } catch {
-    // Persistence is best-effort; the in-memory list keeps working.
-  }
-}
-
-// Module store — one active session at a time, same rationale as diffComments.
-let activeSessionId = "";
-let current: PlanComment[] = [];
-const listeners = new Set<() => void>();
-
-function emit(): void {
-  for (const listener of listeners) listener();
+  store.save(sessionId, comments, storage);
 }
 
 export function setPlanCommentSession(sessionId: string): void {
-  if (sessionId === activeSessionId) return;
-  activeSessionId = sessionId;
-  current = loadPlanComments(sessionId);
-  emit();
+  store.setSession(sessionId);
 }
 
 export function getPlanComments(): PlanComment[] {
-  return current;
+  return store.getItems();
 }
 
 let nextId = 1;
 
 export function addPlanComment(step: number, title: string, text: string): void {
   const trimmed = text.trim();
+  const current = store.getItems();
   if (!trimmed || step < 1 || current.length >= MAX_PLAN_COMMENTS) return;
-  current = [
+  store.setItems([
     ...current,
     {
       id: `p-${Date.now().toString(36)}-${nextId++}`,
@@ -123,33 +86,23 @@ export function addPlanComment(step: number, title: string, text: string): void 
       title: title.slice(0, MAX_TITLE_CHARS),
       text: trimmed.slice(0, MAX_PLAN_COMMENT_CHARS),
     },
-  ];
-  savePlanComments(activeSessionId, current);
-  emit();
+  ]);
 }
 
 export function removePlanComment(id: string): void {
+  const current = store.getItems();
   const next = current.filter((item) => item.id !== id);
   if (next.length === current.length) return;
-  current = next;
-  savePlanComments(activeSessionId, current);
-  emit();
+  store.setItems(next);
 }
 
 export function clearPlanComments(): void {
-  if (!current.length) return;
-  current = [];
-  savePlanComments(activeSessionId, current);
-  emit();
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+  if (!store.getItems().length) return;
+  store.setItems([]);
 }
 
 export function usePlanComments(): PlanComment[] {
-  return useSyncExternalStore(subscribe, getPlanComments, () => current);
+  return useSyncExternalStore(store.subscribe, store.getItems, store.getSnapshot);
 }
 
 /** One prose section carrying every pending plan comment, ordered as written. */
