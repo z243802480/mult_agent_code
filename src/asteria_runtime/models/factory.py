@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import warnings
+from dataclasses import replace
 from pathlib import Path
 
 from asteria_runtime.core.budget import BudgetController
@@ -32,19 +33,58 @@ def create_model_client(
     routes = _routes_from_env()
     default_route = _default_route(routes)
     _warn_if_tier_silently_offline(routes, default_route)
+    # Which model backs a tier is resolved from env / the local route file; this run may pin a
+    # different model name per tier (G8-b). Read from the run's OWN run_config.json rather than a
+    # constructor argument, so resume/continue keep the pin the same way they keep the permission
+    # tier — the file is on disk, the CLI default is not consulted again. Written before this call
+    # (plan_command writes run_config, then builds the client).
+    overrides = _model_name_overrides(run_dir, validator)
     default_client = _create_provider_client(
         default_route.provider,
         default_route.env_prefix,
         logger,
         budget,
+        overrides.get(default_route.tier),
     )
-    if not routes:
-        return default_client
     tier_clients = {
-        tier: _create_provider_client(route.provider, route.env_prefix, logger, budget)
+        tier: _create_provider_client(
+            route.provider, route.env_prefix, logger, budget, overrides.get(tier)
+        )
         for tier, route in routes.items()
     }
+    # A tier can be pinned without having a provider route of its own: the common single-provider
+    # setup configures AGENT_MODEL_PROVIDER only, every tier resolves to `default_client`, and a pin
+    # would land on a client shared with the other tiers — i.e. silently do nothing. Mint that tier
+    # its own client instead, on the default route's provider and credentials, differing only in the
+    # model asked for. Side effect worth knowing: strong->medium timeout fallback keys off the two
+    # tiers resolving to *different* clients, so pinning one of them enables a fallback that a
+    # single-provider setup did not have. That is the honest reading — they are now different models.
+    for tier, model_name in overrides.items():
+        if tier in tier_clients:
+            continue
+        tier_clients[tier] = _create_provider_client(
+            default_route.provider, default_route.env_prefix, logger, budget, model_name
+        )
+        routes[tier] = ModelRoute(
+            tier=tier, provider=default_route.provider, env_prefix=default_route.env_prefix
+        )
+    if not tier_clients:
+        return default_client
     return RoutedModelClient(default_client, tier_clients, routes)
+
+
+def _model_name_overrides(run_dir: Path | None, validator: SchemaValidator) -> dict:
+    # Never let a bad/absent run_config stop a run from starting: no pin is the status quo, and the
+    # status quo works. Re-normalized (not trusted as read) because the file is hand-editable.
+    if run_dir is None:
+        return {}
+    try:
+        from asteria_runtime.core.run_config import load_run_config, normalize_model_name_overrides
+
+        config = load_run_config(run_dir, validator)
+    except Exception:  # noqa: BLE001 - an unreadable config must not decide model routing
+        return {}
+    return normalize_model_name_overrides((config or {}).get("model_name_overrides"))
 
 
 def real_route_for_tier(tier: str = "medium") -> ModelRoute | None:
@@ -200,52 +240,77 @@ def _create_provider_client(
     env_prefix: str,
     logger: ModelCallLogger,
     budget: BudgetController | None,
+    model_name: str | None = None,
 ) -> ModelClient:
     if provider in {"fake", "offline"}:
+        # No pin: a fake/offline client fabricates output and has no model to talk to.
         return FakeModelClient(logger=logger, budget=budget)
     if provider in local_provider_names():
         return OpenAICompatibleClient(
-            local_settings_from_env(provider, env_prefix=env_prefix),
+            _pinned(local_settings_from_env(provider, env_prefix=env_prefix), model_name),
             logger=logger,
             budget=budget,
         )
     if provider == "minimax":
         return MiniMaxOpenAICompatibleClient(
-            MiniMaxSettings.from_env(env_prefix=env_prefix),
+            _pinned(MiniMaxSettings.from_env(env_prefix=env_prefix), model_name),
             logger=logger,
             budget=budget,
         )
     if provider in ZHIPU_PROVIDER_ALIASES:
         return OpenAICompatibleClient(
-            OpenAICompatibleSettings.from_env(
-                provider="zhipu",
-                env_prefix=env_prefix,
-                default_base_url="https://open.bigmodel.cn/api/paas/v4",
-                default_model_name="glm-5.1",
-                api_key_env_names=("ZHIPU_API_KEY", "BIGMODEL_API_KEY", "GLM_API_KEY"),
+            _pinned(
+                OpenAICompatibleSettings.from_env(
+                    provider="zhipu",
+                    env_prefix=env_prefix,
+                    default_base_url="https://open.bigmodel.cn/api/paas/v4",
+                    default_model_name="glm-5.1",
+                    api_key_env_names=("ZHIPU_API_KEY", "BIGMODEL_API_KEY", "GLM_API_KEY"),
+                ),
+                model_name,
             ),
             logger=logger,
             budget=budget,
         )
     if provider in ZAI_PROVIDER_ALIASES:
         return OpenAICompatibleClient(
-            OpenAICompatibleSettings.from_env(
-                provider="zai",
-                env_prefix=env_prefix,
-                default_base_url="https://open.bigmodel.cn/api/coding/paas/v4",
-                default_model_name="glm-5.1",
-                api_key_env_names=("ZAI_API_KEY", "GLM_API_KEY", "ZHIPU_API_KEY"),
+            _pinned(
+                OpenAICompatibleSettings.from_env(
+                    provider="zai",
+                    env_prefix=env_prefix,
+                    default_base_url="https://open.bigmodel.cn/api/coding/paas/v4",
+                    default_model_name="glm-5.1",
+                    api_key_env_names=("ZAI_API_KEY", "GLM_API_KEY", "ZHIPU_API_KEY"),
+                ),
+                model_name,
             ),
             logger=logger,
             budget=budget,
         )
     if provider in {"openai", "openai-compatible", "generic"}:
         return OpenAICompatibleClient(
-            OpenAICompatibleSettings.from_env(provider=provider, env_prefix=env_prefix),
+            _pinned(
+                OpenAICompatibleSettings.from_env(provider=provider, env_prefix=env_prefix),
+                model_name,
+            ),
             logger=logger,
             budget=budget,
         )
     raise ModelProviderError(f"Unsupported model provider: {provider}")
+
+
+def _pinned(settings, model_name: str | None):
+    """`settings` with `model_name` swapped for the run's pin, keeping every other field.
+
+    Applied here, on the settings each provider already resolved from env, rather than by teaching
+    each `from_env` an override parameter: every settings class is a frozen dataclass carrying a
+    `model_name`, so one `replace` covers all providers, and the provider modules stay untouched.
+    Credentials, base_url and timeouts keep coming from that tier's configured route — a pin says
+    which model to ask for, never who to ask or with whose key.
+    """
+    if not model_name:
+        return settings
+    return replace(settings, model_name=model_name)
 
 
 def _routes_from_env() -> dict[str, ModelRoute]:

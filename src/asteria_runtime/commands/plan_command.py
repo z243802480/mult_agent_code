@@ -89,6 +89,7 @@ class PlanCommand:
         mode: str = "plan",
         permission_level: str = "ask",
         model_strategy: str = "auto",
+        model_name_overrides: dict | None = None,
         global_config_dir: Path | None = None,
         input_roots: list[Path] | None = None,
         output_root: Path | None = None,
@@ -106,6 +107,7 @@ class PlanCommand:
         self.mode = mode
         self.permission_level = permission_level
         self.model_strategy = model_strategy
+        self.model_name_overrides = model_name_overrides
         self.global_config_dir = global_config_dir
         self.input_roots = input_roots
         self.output_root = output_root
@@ -193,6 +195,7 @@ class PlanCommand:
             mode=self.mode,
             permission_level=self.permission_level,
             model_strategy=self.model_strategy,
+            model_name_overrides=self.model_name_overrides,
             workspace_envelope=workspace_envelope,
             execution_profile=profile_resolution.to_dict(),
             fast_path=fast_path.to_dict(),

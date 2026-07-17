@@ -111,6 +111,7 @@ def _handle_run(request: dict[str, Any]) -> dict[str, Any]:
         mode="goal",
         permission_level=str(request.get("permission_level", "balanced")),
         model_strategy=str(request.get("model_strategy", "auto")),
+        model_name_overrides=request.get("model_name_overrides") or {},
         continue_session=bool(request.get("continue_session", False)),
     ).run()
 

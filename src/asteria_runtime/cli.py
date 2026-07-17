@@ -57,6 +57,7 @@ from asteria_runtime.commands.correctness_eval_command import CorrectnessEvalCom
 from asteria_runtime.commands.version_command import VersionCommand
 from asteria_runtime.commands.weekly_report_command import WeeklyReportCommand
 from asteria_runtime.models.route_diagnostics import silently_canned_tiers
+from asteria_runtime.models.routing import MODEL_TIERS
 from asteria_runtime.real_model_acceptance import SCENARIOS as REAL_MODEL_SCENARIOS
 from asteria_runtime.real_model_acceptance import SUITES as REAL_MODEL_SUITES
 from asteria_runtime.real_model_acceptance import run_from_args as run_real_model_acceptance
@@ -76,6 +77,31 @@ MODEL_STRATEGY_HELP = (
     "(no dedicated local route is wired; it falls back to the configured default tier until "
     "a local provider route is configured)."
 )
+MODEL_NAME_HELP = (
+    "Pin the model a tier asks for, as TIER=MODEL_NAME (repeatable; tiers: strong, medium, cheap). "
+    "Keeps that tier's configured provider, base URL and API key — only the model name changes, so "
+    "this cannot point a tier at a provider whose credentials you have not configured. Example: "
+    "--model-name strong=glm-4.6. Omitted tiers keep whatever their route resolves to."
+)
+def model_name_override(value: str) -> tuple[str, str]:
+    """Parse one ``TIER=MODEL`` pair. An argparse ``type``, so bad input is a clean usage error.
+
+    Rejects here rather than dropping: a pin the user typed on the command line and misspelled must
+    say so, not run with the wrong model. (run_config.json takes the opposite line — it is
+    hand-editable and a typo there must not stop a run; see normalize_model_name_overrides.)
+    """
+    tier, separator, name = str(value).partition("=")
+    tier = tier.strip().lower()
+    name = name.strip()
+    if not separator or not name:
+        raise argparse.ArgumentTypeError(f"expected TIER=MODEL (e.g. strong=glm-4.6), got {value!r}")
+    if tier not in MODEL_TIERS:
+        raise argparse.ArgumentTypeError(
+            f"unknown model tier {tier!r}; expected one of: {', '.join(MODEL_TIERS)}"
+        )
+    return tier, name
+
+
 SLASH_ALIAS_HELP = (
     "Compatibility: slash-prefixed command forms such as `asteria /run` remain aliases "
     "for older automation; use plain command names in new docs and scripts."
@@ -789,6 +815,14 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["auto", "quality", "economy", "local"],
         default="auto",
         help=MODEL_STRATEGY_HELP,
+    )
+    run_parser.add_argument(
+        "--model-name",
+        action="append",
+        type=model_name_override,
+        metavar="TIER=MODEL",
+        default=[],
+        help=MODEL_NAME_HELP,
     )
     run_parser.add_argument(
         "--background",
@@ -2021,6 +2055,7 @@ def _run_cli() -> None:
             mode="goal",
             permission_level=args.permission_level,
             model_strategy=args.model_strategy,
+            model_name_overrides=dict(args.model_name),
             input_roots=[Path(item) for item in args.input_root] if args.input_root else None,
             output_root=Path(args.output_root) if args.output_root else None,
             artifact_root=Path(args.artifact_root) if args.artifact_root else None,

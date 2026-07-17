@@ -143,6 +143,7 @@ class RunCommand:
         mode: str = "goal",
         permission_level: str = "balanced",
         model_strategy: str = "auto",
+        model_name_overrides: dict | None = None,
         input_roots: list[Path] | None = None,
         output_root: Path | None = None,
         artifact_root: Path | None = None,
@@ -166,6 +167,7 @@ class RunCommand:
         self.mode = mode
         self.permission_level = permission_level
         self.model_strategy = model_strategy
+        self.model_name_overrides = model_name_overrides
         self.input_roots = input_roots
         self.output_root = output_root
         self.artifact_root = artifact_root
@@ -258,6 +260,7 @@ class RunCommand:
             mode=self.mode,
             permission_level=self.permission_level,
             model_strategy=self.model_strategy,
+            model_name_overrides=self.model_name_overrides,
             input_roots=self.input_roots,
             output_root=self.output_root,
             artifact_root=self.artifact_root,

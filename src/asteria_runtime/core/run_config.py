@@ -9,6 +9,7 @@ from asteria_runtime.core.permission_policy import (
     permission_overrides_for,
     permission_policy_profile,
 )
+from asteria_runtime.models.routing import MODEL_TIERS
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
@@ -23,6 +24,7 @@ def build_run_config(
     mode: str,
     permission_level: str,
     model_strategy: str,
+    model_name_overrides: dict | None = None,
     workspace_envelope: dict | None = None,
     execution_profile: dict | None = None,
     fast_path: dict | None = None,
@@ -40,6 +42,7 @@ def build_run_config(
         "permission_policy": permission_policy_profile(permission_level),
         "model_routing_overrides": _model_routing_overrides(model_strategy),
         "model_strategy_profile": _model_strategy_profile(model_strategy),
+        "model_name_overrides": normalize_model_name_overrides(model_name_overrides),
         "workspace_envelope": workspace_envelope or {},
         "created_at": now_iso(),
     }
@@ -58,6 +61,7 @@ def write_run_config(
     mode: str,
     permission_level: str,
     model_strategy: str,
+    model_name_overrides: dict | None = None,
     workspace_envelope: dict | None = None,
     execution_profile: dict | None = None,
     fast_path: dict | None = None,
@@ -67,6 +71,7 @@ def write_run_config(
         mode=mode,
         permission_level=permission_level,
         model_strategy=model_strategy,
+        model_name_overrides=model_name_overrides,
         workspace_envelope=workspace_envelope,
         execution_profile=execution_profile,
         fast_path=fast_path,
@@ -113,11 +118,42 @@ def effective_policy_for_run(
 ) -> dict:
     return apply_run_config(policy, load_run_config(run_dir, validator))
 
+def normalize_model_name_overrides(overrides: dict | None) -> dict:
+    """``{tier: model_name}`` for the tiers a caller may pin, with junk dropped.
+
+    Keeps the tier's CONFIGURED provider/base_url/API key and swaps only which model name is asked
+    for — e.g. a strong tier wired to zhipu can be pinned to a different GLM without re-configuring
+    credentials. Overriding the *provider* is deliberately NOT expressible: credentials are keyed by
+    env prefix (i.e. by tier), so pointing a tier at another provider would hand it the first
+    provider's API key. That needs a per-provider credential story first; see S84's non-goals.
+
+    Unknown tiers and blank/non-string values are dropped rather than raising: this value reaches us
+    from run_config.json, which a user can hand-edit, and a typo there must not stop a run from
+    starting. Distinct from `model_routing_overrides` above — that one is purpose->tier.
+    """
+    if not isinstance(overrides, dict):
+        return {}
+    normalized = {}
+    for tier, model_name in overrides.items():
+        if str(tier).strip().lower() not in MODEL_TIERS:
+            continue
+        name = str(model_name or "").strip()
+        if name:
+            normalized[str(tier).strip().lower()] = name
+    return normalized
+
+
 def _model_routing_overrides(model_strategy: str) -> dict:
     # User-facing strategies are policy biases, not a fixed purpose->tier route table.
     # Explicit project/user overrides may be added here later, but the default path
     # should let RuntimeProfileBuilder combine task kind, risk, capability feedback,
     # and budget instead of clobbering all model routes at run creation time.
+    #
+    # This shape is purpose->TIER (like policy["model_routing"]: {"coding": "medium", ...}), and it
+    # has no consumer today. It is NOT where "use model X" lives: which model backs a tier is
+    # resolved in models/factory.py from env / the local route file, and that layer never sees this
+    # policy. Pinning a model is `model_name_overrides` above. Read the paragraph above as narrowly
+    # as it is written — it forbids the *strategy* clobbering routes, not a user override.
     _ = model_strategy
     return {}
 

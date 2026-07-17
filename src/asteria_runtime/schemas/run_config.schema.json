@@ -28,6 +28,7 @@
     "permission_overrides": { "type": "object" },
     "permission_policy": { "type": "object" },
     "model_routing_overrides": { "type": "object" },
+    "model_name_overrides": { "type": "object", "additionalProperties": { "type": "string" } },
     "workspace_envelope": { "type": "object" },
     "model_strategy_profile": {
       "type": "object",
