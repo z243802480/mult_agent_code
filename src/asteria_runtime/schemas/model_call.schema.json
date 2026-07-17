@@ -148,6 +148,7 @@
       ]
     },
     "context_mode": {
+      "description": "Which context builder produced this call: slim/focused come from context_slimming; chat comes from ChatContextBuilder.",
       "type": [
         "string",
         "null"
@@ -155,6 +156,7 @@
       "enum": [
         "slim",
         "focused",
+        "chat",
         null
       ]
     },
