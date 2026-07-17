@@ -798,7 +798,11 @@ class ExecuteCommand:
         ``if next_action_kind == "repair"`` FSM branch. ``max_iterations`` is a resumable budget
         fuse, not cognition. Writes land directly in the workspace (non-parallel default), so this
         path finalizes the task_board + run summary itself rather than going through the FSM's
-        candidate-promotion attempt runner. Gated by ``agent_loop.model_driven_turn`` (default off).
+        candidate-promotion attempt runner.
+
+        Not gated by anything: this is the ONLY execution path. It was behind
+        ``agent_loop.model_driven_turn`` until RA7a flipped that default on, and RA7b retired the
+        flag along with the FSM it selected between (no reader in src/, no key in the policy schema).
         """
         task_id = task["task_id"]
         # max_iterations is a fuse (budget boundary), NOT the FSM's cognitive round ceiling. Give the
