@@ -33,6 +33,7 @@ import { parseSessionText, writeSessionJson } from "./lib/session-store.mjs";
 import { renderSessionReplayHtml } from "./lib/session-replay.mjs";
 import { eventsAfter, parseSince } from "./lib/event-cursor.mjs";
 import { createJobRegistry } from "./lib/jobs.mjs";
+import { blockedEvent, blockingJob } from "./lib/run-conflict.mjs";
 import { createRunDetailReader } from "./lib/run-detail-reader.mjs";
 import { createChatAnswer } from "./lib/chat-answer.mjs";
 import { createChatRoutes } from "./lib/chat-routes.mjs";
@@ -1118,8 +1119,27 @@ function dispatchWarmRun({ job, jobId, sessionId, mode, goal, command, stopTail,
   return true;
 }
 
+/**
+ * Start a runtime job, unless another run is already writing this workspace.
+ *
+ * Returns {started:true, job} or {started:false, blockedBy}. The refusal is announced from in here
+ * rather than left to each caller: a caller that ignores the result still leaves the user with an
+ * explanation on the thread, instead of a message that vanished. See lib/run-conflict.mjs for why
+ * one-writer-at-a-time is the only honest option while every session shares one workspace.
+ *
+ * KEEP THIS FUNCTION SYNCHRONOUS through the guard. Nothing awaits between blockingJob() and
+ * liveJobs.set(), so on a single-threaded event loop the check-and-claim is atomic and two requests
+ * arriving together cannot both win. submitUserGoal's earlier check has awaits after it and is only
+ * there for the narrative; this one is the gate. An await slipped in below would quietly restore the
+ * very race this guards.
+ */
 function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options = {}) {
   pruneLiveJobs();
+  const blockedBy = blockingJob(liveJobs.values(), mode);
+  if (blockedBy) {
+    void appendEvent(sessionId, blockedEvent(blockedBy));
+    return { started: false, blockedBy };
+  }
   const command =
     Array.isArray(commandOverride) && commandOverride.length
       ? commandOverride
@@ -1130,6 +1150,9 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options 
     session_id: sessionId,
     status: "running",
     mode,
+    // Carried so the guard can tell the next user WHICH run holds the workspace. Not exposed by
+    // sessionJobsPayload — it stays server-side, for the notice.
+    goal,
     command,
     started_at_ms: Date.now(),
     run_id: null,
@@ -1169,7 +1192,7 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options 
         warmParams: options.warmParams,
       })
     )
-      return;
+      return { started: true, job };
   }
 
   const child = spawn(command[0], command.slice(1), {
@@ -1239,6 +1262,7 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options 
       run_id: job.run_id || undefined,
     });
   });
+  return { started: true, job };
 }
 
 // Shared completion path for a runtime job — reached from BOTH the cold subprocess's `close`

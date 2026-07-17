@@ -28,6 +28,7 @@ import {
   withModelStrategy,
   withPermissionLevel,
 } from "./run-flags.mjs";
+import { blockedEvent, blockingJob } from "./run-conflict.mjs";
 import { redact, redactText } from "./text-utils.mjs";
 import { readJsonlTail } from "./run-io.mjs";
 import { sanitizeAttachmentPaths } from "./attachments.mjs";
@@ -217,6 +218,22 @@ export function createChatRoutes({
       display_level: "inspector",
       intent_audit: audit,
     });
+
+    // Ask the cross-run guard BEFORE announcing anything. progressEventForMode below says "正在开始"
+    // optimistically — it fires ahead of the permission gate and the run alike — so a turn refused
+    // later would leave the thread saying "正在开始" and then "本轮没有开始". startRuntimeJob still
+    // holds the authoritative gate for every other caller; this is the same blockingJob() over the
+    // same liveJobs, asked early enough to keep the narrative straight.
+    const blockedBy = blockingJob(liveJobs.values(), mode);
+    if (blockedBy) {
+      await appendEvent(activeSessionId, blockedEvent(blockedBy));
+      return {
+        ok: true,
+        session: { ...session, session_id: activeSessionId },
+        started: false,
+        blocked_by_session: blockedBy.session_id,
+      };
+    }
     await appendEvent(activeSessionId, progressEventForMode(mode, goal));
 
     // Best experience by default: the chosen tier decides how autonomous the loop is. Default tiers
@@ -273,11 +290,15 @@ export function createChatRoutes({
       };
     }
 
-    startRuntimeJob(activeSessionId, mode, goal, command, { warmParams });
+    // `started` must report what actually happened: the cross-run guard can refuse to start this
+    // one (another run is already writing the shared workspace). It has already put the reason on
+    // the thread, so there is nothing to add here beyond not claiming we started.
+    const outcome = startRuntimeJob(activeSessionId, mode, goal, command, { warmParams });
     return {
       ok: true,
       session: { ...session, session_id: activeSessionId },
-      started: true,
+      started: outcome.started,
+      ...(outcome.started ? {} : { blocked_by_session: outcome.blockedBy.session_id }),
       execution_route: executionRoute?.route || "direct",
     };
   }
@@ -328,11 +349,11 @@ export function createChatRoutes({
       };
     }
 
-    startRuntimeJob(activeSessionId, action.mode, action.goal, action.command);
+    const outcome = startRuntimeJob(activeSessionId, action.mode, action.goal, action.command);
     return {
       ok: true,
       session: { ...session, session_id: activeSessionId },
-      started: true,
+      started: outcome.started,
       action: action.kind,
     };
   }
@@ -393,11 +414,15 @@ export function createChatRoutes({
       (metadata.kind === "replan_decision" && optionId === "create_repair_task")
         ? "resume"
         : null;
-    startRuntimeJob(activeSessionId, "decide", `Resolve ${decisionId}.`, command, { followUpMode });
+    // `decide` is read-only, so the cross-run guard never refuses it today. Reporting the real
+    // outcome anyway keeps this honest by construction rather than by that fact staying true.
+    const outcome = startRuntimeJob(activeSessionId, "decide", `Resolve ${decisionId}.`, command, {
+      followUpMode,
+    });
     return {
       ok: true,
       session: { ...session, session_id: activeSessionId },
-      started: true,
+      started: outcome.started,
       decision_id: decisionId,
       option_id: optionId,
       follow_up_mode: followUpMode,
@@ -459,13 +484,13 @@ export function createChatRoutes({
       answer,
     ];
     // Resume right after recording the answer so the loop continues with it as guidance.
-    startRuntimeJob(activeSessionId, "decide", `Answer ${decisionId}.`, command, {
+    const outcome = startRuntimeJob(activeSessionId, "decide", `Answer ${decisionId}.`, command, {
       followUpMode: "resume",
     });
     return {
       ok: true,
       session: { ...session, session_id: activeSessionId },
-      started: true,
+      started: outcome.started,
       decision_id: decisionId,
     };
   }
@@ -847,10 +872,10 @@ export function createChatRoutes({
         display_level: "main",
         resolved_job_id: jobId,
       });
-      startRuntimeJob(sessionId, pending.mode, pending.goal, pending.command, {
+      const outcome = startRuntimeJob(sessionId, pending.mode, pending.goal, pending.command, {
         warmParams: pending.warmParams,
       });
-      return { ok: true, started: true };
+      return { ok: true, started: outcome.started };
     }
     if (action === "deny") {
       pendingJobs.delete(jobId);

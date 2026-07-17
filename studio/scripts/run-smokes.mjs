@@ -44,6 +44,7 @@ const HERMETIC = [
   "orchestration-route-smoke.mjs",
   "preview-proxy-smoke.mjs",
   "preview-serve-smoke.mjs",
+  "run-conflict-unit.mjs",
   "run-detail-smoke.mjs",
   "run-flags-unit.mjs",
   "settings-patch-smoke.mjs",
