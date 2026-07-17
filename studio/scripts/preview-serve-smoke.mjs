@@ -85,6 +85,17 @@ try {
 
   // PREVIEW-2: live-reload — served HTML injects the client, and a file edit broadcasts "reload".
   assert(root.body.includes("/__livereload"), "live-reload client not injected into served HTML");
+  // G10: the injected client must land at the START of <head>, before any page script — a
+  // parse-time console.error in the page's own inline script fires before end-of-body scripts,
+  // and those earliest errors are exactly what the Preview error bar exists to show.
+  const headAt = root.body.search(/<head[^>]*>/i);
+  const clientAt = root.body.indexOf("__asteriaPreview");
+  const firstPageScriptAt = root.body.indexOf("<script", root.body.indexOf("</head>"));
+  assert(clientAt > -1, "error-forwarding client not injected");
+  assert(
+    headAt > -1 && clientAt > headAt && (firstPageScriptAt === -1 || clientAt < firstPageScriptAt),
+    "injected client must precede the page's own scripts (head injection regressed)",
+  );
   const reloaded = await waitForReload(pv, () =>
     fs.writeFile(
       path.join(workspace, "index.html"),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StudioEvent } from "../../types";
-import { turnSnapshotHash, turnSnapshotMap } from "./turnRewind";
+import { turnSnapshotMap } from "./turnRewind";
 
 const event = (over: Partial<StudioEvent>): StudioEvent =>
   ({
@@ -12,21 +12,6 @@ const event = (over: Partial<StudioEvent>): StudioEvent =>
     summary: "",
     ...over,
   }) as StudioEvent;
-
-describe("turnSnapshotHash (G7)", () => {
-  it("finds the turn's shadow snapshot on the settle event, latest wins", () => {
-    const events = [
-      event({ data: { workspace_snapshot: "aaa111" } }),
-      event({ event_id: "e2", type: "final_answer", data: { workspace_snapshot: "bbb222" } }),
-    ];
-    expect(turnSnapshotHash(events)).toBe("bbb222");
-  });
-
-  it("returns null when the turn carries no snapshot (non-git workspace / older transcript)", () => {
-    expect(turnSnapshotHash([event({ data: {} }), event({ event_id: "e2" })])).toBeNull();
-    expect(turnSnapshotHash([event({ data: { workspace_snapshot: "   " } })])).toBeNull();
-  });
-});
 
 describe("turnSnapshotMap (G7) — raw-event anchors matched to turns by time window", () => {
   it("assigns each snapshot to the turn it settled in, even when narrative dropped its event", () => {

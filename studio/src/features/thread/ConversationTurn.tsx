@@ -19,7 +19,6 @@ import {
 } from "../../narrative";
 import { SuggestedActions } from "./SuggestedActions";
 import { TurnRewindButton } from "./TurnRewindButton";
-import { turnSnapshotHash } from "./turnRewind";
 import {
   middleRepresentativeEvent,
   middleSummary,
@@ -688,7 +687,7 @@ export function ConversationTurn({
           runDetail={runDetail}
           viewMode={viewMode}
           onRewind={onTurnRewind}
-          snapshotHash={turnSnapshot ?? turnSnapshotHash(steps.flatMap((step) => step.events))}
+          snapshotHash={turnSnapshot}
           onFilesRestored={onFilesRestored}
         />
       )}

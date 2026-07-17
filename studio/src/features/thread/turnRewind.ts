@@ -2,20 +2,6 @@ import type { RunDetailPayload, StudioEvent } from "../../types";
 import { firstText } from "../../narrative";
 
 /**
- * G7 rewind 文件回滚: the turn's shadow workspace snapshot (a hidden git commit taken at turn
- * end), attached by the BFF to the turn's settle event as data.workspace_snapshot. Latest wins.
- * Absent on non-git workspaces and on transcripts older than the feature — the UI then says
- * honestly that only the conversation can rewind.
- */
-export function turnSnapshotHash(events: StudioEvent[]): string | null {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const value = (events[i].data as Record<string, unknown> | undefined)?.workspace_snapshot;
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return null;
-}
-
-/**
  * Per-turn snapshot anchors computed from the RAW main-thread events, matched to turns by time
  * window. The narrative layer legitimately drops some settle events from steps (e.g. a
  * pointer-only final_report is loop scaffolding), so scanning a turn's rendered steps can miss the
