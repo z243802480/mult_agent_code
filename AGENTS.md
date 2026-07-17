@@ -18,7 +18,7 @@ CLI and Studio surface (not command-only UX).
 ```text
 执行计划唯一入口：docs/zh/研发总计划.md（当前状态见 §16 / §16.1）
 当前 ACTIVE_PHASE：大重塑 Part B（前端拉齐 + 诚实化收敛）。S77 的 P1 主体已闭合。
-当前 ACTIVE_SLICE：G17 图片附件——刀一（CLI）已落 1.2.96，刀二（前端 onPaste + 上传 + 引用渲染）待做。
+当前 ACTIVE_SLICE：G17 图片附件已收官（CLI 1.2.96 + Studio 粘贴 1.2.98·均真栈验收）。下一刀待定：1.2.94 的 8 条清理项 / G18 成本定价表。
 
 **本段是索引，不是记账。细节一律去真源查，勿在此复述**（复述会漂，已犯过：见 1.2.95）：
 - 执行计划 + 逐刀 changelog（**唯一真源**）：`docs/zh/研发总计划.md` §16 / §16.1 / changelog 1.2.30–1.2.96
@@ -27,7 +27,7 @@ CLI and Studio surface (not command-only UX).
 **已收官**：Part B 的 B4–B10（专家集群可见 / 护栏 hook / 模型 todo / 成本归属 / schema 防漂 /
 完成闸判据 / 上下文预算快照 / 专家进 worker 树）。前端对标 Wave N1 安静可信赖（G1/G2/G3/G9/G20·
 1.2.83）、N2 评论即指令（G4/G5·1.2.84）、N3 计划与回滚（G6刀一/G7/G10/G11·1.2.85–1.2.89）。
-P2：G15 回放导出（1.2.90）、G14 记忆只读（1.2.91）、G17 刀一（1.2.96）。主区渲染/叙事序/即时感/
+P2：G15 回放导出（1.2.90）、G14 记忆只读（1.2.91）、**G17 图片附件全案**（CLI 1.2.96 + Studio 粘贴 1.2.98）。主区渲染/叙事序/即时感/
 对比度四轮打磨见 1.2.64–1.2.69、1.2.79–1.2.82。投运侧：单口生产构建（1.2.60）、LICENSE 接线
 （1.2.61）、发布绿灯门（1.2.62）、beta_safe 红队（1.2.63）。ADR-0029 两机制默认 ON：warm worker
 （1.2.75）、mid-run steer（1.2.76）。
@@ -42,7 +42,7 @@ P2：G15 回放导出（1.2.90）、G14 记忆只读（1.2.91）、G17 刀一（
 - ~~F5 回归自审只完成 3/8 角度~~ **三个正确性角度已补跑并修 6 条（1.2.97）**，含一条 high（视觉档探测继承全局路由 → 诚实降级被绕过）。剩 Efficiency/Altitude 两角度未跑（低优先）。
 
 当前 Brief / 审计签字：docs/zh/reports/S77-commercial-readiness-audit-20260704.md（实现≈71%、市场化 37→利基 43-45）。⚠️ **该报告的 P1④「自主环未闭合」/ P1⑥「DebugAgent 占位」已过期**——三环+软保险丝第四环已闭合且随权限档默认开（changelog 1.2.31/1.2.33/1.2.38），`agents/debug_agent.py` 已删（RA7b）。读该报告须对照 changelog。
-执行顺序：Part B 前端拉齐剩余（G17 刀二前端粘贴 → G6刀二/G8 待 DecisionPoint）→ P0 沙箱（唯一剩余 P0·按内部发动机定位已降级）→ 利基 Beta
+执行顺序：Part B 前端拉齐剩余（G6刀二/G8 待 DecisionPoint·其余按证据）→ P0 沙箱（唯一剩余 P0·按内部发动机定位已降级）→ 利基 Beta
 冻结（仍有效）：新编排 Wave、任务批 disjoint-write 调度（task_graph 冻结点·需重建冲突检测）、无真实 friction 证据的 Studio 新功能、北极星/swarm/12-Agent、真 cloud VM background。
 **已解冻并落地（勿再当冻结项）**：①B1-a/B1-b 并发专家（含隔离并发写）**全局默认开**·随权限档·merge-gate 保护（2026-07-14·ADR-0023·v1.2.33）；②**自主环四环**（auto_repair / auto_replan / auto_replan_goal / auto_continue 软保险丝）**默认随权限档开**（auto/reviewed_auto → ON·ask_everything → OFF·2026-07-13/14·ADR-0017/0027·v1.2.31/1.2.38）；③**auto-accept 默认开**——`run` 不再为 promotion 停下等人审（2026-07-13 用户知情同意·推翻 2026-07-02 的「run 必停」DecisionPoint·v1.2.15）。高危 shell/deploy/push 仍走常开硬 guard。
 ```
