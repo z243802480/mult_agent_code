@@ -6,6 +6,7 @@ import shlex
 import subprocess
 import sys
 
+from asteria_runtime.core.process_fence import run_fenced
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.security.env_sanitizer import sanitize_subprocess_env
 from asteria_runtime.security.shell_guard import ShellGuard
@@ -32,12 +33,11 @@ class RunCommandTool:
         ShellGuard(context.policy["permissions"], protected_paths).validate(normalized_command)
         timeout = timeout_seconds or self.default_timeout_seconds
         try:
-            completed = subprocess.run(
+            # ADR-0030 S-A: run inside an OS process fence (Job Object / process group) so the whole
+            # tree — including detached children the static ShellGuard can't see — dies with the run.
+            completed = run_fenced(
                 normalized_command,
                 cwd=context.root,
-                shell=True,
-                capture_output=True,
-                text=True,
                 timeout=timeout,
                 env=self._env(),
             )
