@@ -208,6 +208,24 @@ Linux/KVM 级隔离，天花板最高，但绑定 CloudSessionExecutor（现为�
   容器无新增安全暴露）且**非持久**（boot 自愈）；祖先遍历授权要**收窄到工作区链**别顺手放大。**明确不做**：本 phase 仍
   只取证据·未改任何生产码（2 探针脚本+2 结果 json+本段+changelog）·真 provision 接线是下一刀 impl。
 
+### S-B-impl git 半边落地（1.2.141·用户「做 S-B-impl 的 git 半边」授权）——NUL 授权接进 provision + 一处 overclaim 纠正
+
+**已落地（生产码）**：`sandbox_provision.ensure_nul_device_access()`——幂等给 NUL 设备加 AC ACE（先只读查 DACL·
+已有 AC 则跳过·否则 `SetSecurityInfo` 追加），**per-process 缓存**（`_nul_access_ensured`·因 boot 非持久·进程内保证
+一次即可·重启后新进程自动重加）·**best-effort 不 fail-close**（授不了只退回 git/pytest 各自失败·不砸整个沙箱的
+网络/写围栏——NUL 是位桶非安全边界）。接进 `ensure_sandbox`（每 fresh 进程自动保证）+ `provision_toolchain`（运营者
+`asteria sandbox provision` 一并预热并报状态）。3 单测（DACL 幂等检查三态/非 Windows no-op/进程缓存短路）+ **真机集成
+测试 `git --version` 经生产 `ensure_sandbox` 路径 exit 0**·mypy_ratchet(78)/ruff 净。
+
+**⚠️ 纠正 phase-2 的一处 overclaim（诚实）**：phase-2 表格写「git `--version` exit 0 ⇒ **完全修好 git**」——**不准确**。
+真机复验：NUL 授权后 `git --version`（不碰 cwd）✅ exit 0，但 **`git status`/`git add` 仍 exit 128**（`fatal: Unable to
+read current working directory: Permission denied`）——**git 仓库操作要解析 cwd 完整路径·同样撞祖先遍历墙**（与 pytest
+第二墙同源）。**⇒ 「git 半边」实际分解为 (1) NUL 授权【本刀已落·`git --version` 类通】+ (2) 祖先遍历【与 pytest 共享·
+git 还需更多·下一刀】。** 诊断补充（真机·`_diag_ancestor` 探针·已删）：给容器授工作区祖先链 RX 遍历后 **pytest exit 0**
+（祖先遍历修好 pytest），但 **git status 仍失败**（git 读 cwd 要的不止 stat 祖先）·且 **icacls 授 Temp/用户 profile 这类
+大祖先目录会 30s 超时**（生产工作区祖先通常小·此为 spike 工作区建 Temp 下的产物）。**下一刀 impl**：祖先遍历授权
+（收窄工作区链）+ 查清 git 读 cwd 还缺什么·完成后 git 仓库操作 + pytest 一并通。
+
 ## 不做清单
 
 多租户隔离、防恶意用户、harness 自身沙箱化、kernel 级监控、跨机隔离——均超出威胁模型；

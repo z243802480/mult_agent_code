@@ -122,7 +122,51 @@ def test_toolchain_ready_parses_icacls(monkeypatch) -> None:
     assert sandbox_provision.toolchain_ready("C:\\fake") is False
 
 
+def test_nul_dacl_has_app_packages_idempotency_check() -> None:
+    # ADR-0030 S-B-fix: the grant is skipped if an ALL_APPLICATION_PACKAGES ace is already present.
+    # ConvertSD renders it as the `AC` alias or the raw SID, so both must count.
+    has = sandbox_provision._nul_dacl_has_app_packages
+    assert has("D:(A;;0x1201bf;;;WD)(A;;FA;;;SY)(A;;FA;;;AC)") is True  # AC alias
+    assert has(f"D:(A;;FA;;;{sandbox_provision.ALL_APPLICATION_PACKAGES_SID})") is True  # raw SID
+    assert has("D:(A;;0x1201bf;;;WD)(A;;FA;;;SY)(A;;FA;;;BA)") is False  # no app-packages ace
+
+
+def test_ensure_nul_device_access_non_windows_is_noop(monkeypatch) -> None:
+    monkeypatch.setattr(sandbox_provision, "_nul_access_ensured", False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert sandbox_provision.ensure_nul_device_access() == "not applicable (non-Windows)"
+
+
+def test_ensure_nul_device_access_cached_after_first_success(monkeypatch) -> None:
+    # Process-scoped: once ensured, later calls short-circuit without touching the device again.
+    monkeypatch.setattr(sandbox_provision, "_nul_access_ensured", True)
+    assert sandbox_provision.ensure_nul_device_access() == "already ensured"
+
+
 # --- Windows-only real integration: the mechanism itself ------------------------------------------
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="AppContainer is Windows-only")
+def test_real_nul_grant_lets_container_run_git(tmp_path: Path) -> None:
+    # ADR-0030 S-B-fix (git half): after ensure_sandbox auto-grants NUL, `git --version` — which
+    # opens /dev/null RDWR at startup and used to fail with "Permission denied: 'nul'" — runs.
+    import os
+
+    if not sandbox_provision.toolchain_ready():
+        pytest.skip("sandbox toolchain not provisioned (run `asteria sandbox provision`)")
+    git = r"C:\Program Files\Git\cmd\git.exe"
+    if not Path(git).exists():
+        pytest.skip("Git for Windows not installed at the expected path")
+
+    from asteria_runtime.core.sandbox_launch import run_sandboxed
+
+    ctx = sandbox_provision.ensure_sandbox(str(tmp_path))  # auto-ensures NUL
+    result = run_sandboxed(
+        ctx, f'"{git}" --version', cwd=str(tmp_path), env=dict(os.environ),
+        timeout=60, allow_network=False,
+    )
+    assert result.returncode == 0
+    assert "git version" in result.stdout
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="AppContainer is Windows-only")
