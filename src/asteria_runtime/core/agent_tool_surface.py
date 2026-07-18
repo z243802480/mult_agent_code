@@ -68,8 +68,16 @@ class ModelToolSurfaceAdapter:
                 "read",
                 "allow",
                 "read_file",
-                {"path": "workspace-relative file path", "encoding": "utf-8 by default"},
-                ["Read only through PathGuard and protected path policy."],
+                {
+                    "path": "workspace-relative file path",
+                    "encoding": "utf-8 by default",
+                    "offset": "optional 1-based start line for a windowed read of a large file",
+                    "limit": "optional number of lines to read from offset",
+                },
+                [
+                    "Read only through PathGuard and protected path policy.",
+                    "Large files auto-window to the first lines; page the rest with offset/limit.",
+                ],
             ),
             self._tool(
                 "list_files",

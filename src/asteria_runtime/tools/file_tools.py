@@ -11,10 +11,23 @@ from asteria_runtime.tools.base import ToolResult
 class ReadFileTool:
     name = "read_file"
 
+    # A whole-file dump of a large file both blows the turn's context AND gives the model no line
+    # anchors, so it can't build an apply_patch and loops re-reading (observed: 46 tool calls, zero
+    # writes, on a 2502-line file). Above this many lines we auto-window to the first slice and tell
+    # the model to page with offset/limit — mirroring how capable file-reads work.
+    DEFAULT_WINDOW = 800
+
     def __init__(self, max_bytes: int = 200_000) -> None:
         self.max_bytes = max_bytes
 
-    def run(self, context: RuntimeContext, path: str, encoding: str = "utf-8") -> ToolResult:
+    def run(
+        self,
+        context: RuntimeContext,
+        path: str,
+        encoding: str = "utf-8",
+        offset: int | None = None,
+        limit: int | None = None,
+    ) -> ToolResult:
         guard = PathGuard(context.root, context.policy["protected_paths"])
         resolved = guard.resolve_for_read(path)
         if not resolved.exists():
@@ -25,18 +38,49 @@ class ReadFileTool:
         if size > self.max_bytes:
             return ToolResult(
                 ok=False,
-                summary=f"File too large: {path} ({size} bytes)",
+                summary=(
+                    f"File too large: {path} ({size} bytes). Read a window with offset/limit."
+                ),
                 error="file_too_large",
                 data={"size": size, "max_bytes": self.max_bytes},
             )
-        content = resolved.read_text(encoding=encoding)
+        raw = resolved.read_text(encoding=encoding)
+        rel = resolved.relative_to(context.root).as_posix()
+        all_lines = raw.splitlines()
+        total = len(all_lines)
+
+        windowed = offset is not None or limit is not None
+        if windowed:
+            start = max(1, int(offset) if offset else 1)
+            count = int(limit) if limit is not None else self.DEFAULT_WINDOW
+        elif total > self.DEFAULT_WINDOW:
+            start, count, windowed = 1, self.DEFAULT_WINDOW, True
+        else:
+            start, count = 1, total
+
+        if not windowed:
+            # Whole small file: return EXACT bytes (trailing newline / CRLF preserved) so
+            # apply_patch and other content consumers keep matching.
+            return ToolResult(
+                ok=True,
+                summary=f"Read file: {path}",
+                data={"path": rel, "content": raw, "size": size, "total_lines": total},
+            )
+
+        end = min(total, start - 1 + count) if count else total
+        content = "\n".join(all_lines[start - 1 : end])
+        more = end < total or start > 1
+        suffix = f" (lines {start}-{end} of {total})" if more else ""
         return ToolResult(
             ok=True,
-            summary=f"Read file: {path}",
+            summary=f"Read file: {path}{suffix}",
             data={
-                "path": resolved.relative_to(context.root).as_posix(),
+                "path": rel,
                 "content": content,
                 "size": size,
+                "line_start": start,
+                "line_end": end,
+                "total_lines": total,
             },
         )
 

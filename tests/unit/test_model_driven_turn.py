@@ -407,3 +407,66 @@ def test_approval_gate_none_lets_batch_run_as_usual() -> None:
     assert len(result.observations) == 1 and result.observations[0].tool_name == "write_file"
     # gate 被问过一次(那一批工具),但放行了。
     assert len(seen_batches) == 1
+
+
+def test_history_microcompact_collapses_old_observation_payloads() -> None:
+    # 累积历史微压缩（S90 刀一）：payload 单条早有 6KB 上限（agent_harness._clip），但"总和"
+    # 此前无界——旧 observation 的大输出会原封不动躺满整段循环。超预算时必须坍缩**最旧**的
+    # observation 消息（换成带"如何再生"提示的摘要），最近 keep_recent 条保留全文，
+    # assistant 决策轨迹一字不动。
+    big = "X" * 4_000
+    model = FakeModelClient(
+        [
+            _json_resp("step1", [{"tool_name": "run_command", "args": {"command": "echo 1"}}]),
+            _json_resp("step2", [{"tool_name": "run_command", "args": {"command": "echo 2"}}]),
+            _json_resp("step3", [{"tool_name": "run_command", "args": {"command": "echo 3"}}]),
+            _json_resp("done", done=True),
+        ]
+    )
+    tools = FakeToolRunner(
+        [
+            [FakeToolResult(summary="ran echo 1", data={"stdout": big + "-one"})],
+            [FakeToolResult(summary="ran echo 2", data={"stdout": big + "-two"})],
+            [FakeToolResult(summary="ran echo 3", data={"stdout": big + "-three"})],
+        ]
+    )
+
+    result = _run(
+        model,
+        tools,
+        transport="json",
+        history_char_budget=9_000,
+        keep_recent_observation_payloads=1,
+    )
+
+    assert result.status == "completed"
+    final_messages = [str(m.content) for m in model.requests[-1].messages]
+    observation_messages = [t for t in final_messages if t.startswith("Tool results")]
+    assert len(observation_messages) == 3
+    # 最旧的 observation 被坍缩：payload 没了、带"再生"提示；summary 仍在。
+    assert "-one" not in observation_messages[0]
+    assert "elided" in observation_messages[0]
+    assert "ran echo 1" in observation_messages[0]
+    # 最近一条保留全文 payload。
+    assert "-three" in observation_messages[-1]
+    # assistant 决策轨迹不被触碰（三条 assistant JSON 都在）。
+    assistant_texts = [t for t in final_messages if '"tool_calls"' in t and t.startswith("{")]
+    assert len(assistant_texts) == 3
+
+
+def test_history_microcompact_noop_when_within_budget() -> None:
+    model = FakeModelClient(
+        [
+            _json_resp("step1", [{"tool_name": "run_command", "args": {"command": "echo 1"}}]),
+            _json_resp("done", done=True),
+        ]
+    )
+    tools = FakeToolRunner([[FakeToolResult(summary="ran", data={"stdout": "tiny"})]])
+
+    result = _run(model, tools, transport="json")
+
+    assert result.status == "completed"
+    final_messages = [str(m.content) for m in model.requests[-1].messages]
+    observation_messages = [t for t in final_messages if t.startswith("Tool results")]
+    assert "tiny" in observation_messages[0]
+    assert "elided" not in observation_messages[0]

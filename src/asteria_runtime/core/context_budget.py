@@ -184,9 +184,39 @@ def estimate_text_tokens(text: str) -> int:
     return cjk + ceil(other / 4)
 
 
-def context_pressure(policy: dict, estimated_tokens: int) -> ContextPressure:
+def resolve_context_window(
+    policy: dict,
+    *,
+    model_name: str | None = None,
+    provider: str | None = None,
+) -> int:
+    """The context window for the ACTIVE model, not a global constant.
+
+    ``context.model_context_windows`` maps a model name or provider to its real window; the
+    single ``model_context_window_tokens`` stays the fallback. Without this, a provider whose
+    real window is smaller than the global 200k had thresholds that could never fire before the
+    provider itself errored — the 0.75/0.9 ratios were measured against a fictional ceiling."""
     context = policy.get("context") or {}
-    window_tokens = max(1, int(context.get("model_context_window_tokens", 200_000)))
+    windows = context.get("model_context_windows")
+    if isinstance(windows, dict):
+        for key in (model_name, provider):
+            if key and key in windows:
+                try:
+                    return max(1, int(windows[key]))
+                except (TypeError, ValueError):
+                    continue
+    return max(1, int(context.get("model_context_window_tokens", 200_000)))
+
+
+def context_pressure(
+    policy: dict,
+    estimated_tokens: int,
+    *,
+    model_name: str | None = None,
+    provider: str | None = None,
+) -> ContextPressure:
+    context = policy.get("context") or {}
+    window_tokens = resolve_context_window(policy, model_name=model_name, provider=provider)
     compaction_threshold = float(context.get("compaction_threshold", 0.75))
     hard_stop_threshold = float(context.get("hard_stop_threshold", 0.9))
     ratio = max(0.0, estimated_tokens / window_tokens)
@@ -208,6 +238,27 @@ def context_pressure(policy: dict, estimated_tokens: int) -> ContextPressure:
     )
 
 
+def slim_workspace_files(files: list[dict]) -> list[dict]:
+    """Drop the CONTENT excerpts from a workspace_files snapshot, keeping the path inventory.
+
+    This is the main-path application of the compact boundary's droppable philosophy: file
+    excerpts are the heaviest regenerable section of the execute grounding (20 files x 1200
+    chars), and the model can re-read any of them precisely via read_file. Under context
+    pressure the inventory (which files exist) is what prevents re-creating existing files;
+    the excerpts are a convenience worth trading for headroom."""
+    slimmed: list[dict] = []
+    for item in files:
+        if not isinstance(item, dict):
+            continue
+        slimmed.append(
+            {
+                "path": item.get("path"),
+                "content_elided_under_context_pressure": ("use read_file for the current content"),
+            }
+        )
+    return slimmed
+
+
 def build_context_budget_snapshot(
     *,
     policy: dict,
@@ -224,9 +275,7 @@ def build_context_budget_snapshot(
     sections = _runtime_context_sections(metered_context)
     estimated_tokens = max(1, sum(sections.values()))
     pressure = context_pressure(policy, estimated_tokens)
-    duplicate_hashes, duplicate_tokens, duplicate_refs = _duplicate_context_signals(
-        metered_context
-    )
+    duplicate_hashes, duplicate_tokens, duplicate_refs = _duplicate_context_signals(metered_context)
     worker_topology = runtime_context.get("worker_topology")
     worker_topology = worker_topology if isinstance(worker_topology, dict) else {}
     raw_context_mount = runtime_context.get("context_mount")

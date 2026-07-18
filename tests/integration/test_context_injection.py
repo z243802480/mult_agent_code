@@ -330,3 +330,66 @@ def test_model_remembered_lesson_survives_into_next_runs_prompt(tmp_path: Path) 
     ]
     recall_obs = [item for item in observations if item["tool_name"] == "recall_memory"]
     assert recall_obs and recall_obs[0]["ok"] is True
+
+
+class PressureAwareExecuteClient:
+    """断言 near_limit 压力下 grounding 里文件摘录被瘦掉：路径清单仍在、内容不在、带说明。"""
+
+    def __init__(self) -> None:
+        self.saw_slimmed_grounding = False
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        joined = "\n".join(str(m.content) for m in request.messages)
+        if (
+            "content_elided_under_context_pressure" in joined
+            and "UNIQUE_EXCERPT_MARKER" not in joined
+            and "marker_module.py" in joined
+        ):
+            self.saw_slimmed_grounding = True
+        return spine_response(
+            request,
+            narration="压力下产出。",
+            tool_calls=[
+                {
+                    "tool_name": "write_file",
+                    "args": {"path": "CONTEXT.md", "content": "local\n", "overwrite": True},
+                },
+                {
+                    "tool_name": "run_command",
+                    "args": {
+                        "command": "python -c \"from pathlib import Path; assert Path('CONTEXT.md').exists()\""
+                    },
+                },
+            ],
+            model_name="fake-context",
+        )
+
+
+def test_context_pressure_slims_workspace_excerpts_from_execute_grounding(tmp_path: Path) -> None:
+    # S90 压缩真缩（主路径）：预算压力 near_limit 时，本该整段进 prompt 的 workspace_files
+    # 内容摘录被真的从 grounding 里去掉（只剩路径清单 + 说明），而不是只写快照记账。
+    InitCommand(tmp_path).run()
+    (tmp_path / "marker_module.py").write_text(
+        "UNIQUE_EXCERPT_MARKER = 'should not ride the prompt under pressure'\n",
+        encoding="utf-8",
+    )
+
+    plan = PlanCommand(
+        tmp_path,
+        "create context aware artifact",
+        model_client=MemoryLoopPlanClient(),
+    ).run()
+
+    cost_path = tmp_path / ".asteria" / "runs" / plan.run_id / "cost_report.json"
+    report = json.loads(cost_path.read_text(encoding="utf-8"))
+    report["context_pressure_status"] = "near_limit"
+    report["context_window_ratio"] = 0.8
+    cost_path.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
+
+    client = PressureAwareExecuteClient()
+    execute = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
+
+    assert execute.completed == 1
+    assert client.saw_slimmed_grounding, (
+        "near_limit 下 execute 的 grounding 必须瘦身：路径在、摘录不在、带 elision 说明"
+    )

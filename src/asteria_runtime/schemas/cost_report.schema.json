@@ -90,6 +90,12 @@
     "context_compactions": {
       "type": "integer"
     },
+    "context_estimate_calibration": {
+      "type": "number"
+    },
+    "latest_observed_prompt_tokens": {
+      "type": "integer"
+    },
     "user_decisions": {
       "type": "integer"
     },

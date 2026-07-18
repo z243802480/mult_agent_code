@@ -59,6 +59,7 @@
   },
   "context": {
     "model_context_window_tokens": 200000,
+    "model_context_windows": {},
     "compaction_threshold": 0.75,
     "hard_stop_threshold": 0.9,
     "phase_boundary_compaction": true,

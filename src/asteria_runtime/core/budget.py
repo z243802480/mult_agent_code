@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from threading import RLock
 
-from asteria_runtime.core.context_budget import context_pressure
+from asteria_runtime.core.context_budget import ContextPressure, context_pressure
 
 
 class BudgetExceededError(RuntimeError):
@@ -24,6 +24,11 @@ class BudgetUsage:
     estimated_output_tokens: int | None = 0
     latest_context_estimated_tokens: int = 0
     max_context_estimated_tokens: int = 0
+    # Truth feedback (S90): the prompt token count the PROVIDER reported for the latest call, and
+    # the running correction factor (observed/estimated EMA) applied to future char-heuristic
+    # estimates. 1.0 until the first real usage arrives.
+    latest_observed_prompt_tokens: int = 0
+    context_estimate_calibration: float = 1.0
     context_window_tokens: int = 0
     context_window_ratio: float = 0.0
     context_pressure_status: str = "within_budget"
@@ -42,6 +47,7 @@ class BudgetController:
         self.run_id = run_id
         self.usage = BudgetUsage()
         self._lock = RLock()
+        self._last_raw_context_estimate = 0
 
     @classmethod
     def from_report(
@@ -69,6 +75,15 @@ class BudgetController:
         controller.usage.max_context_estimated_tokens = int(
             report.get("max_context_estimated_tokens", 0)
         )
+        controller.usage.latest_observed_prompt_tokens = int(
+            report.get("latest_observed_prompt_tokens", 0)
+        )
+        try:
+            controller.usage.context_estimate_calibration = float(
+                report.get("context_estimate_calibration", 1.0)
+            )
+        except (TypeError, ValueError):
+            controller.usage.context_estimate_calibration = 1.0
         controller.usage.context_window_tokens = int(report.get("context_window_tokens", 0))
         controller.usage.context_window_ratio = float(report.get("context_window_ratio", 0.0))
         controller.usage.context_pressure_status = str(
@@ -130,19 +145,21 @@ class BudgetController:
         *,
         sections: dict[str, int] | None = None,
         duplicate_content_hashes: list[str] | None = None,
+        model_name: str | None = None,
+        provider: str | None = None,
     ) -> None:
         if estimated_tokens is None:
             return
         with self._lock:
-            pressure = context_pressure(self.policy, max(0, int(estimated_tokens)))
-            self.usage.latest_context_estimated_tokens = pressure.estimated_tokens
-            self.usage.max_context_estimated_tokens = max(
-                self.usage.max_context_estimated_tokens,
-                pressure.estimated_tokens,
+            raw = max(0, int(estimated_tokens))
+            self._last_raw_context_estimate = raw
+            # Apply the observed/estimated correction factor learned from real provider usage —
+            # the char heuristic systematically drifts per model family; real usage is the truth.
+            calibrated = max(0, int(raw * self.usage.context_estimate_calibration))
+            pressure = context_pressure(
+                self.policy, calibrated, model_name=model_name, provider=provider
             )
-            self.usage.context_window_tokens = pressure.window_tokens
-            self.usage.context_window_ratio = pressure.ratio
-            self.usage.context_pressure_status = pressure.status
+            self._apply_context_pressure(pressure)
             if sections:
                 clean_sections = {
                     str(key): max(0, _as_int(value)) for key, value in sections.items()
@@ -159,13 +176,52 @@ class BudgetController:
                     *[str(item) for item in duplicate_content_hashes],
                 ]
                 self.usage.context_duplicate_content_hashes = list(dict.fromkeys(merged))[:20]
-            if pressure.status in {"near_limit", "hard_stop", "exceeded"}:
-                warning = (
-                    "context window is near limit: "
-                    f"{pressure.estimated_tokens}/{pressure.window_tokens}"
+
+    def record_context_observation(
+        self,
+        observed_prompt_tokens: int | None,
+        *,
+        model_name: str | None = None,
+        provider: str | None = None,
+    ) -> None:
+        """Fold the provider-reported prompt token count back into the pressure signal (S90).
+
+        The char heuristic is a guess; ``response.usage.input_tokens`` is the truth for the very
+        request the guess was made for. Two effects: the pressure/ratio of record is overwritten
+        with the truth, and the observed/estimated ratio feeds an EMA correction factor applied
+        to future pre-call estimates (clamped so one weird report cannot poison the factor)."""
+        if not observed_prompt_tokens or observed_prompt_tokens <= 0:
+            return
+        with self._lock:
+            observed = int(observed_prompt_tokens)
+            self.usage.latest_observed_prompt_tokens = observed
+            raw = getattr(self, "_last_raw_context_estimate", 0)
+            if raw > 0:
+                ratio = min(4.0, max(0.25, observed / raw))
+                self.usage.context_estimate_calibration = round(
+                    0.5 * self.usage.context_estimate_calibration + 0.5 * ratio, 4
                 )
-                if warning not in self.usage.warnings:
-                    self.usage.warnings.append(warning)
+            pressure = context_pressure(
+                self.policy, observed, model_name=model_name, provider=provider
+            )
+            self._apply_context_pressure(pressure)
+
+    def _apply_context_pressure(self, pressure: ContextPressure) -> None:
+        self.usage.latest_context_estimated_tokens = pressure.estimated_tokens
+        self.usage.max_context_estimated_tokens = max(
+            self.usage.max_context_estimated_tokens,
+            pressure.estimated_tokens,
+        )
+        self.usage.context_window_tokens = pressure.window_tokens
+        self.usage.context_window_ratio = pressure.ratio
+        self.usage.context_pressure_status = pressure.status
+        if pressure.status in {"near_limit", "hard_stop", "exceeded"}:
+            warning = (
+                "context window is near limit: "
+                f"{pressure.estimated_tokens}/{pressure.window_tokens}"
+            )
+            if warning not in self.usage.warnings:
+                self.usage.warnings.append(warning)
 
     def record_tool_call(self, tool_name: str | None = None) -> None:
         with self._lock:
@@ -229,6 +285,8 @@ class BudgetController:
                 "estimated_output_tokens": self.usage.estimated_output_tokens,
                 "latest_context_estimated_tokens": self.usage.latest_context_estimated_tokens,
                 "max_context_estimated_tokens": self.usage.max_context_estimated_tokens,
+                "latest_observed_prompt_tokens": self.usage.latest_observed_prompt_tokens,
+                "context_estimate_calibration": round(self.usage.context_estimate_calibration, 4),
                 "context_window_tokens": self.usage.context_window_tokens,
                 "context_window_ratio": self.usage.context_window_ratio,
                 "context_pressure_status": self.usage.context_pressure_status,

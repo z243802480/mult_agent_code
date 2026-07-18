@@ -15,6 +15,7 @@ from asteria_runtime.core.budget import (
     resolve_budget_limits,
 )
 from asteria_runtime.core.candidate_execution_gateway import CandidateExecutionGateway
+from asteria_runtime.core.context_budget import slim_workspace_files
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.context_prompt_view import context_prompt_view
 from asteria_runtime.core.expert_registry import expert_roles, resolve_expert
@@ -1879,6 +1880,22 @@ class ExecuteCommand:
             ).workspace_files()
         except OSError:
             pass
+        # S90 压缩真缩（主路径半边）：预算压力≥near_limit 时，把 grounding 里最重且**可再生**的
+        # 段（workspace_files 的内容摘录，20×1200 字符）真的从下一轮 prompt 里去掉，只留路径清单
+        # （防重复建文件的正是清单，不是摘录）。确定性边界，不做认知——要看内容模型自己 read_file。
+        # 此前 _compact_boundary 算出的 droppable 无人应用（completion-reaudit-20260718 §3）。
+        if context.budget and context.budget.usage.context_pressure_status in {
+            "near_limit",
+            "hard_stop",
+            "exceeded",
+        }:
+            runtime_context["workspace_files"] = slim_workspace_files(
+                runtime_context.get("workspace_files") or []
+            )
+            runtime_context["context_pressure_note"] = (
+                "Context budget is under pressure: workspace file excerpts were elided from this "
+                "grounding. The file inventory is intact; use read_file for any content you need."
+            )
         try:
             self._record_progress(
                 context,

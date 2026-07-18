@@ -46,7 +46,7 @@ _JSON_TURN_CONTRACT = (
     "- Put the tools you want to run THIS step in tool_calls (each has tool_name + args). "
     "You may call multiple tools in one step.\n"
     "- After you see the tool results, decide the next step and return the next JSON object.\n"
-    "- When the task is complete AND verified, return {\"narration\": \"<final sentence>\", "
+    '- When the task is complete AND verified, return {"narration": "<final sentence>", '
     '"tool_calls": [], "done": true}.\n'
     "- Never return prose or markdown outside the JSON object."
 )
@@ -62,13 +62,11 @@ class ToolRunner(Protocol):
         context: Any,
         stop_on_failure: bool = True,
         stop_verification_on_fatal: bool = False,
-    ) -> list[Any]:
-        ...
+    ) -> list[Any]: ...
 
 
 class ChatClient(Protocol):
-    def chat(self, request: ChatRequest) -> Any:
-        ...
+    def chat(self, request: ChatRequest) -> Any: ...
 
 
 @dataclass(frozen=True)
@@ -121,6 +119,8 @@ def run_model_driven_turn(
     temperature: float = 0.2,
     max_output_tokens: int = 5000,
     transport: str = "json",
+    history_char_budget: int = 60_000,
+    keep_recent_observation_payloads: int = 2,
     on_event: Callable[[TurnEvent], None] | None = None,
     hook: Callable[[str, dict], TurnControl] | None = None,
     approval_gate: Callable[[list[dict]], Any] | None = None,
@@ -156,6 +156,9 @@ def run_model_driven_turn(
     tool_defs = tool_definitions_for(available_tools, extra_tool_specs)
     events: list[TurnEvent] = []
     all_observations: list[ToolObservation] = []
+    # In-loop history microcompact bookkeeping (message index -> the observations that produced
+    # that feedback message). Old payloads get collapsed when the history outgrows its budget.
+    observation_feedback_index: list[tuple[int, list[ToolObservation]]] = []
 
     def emit(event: TurnEvent) -> None:
         events.append(event)
@@ -240,14 +243,17 @@ def run_model_driven_turn(
                     )
                     messages.append(
                         ChatMessage(
-                            role="user", content=control.additional_context or _grounding_nudge(task)
+                            role="user",
+                            content=control.additional_context or _grounding_nudge(task),
                         )
                     )
                     continue
             # 弱模型的"过早收尾"内置兜底：第一轮就停、任务还有明确产出、且尚无任何 observation。
             if iteration == 1 and not nudged and not all_observations and _has_pending_work(task):
                 nudged = True
-                messages.append(ChatMessage(role="assistant", content=narration or "(no tool call)"))
+                messages.append(
+                    ChatMessage(role="assistant", content=narration or "(no tool call)")
+                )
                 messages.append(ChatMessage(role="user", content=_grounding_nudge(task)))
                 continue
             emit(TurnEvent(kind="final", iteration=iteration, text=narration))
@@ -285,6 +291,21 @@ def run_model_driven_turn(
         )
         messages.append(
             ChatMessage(role="user", content=_observation_feedback(observations, transport))
+        )
+        observation_feedback_index.append((len(messages) - 1, observations))
+        # Boundary, not cognition (ADR-0016): when the accumulated history outgrows its char
+        # budget, collapse the OLDEST observation payloads to summaries. Per-observation payloads
+        # are already clipped at 6KB (agent_harness._clip); this bounds their SUM — the one axis
+        # nothing limited, and the in-loop half of the "compaction never shrank the live prompt"
+        # debt (completion-reaudit-20260718 §3). The assistant decision trail and the most recent
+        # observations stay verbatim; elided output is regenerable (re-run the tool / read the
+        # file) and the full text remains in run evidence.
+        _compact_history(
+            messages,
+            observation_feedback_index,
+            transport,
+            char_budget=history_char_budget,
+            keep_recent=keep_recent_observation_payloads,
         )
 
     # 撞上保险丝：可 resume 的预算边界，不是"失败"也不是"完成"。
@@ -347,19 +368,86 @@ def _normalize_json_calls(raw: Any) -> list[dict]:
             continue
         raw_args = item.get("args")
         args = raw_args if isinstance(raw_args, dict) else {}
-        calls.append({"tool_name": name, "args": args, "reason": "model_driven_turn json tool call"})
+        calls.append(
+            {"tool_name": name, "args": args, "reason": "model_driven_turn json tool call"}
+        )
     return calls
 
 
-def _observation_feedback(observations: list[ToolObservation], transport: str) -> str:
-    lines = [obs.model_summary() for obs in observations]
-    body = "\n".join(lines) if lines else "(no observation)"
+#: Ceiling for one observation SUMMARY line inside the loop history. Payloads are clipped at 6KB
+#: upstream (agent_harness._PAYLOAD_MAX_CHARS) but summaries never were — a pathological error
+#: string would ride the history verbatim through every remaining iteration.
+_SUMMARY_MAX_CHARS = 2_000
+
+
+def _clip_text(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit] + f"...[truncated {len(text) - limit} chars]"
+
+
+def _observation_feedback(
+    observations: list[ToolObservation],
+    transport: str,
+    *,
+    include_payloads: bool = True,
+) -> str:
+    blocks: list[str] = []
+    for obs in observations:
+        block = _clip_text(obs.model_summary(), _SUMMARY_MAX_CHARS)
+        payload = getattr(obs, "payload", "")
+        if payload and include_payloads:
+            # The tool's ACTUAL output (file content, stdout, matches) — without this the model
+            # only sees "read_file ok: Read file: x" and never the bytes it asked for.
+            block += "\n" + payload
+        elif payload:
+            block += (
+                "\n[tool output elided to keep the context small — re-run the tool "
+                "(e.g. read_file / run_command) if you need it again]"
+            )
+        blocks.append(block)
+    body = "\n".join(blocks) if blocks else "(no observation)"
     tail = (
         "Return the next JSON object per the contract; set done=true and tool_calls=[] when finished."
         if transport == "json"
         else "Continue with tool calls if not complete, or reply with a final message and NO tool calls when done."
     )
     return f"Tool results (observations):\n{body}\n{tail}"
+
+
+def _compact_history(
+    messages: list[ChatMessage],
+    observation_feedback_index: list[tuple[int, list[ToolObservation]]],
+    transport: str,
+    *,
+    char_budget: int,
+    keep_recent: int,
+) -> None:
+    """Collapse the oldest observation payloads once the history outgrows ``char_budget`` chars.
+
+    Deterministic and lossy-safe: only observation FEEDBACK messages are rewritten (system prompt,
+    grounding payload, assistant decision trail, steer/nudge injections are never touched), the
+    newest ``keep_recent`` observation messages keep their payloads verbatim, and every collapsed
+    message says so and how to regenerate the output. Stops as soon as the history fits.
+    """
+    if char_budget <= 0:
+        return
+
+    def total_chars() -> int:
+        return sum(len(str(message.content)) for message in messages)
+
+    if total_chars() <= char_budget:
+        return
+    collapsible = (
+        observation_feedback_index[:-keep_recent] if keep_recent > 0 else observation_feedback_index
+    )
+    for index, observations in collapsible:
+        collapsed = _observation_feedback(observations, transport, include_payloads=False)
+        if len(collapsed) >= len(str(messages[index].content)):
+            continue
+        messages[index] = ChatMessage(role="user", content=collapsed)
+        if total_chars() <= char_budget:
+            return
 
 
 def _assistant_turn_text(narration: str, calls: list[dict], transport: str) -> str:

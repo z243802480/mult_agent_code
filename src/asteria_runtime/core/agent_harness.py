@@ -193,6 +193,11 @@ class ToolObservation:
     file_changes: list[dict[str, Any]] = field(default_factory=list)
     telemetry: dict[str, Any] = field(default_factory=dict)
     data: dict[str, Any] = field(default_factory=dict)
+    # Bounded, MODEL-FACING excerpt of the tool's actual output (file content, command stdout,
+    # search matches, ...). `data` is stripped/small for the persisted ledger; `payload` is what the
+    # model must actually SEE to make progress. Empty for tools whose output the model doesn't need
+    # echoed back (e.g. write_file — you don't re-read what you just wrote). See ADR-0024.
+    payload: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -205,6 +210,7 @@ class ToolObservation:
             "file_changes": self.file_changes,
             "telemetry": self.telemetry,
             "data": self.data,
+            "payload": self.payload,
         }
 
     def model_summary(self) -> str:
@@ -1018,6 +1024,7 @@ def observation_from_tool_result(
         file_changes=file_changes or [],
         telemetry=telemetry or {},
         data=safe_data,
+        payload=_model_facing_payload(tool_name, data if isinstance(data, dict) else {}),
     )
 
 
@@ -1048,6 +1055,66 @@ def _observation_data(data: Any) -> dict[str, Any]:
         for key, value in data.items()
         if key not in {"content", "diff"}
     }
+
+
+# How much of a tool's real output to feed back to the model per observation. The whole point of a
+# tool call is that the model SEES the result; a summary line ("Read file: x") is not the result.
+# Bounded so a 97KB file or a chatty command can't blow the turn's context — the model reads a
+# smaller window (read_file offset/limit) when it needs more.
+_PAYLOAD_MAX_CHARS = 6000
+
+
+def _clip(text: str, limit: int = _PAYLOAD_MAX_CHARS) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit] + f"\n...[truncated {len(text) - limit} more chars — read a smaller window]"
+
+
+def _model_facing_payload(tool_name: str, data: dict[str, Any]) -> str:
+    """The bounded excerpt of a tool result the model must actually see to make progress.
+
+    Without this the model is blind to file content and command output: it re-reads the same file
+    through every mechanism it can think of and never gains enough ground to commit an edit — the
+    exact 46-tool-calls-zero-writes loop a dogfood run surfaced. write_file is intentionally empty
+    (no need to echo back what was just written)."""
+    if not isinstance(data, dict) or not data:
+        return ""
+    if tool_name == "read_file":
+        content = data.get("content")
+        if isinstance(content, str) and content:
+            start = int(data.get("line_start", 1) or 1)
+            lines = content.splitlines()
+            numbered = "\n".join(f"{start + i}\t{line}" for i, line in enumerate(lines))
+            header = ""
+            total = data.get("total_lines")
+            end = data.get("line_end")
+            if total is not None:
+                header = f"(lines {start}-{end} of {total})\n"
+            return _clip(header + numbered)
+        return ""
+    if tool_name in {"run_command", "shell", "run_tests"}:
+        stdout = str(data.get("stdout") or "")
+        stderr = str(data.get("stderr") or "")
+        combined = stdout + (f"\n[stderr]\n{stderr}" if stderr.strip() else "")
+        return _clip(combined.strip())
+    if tool_name in {"search_text", "search", "grep"}:
+        matches = data.get("matches")
+        if isinstance(matches, list) and matches:
+            return _clip("\n".join(str(m) for m in matches))
+        return ""
+    if tool_name in {"find_files", "list_files", "glob"}:
+        paths = data.get("paths")
+        if isinstance(paths, list) and paths:
+            return _clip("\n".join(str(p) for p in paths))
+        return ""
+    if tool_name in {"recall_memory", "todo_read", "diff_workspace"}:
+        for key in ("content", "text", "diff", "items"):
+            value = data.get(key)
+            if isinstance(value, str) and value.strip():
+                return _clip(value)
+            if isinstance(value, list) and value:
+                return _clip("\n".join(str(v) for v in value))
+    return ""
 
 
 def _artifact_refs(tool_name: str, data: dict[str, Any]) -> list[str]:

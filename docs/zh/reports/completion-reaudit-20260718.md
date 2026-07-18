@@ -32,7 +32,7 @@
 
 **结论一句话**：**≈71% → ≈80%**。最大的真实收益是 S77 点名的价值主张本身——「自主闭环」从
 「拦截并推荐」变成了进程内真闭环（67→88、55→78）；残余债集中在四处：OS 沙箱（唯一 P0）、
-release 闸不含真 provider（nightly 带外承接）、压缩不缩活提示、验证环的台账/后门。
+release 闸不含真 provider（nightly 带外承接）、~~压缩不缩活提示~~（已闭·1.2.123）、验证环的台账/后门。
 
 ## 2. S77 的 P0/P1 清单现状
 
@@ -53,8 +53,12 @@ release 闸不含真 provider（nightly 带外承接）、压缩不缩活提示�
    `shell_guard.py:93-94`）。env 擦洗把凭证面收窄了，但架构性缺口未变。
 2. **release 闸不含真 provider**：verify/release 全程 `-m "not real_provider"`；真栈证明只在两条 nightly
    （有 key 才跑）。闸的诚实性依赖 nightly 红了有人看。
-3. **「压缩」从不缩活提示**：`compact_command.py` 只写快照，`context_budget._compact_boundary` 算出的
-   preserve/droppable **无人应用**到发给模型的上下文——名不副实的程度自 S77 未变。
+3. ~~**「压缩」从不缩活提示**~~ **✅ 已闭（1.2.123·S90·2026-07-18 用户授权·晚于本报告成文）**：
+   原判成立（`compact_command.py` 只写快照，`_compact_boundary` 算出的 preserve/droppable 无人应用——
+   名不副实自 S77 未变）。修=①执行循环历史微压缩（超 60k 字符坍缩最旧 observation payload）
+   ②压力 ≥near_limit 时 execute grounding 真丢文件摘录只留清单 ③hard_stop 对 context 轴先自动
+   compact+瘦身续跑（≤2 次）仍超才 pause ④per-model 真窗口 + provider usage 真值校准估算。
+   详见 ADR-0032 / changelog 1.2.123。
 4. **验证环两洞**：`record_repair_attempt` 零调用方（`budget.py:185`·repair 上限形同虚设，实际靠
    迭代保险丝/续跑上限兜底）；`accept --skip-review` 后门在且被 `supervised_goal_loop_command.py:147`
    主动使用。

@@ -87,6 +87,10 @@
       ],
       "properties": {
         "model_context_window_tokens": { "type": "integer" },
+        "model_context_windows": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        },
         "compaction_threshold": { "type": "number" },
         "hard_stop_threshold": { "type": "number" },
         "phase_boundary_compaction": { "type": "boolean" },

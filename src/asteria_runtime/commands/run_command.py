@@ -1511,6 +1511,30 @@ class RunCommand:
                     )
                 )
             return False
+        # S90：hard_stop 只对**上下文压力**先做有界的自动回收，而不是直接停下等人（set-and-forget：
+        # 人只该在计划/高危处被打断）。回收=写快照 + 让 execute 的压力感知瘦身（elide 文件摘录）与
+        # 循环内 microcompact 有机会把 ratio 压回去；context_compactions 计数器（CompactCommand
+        # 落盘递增）把重试钉死在 2 次，仍超必 pause——人审保底不可关。其他预算轴（model_calls 等）
+        # 打满没有"瘦身"可言，照旧直接 pause。
+        if (
+            pressure["status"] in {"hard_stop", "exceeded"}
+            and pressure.get("highest_label") == "context_window"
+            and int(report.get("context_compactions", 0)) < 2
+        ):
+            compact = CompactCommand(
+                self.root,
+                run_id=run_id,
+                focus=f"hard-stop context recovery before {phase}",
+            ).run()
+            steps.append(
+                RunStepSummary(
+                    "compact",
+                    "budget_guard",
+                    f"Context hard-stop; auto-compacted ({compact.snapshot_path.name}) and "
+                    "continuing with slimmed grounding instead of pausing.",
+                )
+            )
+            return False
         if self._pending_budget_decision(run_id):
             self._pause_run_for_budget(run_id, "Budget guard waiting for an existing decision.")
             return True
