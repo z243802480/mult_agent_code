@@ -143,10 +143,34 @@ Linux/KVM 级隔离，天花板最高，但绑定 CloudSessionExecutor（现为�
    **loopback 代理**（AppContainer 默认拦 loopback·与 internetClient 无关），到代理需 loopback 豁免、直连
    互联网才需 internetClient+防火墙——依机器网络而定·fails closed 故安全；②工具 provision 是显式一次性慢操作
    （已移出热路径）③**默认 OFF 有据不是保守——1.2.122 工具链兼容性 spike 证「默认开不可行」**：AppContainer 里
-   ✅python/stdlib/ruff 能跑，❌**git**（/dev/null 设备被拒·msys）/**pytest**（解释器真路径解析被拦）/**node·npm**
-   均挂 ⇒ 常见开发工具链要逐工具兼容性工作（各根因独立·多日活·S-B-impl backlog）才谈默认开。**另修 1.2.121：命令
-   引号 bug 曾让 1.2.120 的网络证明假绿（命令没跑冒充网络被拦）·已修+回归护栏。**
+   ✅python/stdlib/ruff 能跑，❌**git** / **pytest** / **node·npm** 均挂 ⇒ 要逐工具兼容性工作才谈默认开。
+   **⚠️ 根因已由 1.2.13x「试修 spike」纠正+统一——见下方 S-B-fix 段**（1.2.122 把 git 归「msys /dev/null」、
+   pytest 归「解释器真路径解析」是**两个错误归因**：pytest 的「real location」只是无害警告·realpath 实际成功；
+   真因是 git 和 pytest **同一个**——容器内打不开 NUL 设备）。**另修 1.2.121：命令引号 bug 曾让 1.2.120 的网络
+   证明假绿（命令没跑冒充网络被拦）·已修+回归护栏。**
 4. **S-C（云）维持冻结**，spike 证明原生方案够用，云路线连备胎都用不上，仅登记。
+
+### S-B-fix「试修 spike」结果（1.2.13x·用户「诊断-试修 spike 先行」授权·`scripts/spikes/sandbox_toolchain_fix_probe.py` + `_result.json`）
+
+**统一根因（真机确认·纠正 1.2.122 的两个错误归因）**：git 和 pytest 挂在**同一件事**——AppContainer 内
+**打不开 NUL 设备**。逐条证据：
+
+| 实验 | 结果 | 结论 |
+| --- | --- | --- |
+| `git --version`（含 `HOME` 受控 + `GIT_CONFIG_NOSYSTEM`） | exit 128·`could not open '/dev/null' for reading **and writing**` | git 启动即以 RDWR 开 `/dev/null`·配置改不动它 |
+| `python nul_modes.py`（脚本文件·避 `-c` 转义） | `RDONLY=FAIL(errno13) WRONLY=FAIL(errno13) RDWR=FAIL(errno13)` | **CRT 对 NUL 的 open 三模式全被拒（Permission denied）** |
+| `cmd /c "echo hi>NUL"` / `type NUL` | exit 0 | **cmd 内建 NUL 重定向走的 CreateFile 路径被允许**——这就是 1.2.122 简单命令没暴露此坑、且早期 `echo>NUL` 误导的原因 |
+| `python -m pytest -q`（完整 traceback） | exit 1·`_pytest/capture.py` FDCapture → `os.open(os.devnull, os.O_RDWR)` → `PermissionError: 'nul'` | **pytest 真因=开 devnull·不是「解释器真路径」**（后者 realpath 实测成功·只是启动警告=红鲱鱼） |
+| `python -c realpath(sys.executable)` | exit 0·返回正确路径 | 坐实「real location」是无害警告 |
+| `python -m pytest --capture=sys` | exit 3·另一处 INTERNALERROR | 关 FDCapture 只避开第一个 devnull open·**非干净绕法**（pytest 多处碰 nul） |
+
+**⇒ 路线判据（给 S-B-impl 的证据结论）**：native AppContainer 默认开的**唯一真障碍已收敛为一件事**——让容器能开 NUL
+设备。**impl 方向按证据排序**：**(1) 首选·研究给容器授 NUL 设备访问**——`\Device\Null` 的对象 DACL 是否可向
+容器 profile SID / `ALL_APPLICATION_PACKAGES` 授（一次性 provision 步·若成立则 git+pytest **一并解**·杠杆最高）；
+**(2) 若 NUL 设备授权不可行**：per-tool 绕法不够（pytest `--capture=sys` 已证只避开一处·git 无绕法）⇒ 这成为
+**git/pytest 类工具走 WSL2/容器运行时 fallback**（ADR §阶段三推迟项）的证据·或接受沙箱默认开只覆盖不碰 NUL 的
+负载。**node/npm 的乱码 exit 1 是独立项**（疑编码/console handle·本 spike 未深挖·记 backlog）。**明确不做**：本 spike
+只取证据+纠正归因·未改任何生产码（1 探针脚本+1 结果 json+本 ADR 段+changelog）·NUL 设备授权的真实现是下一刀 impl。
 
 ## 不做清单
 

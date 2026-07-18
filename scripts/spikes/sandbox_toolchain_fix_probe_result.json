@@ -1,0 +1,67 @@
+{
+  "results": [
+    {
+      "label": "git__baseline",
+      "hypothesis": "reproduce the /dev/null failure",
+      "exit": 128,
+      "output_head": "fatal: could not open '/dev/null' for reading and writing: Permission denied",
+      "output_tail": ""
+    },
+    {
+      "label": "nul__write",
+      "hypothesis": "can the container write the NUL device at all?",
+      "exit": 0,
+      "output_head": "NULWRITE_OK\n????????",
+      "output_tail": ""
+    },
+    {
+      "label": "nul__read",
+      "hypothesis": "can the container read the NUL device at all?",
+      "exit": 0,
+      "output_head": "NULREAD_OK\n????????",
+      "output_tail": ""
+    },
+    {
+      "label": "git__nosys_home",
+      "hypothesis": "does a controlled HOME + no-system-config change the /dev/null failure?",
+      "exit": 128,
+      "output_head": "fatal: could not open '/dev/null' for reading and writing: Permission denied",
+      "output_tail": ""
+    },
+    {
+      "label": "py__version",
+      "hypothesis": "python runs (baseline) — the 'real location' line is a WARNING, not the failure",
+      "exit": 0,
+      "output_head": "Python 3.13.13",
+      "output_tail": ""
+    },
+    {
+      "label": "py__realpath",
+      "hypothesis": "realpath SUCCEEDS in-container — proving 'real location' is a red herring",
+      "exit": 0,
+      "output_head": "RP=C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python313\\python.exe\nFailed to find real location of C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+      "output_tail": ""
+    },
+    {
+      "label": "nul__modes_python",
+      "hypothesis": "THE root cause: can the CRT open the NUL device in each mode? (git+pytest both need this)",
+      "exit": 0,
+      "output_head": "NUL_MODES RDONLY=FAIL(errno13) WRONLY=FAIL(errno13) RDWR=FAIL(errno13)\nFailed to find real location of C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+      "output_tail": ""
+    },
+    {
+      "label": "pytest__dash_m",
+      "hypothesis": "reproduce the true pytest failure: _pytest.capture FDCapture os.open(os.devnull, O_RDWR)",
+      "exit": 1,
+      "output_head": "Failed to find real location of C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python313\\python.exe\nTraceback (most recent call last):\n  File \"C:\\Users\\Administrator\\AppData\\Local\\Programs\\Pytho",
+      "output_tail": "ator\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\_pytest\\capture.py\", line 482, in __init__\n    self.targetfd_invalid: int | None = os.open(os.devnull, os.O_RDWR)\n                                        ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^\nPermissionError: [Errno 13] Permission denied: 'nul'"
+    },
+    {
+      "label": "pytest__capture_sys",
+      "hypothesis": "does --capture=sys (no FDCapture) avoid the devnull open? (cheap partial workaround test)",
+      "exit": 3,
+      "output_head": "INTERNALERROR> Traceback (most recent call last):\nINTERNALERROR>   File \"C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\_pytest\\main.py\", line 314, in wrap_session\nIN",
+      "output_tail": "open_func(self.baseFilename, self.mode,\nINTERNALERROR>                      encoding=self.encoding, errors=self.errors)\nINTERNALERROR> PermissionError: [Errno 13] Permission denied: '\\\\\\\\.\\\\nul'\nFailed to find real location of C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python313\\python.exe"
+    }
+  ]
+}
