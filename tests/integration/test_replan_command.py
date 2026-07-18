@@ -68,8 +68,7 @@ class FakeBrokenExecuteClient:
                     "tool_name": "run_command",
                     "args": {
                         "command": (
-                            "python -c "
-                            '"from complete_module import answer; assert answer() == 42"'
+                            'python -c "from complete_module import answer; assert answer() == 42"'
                         )
                     },
                 },
@@ -109,8 +108,7 @@ def test_replan_command_creates_repair_task_from_task_failure_evidence(tmp_path:
     ]
     assert any(event["title"] == "准备重规划" for event in user_progress)
     assert any(
-        event["title"] == "已创建修复任务"
-        and event["data"]["new_task_id"] == "task-0002"
+        event["title"] == "已创建修复任务" and event["data"]["new_task_id"] == "task-0002"
         for event in user_progress
     )
     assert any(event["title"] == "重规划完成" for event in user_progress)
@@ -141,9 +139,7 @@ def test_replan_command_creates_decision_after_replan_limit(tmp_path: Path) -> N
         for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     decision_events = [event for event in user_progress if event["event_type"] == "decision"]
-    assert any(
-        event["data"]["decision"]["reason"] == "repair_limit" for event in decision_events
-    )
+    assert any(event["data"]["decision"]["reason"] == "repair_limit" for event in decision_events)
 
 
 def test_replan_command_enforces_lineage_limit_on_chained_repairs(tmp_path: Path) -> None:
@@ -161,3 +157,32 @@ def test_replan_command_enforces_lineage_limit_on_chained_repairs(tmp_path: Path
     third = ReplanCommand(tmp_path, run_id=plan.run_id, max_replans_per_task=2).run()
     assert third.created_tasks == 0
     assert third.created_decisions == 1
+
+
+def test_repair_task_inherits_source_scopes_so_brief_gate_passes(tmp_path: Path) -> None:
+    # Dogfood run-20260718 #3: a repair task with no write_scope of its own AND empty
+    # expected_changed_files (the pre-existing-test strip can empty it) has an empty
+    # "allowed_writes" brief field, and the delegation brief quality gate hard-denies the
+    # worker before the model runs. The repair continues the source task's work inside the
+    # same boundary — it must inherit the source scopes.
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
+    ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    task_plan["tasks"][0]["write_scope"] = ["notes/", "implementation artifact"]
+    task_plan["tasks"][0]["read_scope"] = []
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
+
+    ReplanCommand(tmp_path, run_id=plan.run_id).run()
+
+    repaired = json.loads(task_plan_path.read_text(encoding="utf-8"))["tasks"][1]
+    assert repaired["write_scope"] == ["notes/", "implementation artifact"]
+    assert repaired["read_scope"] == []
+
+    from asteria_runtime.core.worker_recorder import WorkerExecutionRecorder
+
+    gate = WorkerExecutionRecorder(run_dir).delegation_gate(repaired)
+    assert gate["status"] == "pass", gate["reason"]

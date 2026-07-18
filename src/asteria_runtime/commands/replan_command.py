@@ -108,10 +108,7 @@ class ReplanCommand:
                         phase="review",
                         status="waiting_user",
                         title="需要用户决定是否继续修复",
-                        summary=(
-                            f"{evidence['task_id']} 已达到重规划次数上限，"
-                            "系统已创建决策点。"
-                        ),
+                        summary=(f"{evidence['task_id']} 已达到重规划次数上限，系统已创建决策点。"),
                         decision={
                             "decision_id": decision["decision_id"],
                             "source_task_id": evidence["task_id"],
@@ -191,9 +188,7 @@ class ReplanCommand:
                 f"创建 {len(created_task_ids)} 个修复任务，"
                 f"创建 {len(created_decision_ids)} 个决策点。"
             ),
-            content_delta=(
-                "有新修复任务时可以继续执行；有决策点时请先处理决策。"
-            ),
+            content_delta=("有新修复任务时可以继续执行；有决策点时请先处理决策。"),
             artifact_refs=[str(run_dir / "task_plan.json")],
         )
         return ReplanResult(
@@ -318,7 +313,9 @@ class ReplanCommand:
         return count
 
     def _replan_count(self, task_board: TaskBoard, task_id: str) -> int:
-        return self._replan_lineage_count(task_board, self._replan_lineage_root(task_board, task_id))
+        return self._replan_lineage_count(
+            task_board, self._replan_lineage_root(task_board, task_id)
+        )
 
     def _needs_decision(self, evidence: dict) -> bool:
         return evidence["failure_type"] in {
@@ -414,6 +411,15 @@ class ReplanCommand:
                 "failure_type": evidence["failure_type"],
             },
         }
+        # The repair continues the SOURCE task's work inside the same boundary — inherit its
+        # scopes. Without this the repair's write authority collapses to expected_changed_files,
+        # which is empty whenever the pre-existing-test strip (1.2.20) removed the only expected
+        # file; the delegation brief gate then hard-denies the worker before the model ever runs
+        # (dogfood run-20260718 #3: three repair tasks denied in a row on "allowed_writes").
+        if source_task.get("write_scope"):
+            task["write_scope"] = [str(item) for item in source_task["write_scope"]]
+        if isinstance(source_task.get("read_scope"), list):
+            task["read_scope"] = [str(item) for item in source_task["read_scope"]]
         task["completion_contract"] = completion_contract(task)
         task["verification_policy"] = {
             "required": True,
