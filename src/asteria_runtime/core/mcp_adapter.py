@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -14,6 +13,7 @@ from asteria_runtime.core.budget import BudgetExceededError
 from asteria_runtime.core.capability_decision_recorder import CapabilityDecisionRecorder
 from asteria_runtime.core.process_flags import NEW_PROCESS_GROUP_FLAGS
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.security.env_sanitizer import sanitize_subprocess_env
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.utils.time import now_iso
@@ -69,10 +69,16 @@ class StdioMcpSession:
         self._next_id = 1
         self._initialized = False
         command = [shutil.which(config.command[0]) or config.command[0], *config.command[1:]]
+        # A third-party MCP server sits on the same trust boundary as the model's shell: the
+        # harness's provider credentials are stripped (env=None would inherit them all). Keys the
+        # user explicitly put in config.env are their deliberate grant and survive, even
+        # secret-named ones (e.g. the server's own API key).
+        env, _removed = sanitize_subprocess_env()
+        env.update(config.env)
         self._process = subprocess.Popen(
             command,
             cwd=str(config.cwd) if config.cwd else None,
-            env={**os.environ, **config.env} if config.env else None,
+            env=env,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

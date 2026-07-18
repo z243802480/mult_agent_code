@@ -366,3 +366,65 @@ def test_from_configs_degrades_on_unspawnable_server() -> None:
 
     assert "dead" not in adapter.sessions
     assert adapter.discover_tools() == []
+
+
+def test_stdio_session_spawn_env_strips_harness_credentials(monkeypatch: Any) -> None:
+    from asteria_runtime.core import mcp_adapter as mcp_adapter_module
+    from asteria_runtime.core.mcp_adapter import McpServerConfig, StdioMcpSession
+
+    captured: dict[str, Any] = {}
+
+    def fake_popen(command: list[str], **kwargs: Any) -> Any:
+        captured["env"] = kwargs["env"]
+
+        class _Proc:
+            pass
+
+        return _Proc()
+
+    monkeypatch.setattr(mcp_adapter_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setenv("AGENT_MODEL_API_KEY", "harness-secret")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://gateway.example")
+    monkeypatch.setenv("SOME_ORDINARY_VAR", "keep-me")
+
+    StdioMcpSession(McpServerConfig(name="srv", command=["dummy-cmd"]))
+
+    env = captured["env"]
+    # env=None (full inherit) is exactly the hole being closed — must always be an explicit dict.
+    assert env is not None
+    assert "AGENT_MODEL_API_KEY" not in env
+    assert "ANTHROPIC_BASE_URL" not in env
+    assert env["SOME_ORDINARY_VAR"] == "keep-me"
+    assert "PATH" in env
+
+
+def test_stdio_session_spawn_env_preserves_explicit_config_keys(monkeypatch: Any) -> None:
+    from asteria_runtime.core import mcp_adapter as mcp_adapter_module
+    from asteria_runtime.core.mcp_adapter import McpServerConfig, StdioMcpSession
+
+    captured: dict[str, Any] = {}
+
+    def fake_popen(command: list[str], **kwargs: Any) -> Any:
+        captured["env"] = kwargs["env"]
+
+        class _Proc:
+            pass
+
+        return _Proc()
+
+    monkeypatch.setattr(mcp_adapter_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setenv("GITHUB_TOKEN", "ambient-should-be-stripped")
+
+    StdioMcpSession(
+        McpServerConfig(
+            name="srv",
+            command=["dummy-cmd"],
+            # Secret-named but user-explicit: the user's deliberate grant to this server.
+            env={"MY_SERVER_API_KEY": "explicit-grant", "MODE": "test"},
+        )
+    )
+
+    env = captured["env"]
+    assert env["MY_SERVER_API_KEY"] == "explicit-grant"
+    assert env["MODE"] == "test"
+    assert "GITHUB_TOKEN" not in env
