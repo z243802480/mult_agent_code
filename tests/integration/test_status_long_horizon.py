@@ -7,6 +7,29 @@ from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.status_command import StatusCommand
 
 
+def test_status_text_surfaces_active_background_runs(tmp_path: Path, monkeypatch) -> None:
+    # dogfood friction #1: a run started with --background lives in its own session, but `status`
+    # reports the foreground session with no hint that the background run exists. When background
+    # runs are active, the text must point the user to `asteria background status`.
+    InitCommand(tmp_path).run()
+    from asteria_runtime.commands import status_command as sc
+
+    monkeypatch.setattr(sc, "background_run_projection", lambda root: {"running_count": 2})
+    text = StatusCommand(tmp_path).run().to_text()
+    assert "Background runs: 2 active" in text
+    assert "asteria background status" in text
+
+
+def test_status_text_omits_background_hint_when_none_active(tmp_path: Path, monkeypatch) -> None:
+    # No noise when nothing is running in the background.
+    InitCommand(tmp_path).run()
+    from asteria_runtime.commands import status_command as sc
+
+    monkeypatch.setattr(sc, "background_run_projection", lambda root: {"running_count": 0})
+    text = StatusCommand(tmp_path).run().to_text()
+    assert "Background runs:" not in text
+
+
 def test_status_json_includes_long_horizon_projection(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
 

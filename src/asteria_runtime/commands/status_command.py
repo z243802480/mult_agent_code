@@ -554,6 +554,15 @@ class StatusResult:
             lines.append("Next: asteria init")
             return "\n".join(lines)
         lines.append(f"Current session: {self.current_session_id or 'none'}")
+        # dogfood friction #1: `status` reports the foreground session, but a run started with
+        # `--background` lives in its own session — the user who just launched one had no signal here
+        # that it exists or where to look. Surface a pointer whenever background runs are active.
+        bg_projection = background_run_projection(self.root)
+        if bg_projection.get("running_count"):
+            lines.append(
+                f"Background runs: {bg_projection['running_count']} active"
+                " (separate from this session — see `asteria background status`)"
+            )
         workspace = self.current_context.get("workspace_envelope") if self.current_context else {}
         if workspace:
             lines.append("Workspace envelope:")
