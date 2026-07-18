@@ -226,6 +226,24 @@ git 还需更多·下一刀】。** 诊断补充（真机·`_diag_ancestor` 探�
 大祖先目录会 30s 超时**（生产工作区祖先通常小·此为 spike 工作区建 Temp 下的产物）。**下一刀 impl**：祖先遍历授权
 （收窄工作区链）+ 查清 git 读 cwd 还缺什么·完成后 git 仓库操作 + pytest 一并通。
 
+### S-B git 半边·祖先遍历方案证伪（1.2.14x·用户「实现祖先遍历授权·直接 API」授权 → **真机跑出负面结果·方案作废**）
+
+**结论：祖先遍历授权对 git 是死路——既不修 git、又慢到不可用。改回决策。** 真机验证（直接 API `SetEntriesInAcl`+
+`SetNamedSecurityInfo` 给工作区祖先链含盘根加 profile-SID traverse-only(X) ACE·比 icacls 更底层）：
+- **git status 授全部祖先后仍 exit 128**（`Unable to read current working directory`）——**祖先遍历授权不修 git**。
+  真因更深：git-for-windows 的 `mingw_getcwd` 用 `CreateFileW(cwd, access=0, FILE_FLAG_BACKUP_SEMANTICS)` +
+  `GetFinalPathNameByHandle` 拿 cwd 规范全路径·容器里这条链失败·非「授祖先 traverse」能解（授了照挂）。
+- **且慢到不可用**：直接 API 授 6 个祖先耗时 **145s**（不是 icacls 特有的慢·是 `SetNamedSecurityInfo` 对
+  Temp/user-profile 这类大目录本身慢·疑触发子项继承重算）——热路径根本用不起。
+- **副作用已如实清理**：spike 在 `C:\`/`C:\Users`/`…AppData\Local\Temp` 等 6 个系统目录留下的 traverse ACE·
+  已用直接 API `REVOKE_ACCESS` 逐个移除并**逐目录 icacls 复查=0 残留**·系统恢复原样。危险 spike 脚本（改系统 ACL·
+  清理不可靠）已删·不留可运行残留。
+- **⇒ 重新判据**：**pytest 在 native AppContainer 已能跑（NUL 授权就够·harness 自验工具通=默认开的大头）；git 仓库
+  操作是 native AppContainer 的原生限制·祖先授权解不了。** 剩余真实选项：**(A) 标默认开·git 仓库操作列已知限制**
+  （网络/写围栏+pytest 已成立·git push 本就常开硬 guard）；**(B) git 走 WSL2/容器运行时 fallback**（阶段三推迟项·
+  独立一条线）。**不再走祖先授权**（本段证伪）。**明确不做**：`ensure_sandbox` 未加任何祖先授权（证伪故未接线·生产码
+  只有 1.2.141 的 NUL 授权）·git 半边的后续走向待用户在 (A)/(B) 间定。
+
 ## 不做清单
 
 多租户隔离、防恶意用户、harness 自身沙箱化、kernel 级监控、跨机隔离——均超出威胁模型；
