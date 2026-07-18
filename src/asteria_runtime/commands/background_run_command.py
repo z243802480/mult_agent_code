@@ -5,7 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.commands.init_command import InitCommand
-from asteria_runtime.core.local_background_run import BackgroundRunRegistry, background_run_projection
+from asteria_runtime.core.local_background_run import (
+    BackgroundGoalOptions,
+    BackgroundRunRegistry,
+    background_run_projection,
+)
 from asteria_runtime.core.remote_background_adapter import start_background_run
 from asteria_runtime.resources import schema_dir
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -64,12 +68,14 @@ class BackgroundRunCommand:
         goal: str | None = None,
         remote: bool = False,
         validator: SchemaValidator | None = None,
+        options: BackgroundGoalOptions | None = None,
     ) -> None:
         self.root = root.resolve()
         self.action = action.strip().lower()
         self.goal = goal.strip() if goal else None
         self.remote = remote
         self.validator = validator or SchemaValidator(schema_dir())
+        self.options = options
 
     def run(self) -> BackgroundRunResult:
         if not (self.root / ".asteria").exists():
@@ -83,6 +89,7 @@ class BackgroundRunCommand:
                 self.goal,
                 self.validator,
                 remote=self.remote,
+                options=self.options,
             )
             registry = BackgroundRunRegistry(self.root, self.validator)
             if self.remote:

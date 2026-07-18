@@ -9,6 +9,7 @@ from unittest.mock import patch
 from asteria_runtime.commands.background_run_command import BackgroundRunCommand
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.core.local_background_run import (
+    BackgroundGoalOptions,
     BackgroundRunRegistry,
     _pid_is_alive,
     background_run_projection,
@@ -25,6 +26,57 @@ def test_build_background_goal_argv_includes_root_and_no_research(tmp_path: Path
     assert "demo goal" in argv
     assert "--no-research" in argv
     assert str(tmp_path.resolve()) in argv
+
+
+def test_build_background_goal_argv_threads_explicit_flags(tmp_path: Path) -> None:
+    # dogfood friction #2: --permission-level (and other explicit run flags) used to be dropped
+    # when rebuilding the background child argv, silently degrading the user's choice to `balanced`.
+    argv = build_background_goal_argv(
+        tmp_path,
+        "demo goal",
+        BackgroundGoalOptions(
+            permission_level="auto", enable_research=True, model_strategy="economy"
+        ),
+    )
+    assert argv[argv.index("--permission-level") + 1] == "auto"
+    assert argv[argv.index("--model-strategy") + 1] == "economy"
+    # enable_research=True honours the user's choice → the forced --no-research is gone.
+    assert "--no-research" not in argv
+
+
+def test_build_background_goal_argv_defaults_preserve_legacy_behaviour(tmp_path: Path) -> None:
+    # No options → byte-for-byte the historical argv (research off, no permission flag).
+    assert build_background_goal_argv(tmp_path, "g") == build_background_goal_argv(
+        tmp_path, "g", BackgroundGoalOptions()
+    )
+    argv = build_background_goal_argv(tmp_path, "g", BackgroundGoalOptions())
+    assert "--no-research" in argv
+    assert "--permission-level" not in argv
+
+
+def test_start_local_background_run_threads_options_into_spawned_command(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    captured: dict[str, list[str]] = {}
+
+    class _FakeProcess:
+        pid = 727272
+        returncode: int | None = None
+
+    def fake_spawn(command: list[str], **kwargs: object) -> _FakeProcess:
+        captured["command"] = list(command)
+        return _FakeProcess()
+
+    entry = start_local_background_run(
+        tmp_path,
+        "add a json flag",
+        validator,
+        spawn=fake_spawn,
+        options=BackgroundGoalOptions(permission_level="auto"),
+    )
+    # The permission level must reach both the spawned process argv and the recorded registry entry.
+    assert captured["command"][captured["command"].index("--permission-level") + 1] == "auto"
+    assert "--permission-level" in entry["command"]
 
 
 def test_background_argv_module_is_a_real_entry_point(tmp_path: Path) -> None:

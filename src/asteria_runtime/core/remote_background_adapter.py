@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from asteria_runtime.core.local_background_run import (
+    BackgroundGoalOptions,
     BackgroundRunRegistry,
     background_run_projection,
     start_local_background_run,
@@ -77,10 +78,11 @@ def start_background_run(
     *,
     remote: bool = False,
     spawn: SpawnProcess | None = None,
+    options: BackgroundGoalOptions | None = None,
 ) -> dict[str, Any]:
     if remote:
         return start_remote_background_stub(root, goal, validator)
-    return start_local_background_run(root, goal, validator, spawn=spawn)
+    return start_local_background_run(root, goal, validator, spawn=spawn, options=options)
 
 
 def merge_backend_projection(projection: dict[str, Any]) -> dict[str, Any]:

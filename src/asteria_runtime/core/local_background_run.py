@@ -155,8 +155,25 @@ def registry_path(root: Path) -> Path:
     return root.resolve() / REGISTRY_REL
 
 
-def build_background_goal_argv(root: Path, goal: str) -> list[str]:
-    return [
+@dataclass(frozen=True)
+class BackgroundGoalOptions:
+    """Run flags the foreground `goal` command accepts that must survive the hop into the
+    background subprocess. Before this existed, `--background` rebuilt the child argv from
+    scratch and dropped everything except goal/root — so the user's explicit
+    `--permission-level auto` silently degraded to the `balanced` default (dogfood friction #2,
+    run-20260718). Defaults reproduce the historical background behaviour (research off) so a
+    caller that passes no options is byte-for-byte unchanged."""
+
+    permission_level: str | None = None
+    enable_research: bool = False
+    model_strategy: str | None = None
+
+
+def build_background_goal_argv(
+    root: Path, goal: str, options: BackgroundGoalOptions | None = None
+) -> list[str]:
+    opts = options or BackgroundGoalOptions()
+    argv = [
         sys.executable,
         "-m",
         "asteria_runtime.cli",
@@ -164,8 +181,18 @@ def build_background_goal_argv(root: Path, goal: str) -> list[str]:
         goal,
         "--root",
         str(root.resolve()),
-        "--no-research",
     ]
+    # Research stays off for a background run unless the user explicitly enabled it; unattended
+    # network research would otherwise stall on a permission decision nobody is there to answer.
+    if not opts.enable_research:
+        argv.append("--no-research")
+    # Thread the user's explicit choices so the child run_config matches what they asked for on the
+    # command line (the whole point of the fix — no silent downgrade).
+    if opts.permission_level:
+        argv += ["--permission-level", opts.permission_level]
+    if opts.model_strategy:
+        argv += ["--model-strategy", opts.model_strategy]
+    return argv
 
 
 def _pid_is_alive(pid: int) -> bool:
@@ -326,11 +353,12 @@ def start_local_background_run(
     validator: SchemaValidator,
     *,
     spawn: SpawnProcess | None = None,
+    options: BackgroundGoalOptions | None = None,
 ) -> dict[str, Any]:
     root = root.resolve()
     registry = BackgroundRunRegistry(root, validator)
     background_run_id = f"bg-{now_iso().replace(':', '').replace('+', '')[:15]}"
-    command = build_background_goal_argv(root, goal)
+    command = build_background_goal_argv(root, goal, options)
     started_at = now_iso()
     log_path = _background_log_path(root, background_run_id)
     log_path.parent.mkdir(parents=True, exist_ok=True)

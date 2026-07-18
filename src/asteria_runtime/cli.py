@@ -2040,10 +2040,20 @@ def _run_cli() -> None:
         if args.background:
             if not args.goal:
                 raise SystemExit("goal is required when using --background")
+            # Thread the user's explicit run flags into the background subprocess. Without this the
+            # child argv was rebuilt from goal/root only and `--permission-level auto` silently
+            # degraded to the balanced default (dogfood friction #2, run-20260718).
+            from asteria_runtime.core.local_background_run import BackgroundGoalOptions
+
             bg_result = BackgroundRunCommand(
                 root=Path(args.root),
                 action="start",
                 goal=args.goal,
+                options=BackgroundGoalOptions(
+                    permission_level=args.permission_level,
+                    enable_research=not args.no_research,
+                    model_strategy=args.model_strategy,
+                ),
             ).run()
             if args.json:
                 print(json.dumps(bg_result.to_dict(), ensure_ascii=False, indent=2))
