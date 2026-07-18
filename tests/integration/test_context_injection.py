@@ -299,7 +299,9 @@ def test_model_remembered_lesson_survives_into_next_runs_prompt(tmp_path: Path) 
     assert execute.completed == 1
 
     notes = tmp_path / ".asteria" / "memory" / "model_notes.jsonl"
-    rows = [json.loads(line) for line in notes.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows = [
+        json.loads(line) for line in notes.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
     assert len(rows) == 1
     assert rows[0]["memory_id"] == "note-0001"
     assert rows[0]["source"]["kind"] == "model"
@@ -393,3 +395,14 @@ def test_context_pressure_slims_workspace_excerpts_from_execute_grounding(tmp_pa
     assert client.saw_slimmed_grounding, (
         "near_limit 下 execute 的 grounding 必须瘦身：路径在、摘录不在、带 elision 说明"
     )
+    # 1.2.135: the slimmed seed itself is never persisted, so the slim action must leave a
+    # durable diagnostic event — otherwise live runs cannot prove the mechanism fired.
+    progress_path = tmp_path / ".asteria" / "runs" / plan.run_id / "user_progress.jsonl"
+    events = [
+        json.loads(line)
+        for line in progress_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    slim_events = [e for e in events if e.get("title") == "Context pressure: grounding slimmed"]
+    assert slim_events, "slim 动作必须留 diagnostic 事件"
+    assert slim_events[0]["data"]["context_pressure_status"] == "near_limit"

@@ -162,17 +162,38 @@ class RequirementPlanner:
             for item in goal_spec.get("target_outputs", [])
             if isinstance(item, str) and self._looks_like_file_path(str(item).strip())
         ]
+        candidate: str | None = None
         if len(outputs) == 1:
-            return outputs[0]
-        text = " ".join(
-            [
-                str(goal_spec.get("original_goal", "")),
-                str(goal_spec.get("normalized_goal", "")),
-                " ".join(str(item) for item in goal_spec.get("definition_of_done", [])),
-            ]
+            candidate = outputs[0]
+        else:
+            text = " ".join(
+                [
+                    str(goal_spec.get("original_goal", "")),
+                    str(goal_spec.get("normalized_goal", "")),
+                    " ".join(str(item) for item in goal_spec.get("definition_of_done", [])),
+                ]
+            )
+            matches = list(dict.fromkeys(re.findall(r"\b[\w.-]+\.[A-Za-z0-9]{1,8}\b", text)))
+            candidate = matches[0] if len(matches) == 1 else None
+        # A test file as the only visible path is the goal's verification SPEC, not its sole
+        # deliverable. Chinese prose names components ("Note 模型", "NoteStore"), not paths, so
+        # the test path is often the ONLY token the regex can see — collapsing on it turned a
+        # five-part feature goal into one test_storage.py task whose write_scope denied every
+        # real source file (dogfood run-20260718). A test-only goal still plans fine through
+        # the requirement branch.
+        if candidate is not None and self._is_test_spec_path(candidate):
+            return None
+        return candidate
+
+    def _is_test_spec_path(self, path: str) -> bool:
+        normalized = path.replace("\\", "/").lower()
+        name = normalized.rsplit("/", 1)[-1]
+        return (
+            normalized.startswith("tests/")
+            or "/tests/" in normalized
+            or name.startswith("test_")
+            or name.endswith("_test.py")
         )
-        matches = list(dict.fromkeys(re.findall(r"\b[\w.-]+\.[A-Za-z0-9]{1,8}\b", text)))
-        return matches[0] if len(matches) == 1 else None
 
     def _looks_like_file_path(self, value: str) -> bool:
         if not value or value.endswith(("/", "\\")):
@@ -507,8 +528,57 @@ class RequirementPlanner:
         }
         task["completion_contract"] = completion_contract(task)
         task["verification_policy"] = self._verification_policy(task, goal_spec)
+        # The unified task carries the WHOLE goal; deriving write_scope from the explicitly
+        # named files assumes the prose named every file the work touches. Chinese goals name
+        # components, not paths ("Note 模型", "NoteStore"), so often only a test path is
+        # regex-visible — scoping writes to it denied every source file while the contract
+        # still demanded source-level behaviour (dogfood run-20260718). Named files stay the
+        # completion anchors (expected_changed_files untouched); writes get the same generic
+        # implementation surface an artifact-less goal would have had.
+        if task_kind in {"implementation", "report", "ui"}:
+            task["write_scope"] = list(
+                dict.fromkeys(
+                    [
+                        *source_artifacts,
+                        *self._existing_top_level_dirs(runtime_context),
+                        "implementation artifact",
+                    ]
+                )
+            )
+            # Whole-goal session: reads are unrestricted (empty scope = no read gate; secret
+            # paths stay protected by their own guard). The doer must be able to read the
+            # source it is asked to change even when the prose never named those files.
+            task["read_scope"] = []
         self._apply_runtime_contract(task, goal_spec)
         return task
+
+    def _existing_top_level_dirs(self, runtime_context: dict) -> list[str]:
+        """Top-level directories that actually exist in the workspace, as write-scope entries.
+
+        The generic "implementation artifact" surface assumes src-layout (src/tests/docs/...);
+        a project whose package dir is e.g. ``notes/`` stays write-denied under it. The
+        planning context already lists real workspace files — trust the observed layout
+        instead of a layout convention."""
+        skip = {
+            ".git",
+            ".asteria",
+            "secrets",
+            "node_modules",
+            "__pycache__",
+            ".venv",
+            "venv",
+            "dist",
+            "build",
+        }
+        dirs: list[str] = []
+        for path in self._existing_workspace_paths(runtime_context):
+            normalized = str(path).replace("\\", "/").lstrip("/")
+            if "/" not in normalized:
+                continue
+            head = normalized.split("/", 1)[0]
+            if head and head not in skip and not head.startswith("."):
+                dirs.append(f"{head}/")
+        return list(dict.fromkeys(dirs))
 
     def _session_agent_task_kind(self, requirements: list[dict], goal_spec: dict) -> str:
         for requirement in requirements:
