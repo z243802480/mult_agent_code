@@ -36,6 +36,7 @@ const HERMETIC = [
   "chat-stream-final-smoke.mjs",
   "composer-side-ask-smoke.mjs",
   "decision-guidance-smoke.mjs",
+  "dual-live-dot-smoke.mjs",
   "friendly-ssl-error-smoke.mjs",
   "git-changes-smoke.mjs",
   "homepage-copy-smoke.mjs",

@@ -57,6 +57,26 @@ describe("latestAiReview", () => {
     expect(answered).toEqual({ status: "answered", answer: "calc.py:9 — 问题" });
   });
 
+  it("does not mistake an interleaved side-ask answer (or error) for the review verdict", () => {
+    const sideAnswer = event({
+      type: "final_answer",
+      content_delta: "侧聊的答案",
+      display_level: "side",
+    });
+    const interleaved = latestAiReview([request, sideAnswer]);
+    expect(interleaved.status).toBe("pending");
+
+    const sideError = event({ type: "error", ui_intent: "side_chat" });
+    expect(latestAiReview([request, sideError]).status).toBe("pending");
+
+    const resolved = latestAiReview([
+      request,
+      sideAnswer,
+      event({ type: "final_answer", content_delta: "calc.py:9 — 问题" }),
+    ]);
+    expect(resolved).toEqual({ status: "answered", answer: "calc.py:9 — 问题" });
+  });
+
   it("marks the round failed on an error with no answer, and always uses the LATEST round", () => {
     expect(latestAiReview([request, event({ type: "error" })]).status).toBe("failed");
     const twoRounds = latestAiReview([

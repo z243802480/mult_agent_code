@@ -7,6 +7,7 @@
  * file-anchored findings out of the answer.
  */
 
+import { isSideChatEvent } from "../features/sidechat/sideChatUtils";
 import type { StudioEvent } from "../types";
 
 /** Prefix of the review request message — how the transcript scan recognises a review round. */
@@ -55,8 +56,13 @@ export function buildAiReviewPrompt(
  * The latest review round in this session's transcript: the LAST sentinel-prefixed user message,
  * then the first final answer that follows it. An error event with no answer marks the round
  * failed; neither yet means the review run is still in flight.
+ *
+ * Side-chat events are excluded up front: a side-ask answered while the review is in flight lands
+ * its own final_answer in the same event stream, and without the filter that answer would be
+ * mistaken for the review verdict (and its error would mark the review failed).
  */
-export function latestAiReview(events: StudioEvent[]): AiReviewState {
+export function latestAiReview(allEvents: StudioEvent[]): AiReviewState {
+  const events = allEvents.filter((event) => !isSideChatEvent(event));
   let requestIndex = -1;
   for (let i = events.length - 1; i >= 0; i--) {
     const event = events[i];
