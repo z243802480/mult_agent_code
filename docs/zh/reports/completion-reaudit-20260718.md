@@ -38,7 +38,7 @@ release 闸不含真 provider（nightly 带外承接）、压缩不缩活提示�
 
 | S77 条目 | 现状 |
 | --- | --- |
-| P0 无 OS/进程沙箱 | **推进中**（ADR-0030）：**S-A 进程围栏已落地**（1.2.117·Job Object kill-on-close·detached 进程不再逃出 run 生命周期）；**S-B-spike 已证 AppContainer 隔离可用**（1.2.119·curl 出站 OS 层断、工作区外写被拒）；**S-B-impl 待用户 go**（2-4 周·断网限写默认开）。围栏≠沙箱，网络/文件封禁待 S-B-impl 才闭合 |
+| P0 无 OS/进程沙箱 | **核心机制已落地**（ADR-0030）：S-A 进程围栏（1.2.117）+ **S-B AppContainer 首刀**（1.2.120·`sandbox_shell` opt-in·真机证网络 OS 层断+写限工作区+fail-closed）。**剩余**：`allow_network` 防火墙注册、真实大仓库兼容性广验、然后档位默认开——沙箱从「未做的 P0」变为「机制齐、待放量」 |
 | P0 无 LICENSE | ✅ 已修（LICENSE + `pyproject.toml:9` + Private classifier） |
 | P0→P1 假默认档 + 无前沿 provider | 部分修：零配置默认=真 minimax、告警可见；仍缺 Anthropic/Gemini 原生；fake 对 `purpose=="model_check"` 仍回 `{"ok": True}`（`fake.py:98-99`）⇒ 结构性过检 |
 | P1 自主环未闭合 | ✅ 已修（三环+软保险丝进程内闭合、默认随权限档·`run_command.py:1611/1795`） |

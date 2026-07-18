@@ -133,10 +133,14 @@ Linux/KVM 级隔离，天花板最高，但绑定 CloudSessionExecutor（现为�
 
 1. ~~**S-A 放行**~~ **✅ 已做（1.2.117）**：进程围栏落地、验收过。
 2. ~~**S-B-spike 放行**~~ **✅ 已跑**：隔离原理证实（见上表），路线收敛为「工具放置」。
-3. **S-B-impl 待拍板** —— spike 已把它从「未知可行性」变成「已知路线的接线活」。建议：先做 (a)
-   固定位置授 `ALL_APPLICATION_PACKAGES` 的工具布置 + (b) 咽喉接 AppContainer 起进程 + 档位绑定
-   `allow_network`，再红队复跑 1.2.63 的 13 向量。工作量估 **2-4 周**（比原 6-12 周降——spike 砍掉
-   了「可行性未知」与「WSL2 备选」两个最大不确定性）。**待用户 go**。
+3. ~~**S-B-impl 待拍板**~~ **✅ 首刀落地（1.2.120·用户「按你建议继续」授权·opt-in 默认关）**：
+   `sandbox_launch`（AppContainer+Job Object 叠加）+ `sandbox_provision`（profile+工具 ALL_APPLICATION_PACKAGES
+   授权+workspace/io ACL）+ command_tools 咽喉接线（`permissions.sandbox_shell`·fail-closed）+
+   `asteria sandbox status/provision` 命令。**核心机制真机证实**：默认无 capability ⇒ 网络出站 OS 层断
+   （对联网本机实测·`python -c urllib` 解释器绕过也够不着 socket）+ 写限工作区（区外写被拒且未落盘）。
+   **诚实剩余**（写进代码 docstring）：①`allow_network=true` 逃生口暂无效（裸 AppContainer 启动期 capability
+   不进 token·实测 whoami 证·需防火墙注册·fails closed 故安全）②工具 provision 是显式一次性慢操作（已移出
+   热路径）③默认 OFF·真实大仓库 pytest/npm 容器内兼容性待广验后才谈默认开。
 4. **S-C（云）维持冻结**，spike 证明原生方案够用，云路线连备胎都用不上，仅登记。
 
 ## 不做清单

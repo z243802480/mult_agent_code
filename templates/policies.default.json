@@ -72,7 +72,8 @@
     "allow_secret_file_read": false,
     "allow_remote_push": false,
     "allow_deploy": false,
-    "allow_restore_delete_created_files": true
+    "allow_restore_delete_created_files": true,
+    "sandbox_shell": false
   },
   "protected_paths": [
     ".env",

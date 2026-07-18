@@ -39,6 +39,7 @@ from asteria_runtime.commands.validation_run_command import ValidationRunCommand
 from asteria_runtime.commands.handoff_command import HandoffCommand
 from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.commands.mcp_command import McpCommand
+from asteria_runtime.commands.sandbox_command import SandboxCommand
 from asteria_runtime.commands.plugins_command import PluginsCommand
 from asteria_runtime.commands.promotions_command import PromotionsCommand
 from asteria_runtime.commands.replan_command import ReplanCommand
@@ -692,6 +693,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--json",
         action="store_true",
         help="Print machine-readable JSON",
+    )
+
+    sandbox_parser = subcommands.add_parser(
+        "sandbox",
+        aliases=["/sandbox"],
+        help="Inspect/provision the AppContainer shell sandbox (ADR-0030 S-B; maintainer)",
+    )
+    sandbox_parser.add_argument(
+        "sandbox_action",
+        nargs="?",
+        choices=["status", "provision"],
+        default="status",
+        help="status (fast check) or provision (one-time toolchain grant)",
     )
 
     research_parser = subcommands.add_parser(
@@ -1989,6 +2003,11 @@ def _run_cli() -> None:
             print(mcp_command.to_json(mcp_result))
         else:
             print(mcp_result.to_text())
+        return
+
+    if command == "sandbox":
+        sandbox_result = SandboxCommand(action=args.sandbox_action).run()
+        print(sandbox_result.to_text())
         return
 
     if command == "research":
