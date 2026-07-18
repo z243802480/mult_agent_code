@@ -854,6 +854,11 @@ class ExecuteCommand:
         prior_progress = render_prior_progress(
             load_task_progress(context.run_dir, str(task.get("task_id") or ""))
         )
+        # Prompt-eval report rec #2: the doer never saw the project's own conventions. AGENTS.md is
+        # read into the persisted prompt_envelope but that text is not fed to the model
+        # (context_prompt_view strips it). Carry it into the doer prompt directly, like Claude Code
+        # puts CLAUDE.md in the system prompt — read once here, reused for the lead and every expert.
+        project_guidance = self._project_guidance(context.root)
         system_prompt, user_prompt = self._model_driven_prompts(
             task,
             goal_spec,
@@ -862,6 +867,7 @@ class ExecuteCommand:
             runtime_context,
             can_delegate=True,
             prior_progress=prior_progress,
+            project_guidance=project_guidance,
         )
         model_tier = str(runtime_context.get("execution_model_tier") or "strong")
         max_subagent_depth = self._max_subagent_depth(context.policy)
@@ -1012,6 +1018,7 @@ class ExecuteCommand:
                 project_config,
                 child_task["allowed_tools"],
                 child_runtime_context,
+                project_guidance=project_guidance,
             )
             child_system = f"{child_system}\n\n[Expert role: {expert.role}] {expert.persona}"
             self._record_progress(
@@ -1692,6 +1699,7 @@ class ExecuteCommand:
         runtime_context: dict,
         can_delegate: bool = False,
         prior_progress: str | None = None,
+        project_guidance: str | None = None,
     ) -> tuple[str, str]:
         """Build the 立真身 turn envelope: rich task/goal/project/mounted context, but NO
         ``next_action`` enum / decision-table contract (that closed enum IS the FSM the
@@ -1699,7 +1707,9 @@ class ExecuteCommand:
         ``run_model_driven_turn`` itself; here we only supply the grounding context.
 
         ``prior_progress`` (when a previous attempt at this task ran) is a compact ledger of what the
-        model already did, so a replan/resume continues instead of re-reading everything (residual②)."""
+        model already did, so a replan/resume continues instead of re-reading everything (residual②).
+        ``project_guidance`` is the workspace's own AGENTS.md conventions, carried into the system
+        prompt so the doer actually follows them (prompt-eval report rec #2)."""
         system_prompt = (
             "You are CoderAgent in a local-first autonomous development runtime.\n"
             "Drive the task to completion yourself: at each step call the tools you need, read the "
@@ -1727,6 +1737,15 @@ class ExecuteCommand:
             "have verified it.\n"
             "- narration is one short sentence in the user's language (Chinese) describing THIS step."
         ) + self._methodology_guidance(runtime_context, can_delegate=can_delegate)
+        # The workspace's own conventions are authoritative — carry AGENTS.md into the system prompt
+        # (like Claude Code does with CLAUDE.md) so the doer follows the project's rules, not just the
+        # generic ones. It is the user's own trusted file; absent it, the prompt is unchanged.
+        if project_guidance:
+            system_prompt += (
+                "\n\nPROJECT GUIDANCE (from this workspace's AGENTS.md — these project conventions "
+                "are authoritative; follow them, and prefer them over the generic rules above when "
+                "they conflict):\n" + project_guidance
+            )
         # First-class seed field, not buried in the optional-methodology tail: dogfood
         # run-20260718-0001 offered remember/recall in the surface + guidance and the doer used
         # them zero times in 26 calls — salience in the task seed is the cheapest next lever.
@@ -1762,6 +1781,31 @@ class ExecuteCommand:
         if prior_progress:
             payload["prior_progress"] = prior_progress
         return system_prompt, json.dumps(payload, ensure_ascii=False, indent=2)
+
+    #: Cap on the AGENTS.md text carried into the doer prompt. Project conventions are usually well
+    #: under this; the cap only stops a pathologically huge guidance file from bloating every turn.
+    _PROJECT_GUIDANCE_MAX_CHARS = 12_000
+
+    def _project_guidance(self, root: Path) -> str | None:
+        """The workspace's own AGENTS.md conventions, bounded, for the doer prompt (rec #2). Same
+        source of truth the persisted prompt_envelope reads (`root/AGENTS.md`) — the difference is
+        this text actually reaches the model. None when absent/empty. Best-effort: a read error must
+        never abort a task, so it degrades to no guidance rather than raising."""
+        try:
+            path = root / "AGENTS.md"
+            if not path.is_file():
+                return None
+            text = path.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            return None
+        if not text:
+            return None
+        if len(text) > self._PROJECT_GUIDANCE_MAX_CHARS:
+            text = (
+                text[: self._PROJECT_GUIDANCE_MAX_CHARS].rstrip()
+                + "\n… (AGENTS.md truncated here; read the file for the rest)"
+            )
+        return text
 
     def _methodology_skills(self, runtime_context: dict) -> list[dict]:
         """The task-allowed methodology procedures (skills) offered to the model, as

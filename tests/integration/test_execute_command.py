@@ -3585,6 +3585,38 @@ def test_model_driven_prompts_injects_prior_progress(tmp_path: Path) -> None:
     assert "prior_progress" not in without_prior
 
 
+def test_project_guidance_reads_agents_md_bounded(tmp_path: Path) -> None:
+    # rec #2: AGENTS.md conventions must reach the doer. Absent → None; present → text; huge → capped.
+    InitCommand(tmp_path).run()
+    cmd = ExecuteCommand(tmp_path)
+    # No AGENTS.md yet (InitCommand does not create one) → None.
+    (tmp_path / "AGENTS.md").unlink(missing_ok=True)
+    assert cmd._project_guidance(tmp_path) is None
+
+    (tmp_path / "AGENTS.md").write_text("Always run `just test`.\n", encoding="utf-8")
+    assert cmd._project_guidance(tmp_path) == "Always run `just test`."
+
+    (tmp_path / "AGENTS.md").write_text("x" * (cmd._PROJECT_GUIDANCE_MAX_CHARS + 5000), encoding="utf-8")
+    bounded = cmd._project_guidance(tmp_path)
+    assert bounded is not None
+    assert len(bounded) <= cmd._PROJECT_GUIDANCE_MAX_CHARS + 100  # cap + short truncation note
+    assert "truncated" in bounded
+
+
+def test_model_driven_prompts_injects_project_guidance_into_system(tmp_path: Path) -> None:
+    # The conventions land in the SYSTEM prompt (authoritative), not just the payload; absent → unchanged.
+    InitCommand(tmp_path).run()
+    cmd = ExecuteCommand(tmp_path)
+    task = {"task_id": "task-0001", "allowed_tools": []}
+    system_with, _ = cmd._model_driven_prompts(
+        task, {}, {}, [], {}, project_guidance="AGENTS-CONVENTION-MARKER: use tabs"
+    )
+    assert "AGENTS-CONVENTION-MARKER: use tabs" in system_with
+    assert "PROJECT GUIDANCE" in system_with
+    system_without, _ = cmd._model_driven_prompts(task, {}, {}, [], {})
+    assert "PROJECT GUIDANCE" not in system_without
+
+
 class FakeShellWriterClient:
     """Dogfood run-20260718-0001 mirror: the doer writes files through run_command (shell), never
     write_file — the tool-layer changed-file ledger stays empty. The contract must count the
