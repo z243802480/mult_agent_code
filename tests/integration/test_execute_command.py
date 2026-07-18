@@ -3567,8 +3567,8 @@ def test_model_driven_spine_completes_verified_work_even_when_round_fuse_trips(
     InitCommand(tmp_path).run()
     policy_path = tmp_path / ".asteria" / "policies.json"
     policy = json.loads(policy_path.read_text(encoding="utf-8"))
-    # max_iterations = max_rounds_per_task + 4 = 5 → the never-done fake exhausts the fuse quickly.
-    policy.setdefault("agent_loop", {})["max_rounds_per_task"] = 1
+    # Force a quick fuse via the explicit per-turn override so the never-done fake exhausts it fast.
+    policy.setdefault("agent_loop", {})["max_turn_iterations"] = 3
     policy_path.write_text(json.dumps(policy, ensure_ascii=False), encoding="utf-8")
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
 

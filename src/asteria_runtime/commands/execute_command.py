@@ -454,6 +454,31 @@ class ExecuteCommand:
             value = 2
         return max(1, min(value, 8))
 
+    def _model_turn_iteration_fuse(self, policy: dict) -> int:
+        """Per-task turn fuse for the model-driven loop (ADR-0016): a runaway backstop, NOT a
+        cognitive round ceiling.
+
+        The former derivation ``max_rounds_per_task(≤8) + 4`` (default 6) was inherited from the
+        retired FSM's per-task *round* concept and is far too tight for a read-heavy edit: the model
+        reads several files to understand the code, and the fuse trips before it can write. When the
+        fuse trips the task is marked ``budget_exhausted`` → replanned, and the replan re-reads
+        everything from scratch (dogfood residual②, run-20260718 — the model spent its whole budget
+        navigating instead of editing). The fuse is a boundary, not cognition, so the real governors
+        stay the goal-level cost budget (``max_model_calls``/``max_tool_calls_per_goal``) and the
+        ``loop_quality_guard`` repeated-tool window; this only stops a *single* task turn from
+        spinning forever. Default headroom is generous (16) so read-then-edit finishes in one turn;
+        override with ``agent_loop.max_turn_iterations`` (e.g. tests force a quick fuse with a small
+        value, prod could widen it further)."""
+        raw_agent_loop = policy.get("agent_loop")
+        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
+        override = agent_loop.get("max_turn_iterations")
+        if override is not None:
+            try:
+                return max(1, int(override))
+            except (TypeError, ValueError):
+                pass
+        return max(self._agent_loop_max_rounds(policy) + 4, 16)
+
     def _auto_repair_enabled(self, policy: dict) -> bool:
         # Default bound to the permission mode (set-and-forget): auto/reviewed_auto → on so a
         # failed task self-repairs within budget instead of stopping to ask; ask_everything → off.
@@ -814,10 +839,10 @@ class ExecuteCommand:
         flag along with the FSM it selected between (no reader in src/, no key in the policy schema).
         """
         task_id = task["task_id"]
-        # max_iterations is a fuse (budget boundary), NOT the FSM's cognitive round ceiling. Give the
-        # model a little more headroom than the FSM's per-task rounds so a genuine multi-step task can
-        # finish; the hard budget/hard-stop still governs cost.
-        max_iterations = self._agent_loop_max_rounds(context.policy) + 4
+        # max_iterations is a fuse (budget boundary), NOT the FSM's cognitive round ceiling. Read-heavy
+        # edits need real headroom (read many files → then write) or the fuse trips mid-navigation and
+        # the replan re-reads from scratch; the hard budget/hard-stop + loop guard still govern cost.
+        max_iterations = self._model_turn_iteration_fuse(context.policy)
         system_prompt, user_prompt = self._model_driven_prompts(
             task, goal_spec, project_config, available_tools, runtime_context, can_delegate=True
         )
