@@ -12,6 +12,19 @@ from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 class FakeRegistry:
+    def names(self) -> list[str]:
+        # Mirror the real ToolRegistry.names(); the gateway resolves model aliases against this.
+        return [
+            "read_file",
+            "list_files",
+            "search_text",
+            "find_files",
+            "write_file",
+            "apply_patch",
+            "run_command",
+            "run_tests",
+        ]
+
     def call(self, tool_name: str, _context: RuntimeContext, **kwargs: object) -> object:
         data = kwargs.get("data") if isinstance(kwargs.get("data"), dict) else {}
         if tool_name == "write_file" and isinstance(kwargs.get("path"), str):
@@ -37,6 +50,22 @@ class FakeResult:
         self.summary = summary
         self.error = error
         self.data = data or {}
+
+
+def test_tool_gateway_resolves_model_alias_before_gates(tmp_path: Path) -> None:
+    # The model surface advertises grep/glob; the gateway must resolve them to the runtime tools
+    # (search_text/find_files) BEFORE the capability + allowed-set gates, or the raw alias is denied
+    # as tool_kind=unknown — the dogfood 46-calls-zero-writes friction. allowed_tools carries the
+    # RUNTIME name (what the planner emits), proving adaptation happens before the allowed check.
+    gateway, context = _gateway(tmp_path)
+
+    results = gateway.run_tool_calls(
+        [{"tool_name": "grep", "args": {"pattern": "sandbox", "path": "src"}}],
+        {"task_id": "task-0001", "allowed_tools": ["search_text"]},
+        context,
+    )
+
+    assert results[0].summary == "called search_text"
 
 
 def test_tool_gateway_rejects_disallowed_tool(tmp_path: Path) -> None:

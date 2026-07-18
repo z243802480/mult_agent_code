@@ -10,6 +10,7 @@ from asteria_runtime.core.agent_harness import (
     observation_from_exception,
     observation_from_tool_result,
 )
+from asteria_runtime.core.agent_tool_surface import adapt_model_tool_call
 from asteria_runtime.core.capability_decision_recorder import CapabilityDecisionRecorder
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.runtime_hooks import RuntimeHookManager
@@ -39,7 +40,15 @@ class ToolExecutionGateway:
     ) -> list[Any]:
         results = []
         allowed = set(task["allowed_tools"])
-        for call in calls:
+        # Resolve model-facing primitives (grep→search_text, glob→find_files, arg aliases) to the
+        # runtime registry names BEFORE the capability/allowed/registry gates. The model surface
+        # advertises grep/glob; without this the raw alias hits the gate as tool_kind=unknown and is
+        # denied — the exact 46-calls-zero-writes friction a dogfood run hit. adapt is idempotent for
+        # names that are already runtime tools, so callers passing pre-adapted calls are unaffected.
+        # (The sole historical caller, the deleted ADR-0022 FSM execution_action, used to do this.)
+        runtime_names = self.registry.names() if self.registry is not None else []
+        for raw_call in calls:
+            call = adapt_model_tool_call(raw_call, runtime_names)
             tool_name = call["tool_name"]
             model_tool_name = str(call.get("model_tool_name") or tool_name)
             tool_surface_adapter = call.get("tool_surface_adapter")
