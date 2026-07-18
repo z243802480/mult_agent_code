@@ -62,9 +62,7 @@ class FakeStreamingTransport(FakeTransport):
             200,
             {
                 "model": "MiniMax-M2.7",
-                "choices": [
-                    {"message": {"content": '{"ok": true}'}, "finish_reason": "stop"}
-                ],
+                "choices": [{"message": {"content": '{"ok": true}'}, "finish_reason": "stop"}],
                 "usage": {"prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17},
                 "base_resp": {"status_code": 0, "status_msg": ""},
             },
@@ -159,9 +157,7 @@ class FakeBrokenStreamingTransport(FakeTransport):
                 "deadline_seconds": deadline_seconds,
             }
         )
-        raise HttpTransportError(
-            "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred>"
-        )
+        raise HttpTransportError("<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred>")
 
     def post_json(
         self, url: str, headers: dict[str, str], payload: dict, timeout_seconds: int
@@ -449,3 +445,39 @@ def test_minimax_client_budget_denies_before_http_call(tmp_path: Path) -> None:
 def test_minimax_default_base_url_follows_key_region() -> None:
     assert default_minimax_base_url("sk-cp-example") == "https://api.minimaxi.com/v1"
     assert default_minimax_base_url("sk-global-example") == "https://api.minimax.io/v1"
+
+
+def test_minimax_client_feeds_usage_truth_back_into_context_pressure(tmp_path: Path) -> None:
+    # S90 regression: the real minimax path must fold usage truth into pressure/calibration
+    # (wiring only in metered.py never runs in production).
+    transport = FakeTransport(
+        HttpResponse(
+            200,
+            {
+                "model": "MiniMax-M2.7",
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": '{"ok": true}'},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 800, "completion_tokens": 5, "total_tokens": 805},
+                "base_resp": {"status_code": 0, "status_msg": ""},
+            },
+        )
+    )
+    small_window_policy = policy()
+    small_window_policy["context"] = {"model_context_windows": {"minimax": 1000}}
+    budget = BudgetController(small_window_policy, run_id="run-1")
+    client = MiniMaxOpenAICompatibleClient(
+        MiniMaxSettings(api_key="test-key", model_name="MiniMax-M2.7", streaming_enabled=False),
+        transport=transport,
+        logger=ModelCallLogger(tmp_path, SchemaValidator(Path("schemas"))),
+        budget=budget,
+    )
+
+    client.chat(request())
+
+    assert budget.usage.context_window_tokens == 1000
+    assert budget.usage.latest_observed_prompt_tokens == 800
+    assert budget.usage.context_estimate_calibration != 1.0

@@ -48,9 +48,7 @@ class MiniMaxSettings:
             timeout_seconds=int(_env(env_prefix, "TIMEOUT_SECONDS", "90")),
             max_retries=int(_env(env_prefix, "MAX_RETRIES", "2")),
             streaming_enabled=_env_bool(env_prefix, "STREAMING", True),
-            stream_idle_timeout_seconds=int(
-                _env(env_prefix, "STREAM_IDLE_TIMEOUT_SECONDS", "30")
-            ),
+            stream_idle_timeout_seconds=int(_env(env_prefix, "STREAM_IDLE_TIMEOUT_SECONDS", "30")),
         )
 
 
@@ -77,6 +75,8 @@ class MiniMaxOpenAICompatibleClient:
                     estimate.total_tokens,
                     sections=estimate.sections,
                     duplicate_content_hashes=estimate.duplicate_content_hashes,
+                    model_name=self.settings.model_name,
+                    provider=self.provider,
                 )
                 self.budget.record_model_call(request.model_tier)
             except BudgetExceededError as exc:
@@ -135,7 +135,9 @@ class MiniMaxOpenAICompatibleClient:
             streaming=StreamingTelemetry(
                 requested=self.settings.streaming_enabled,
                 supported=False,
-                mode="streaming_failed" if self.settings.streaming_enabled else "non_streaming_failed",
+                mode="streaming_failed"
+                if self.settings.streaming_enabled
+                else "non_streaming_failed",
                 duration_ms=int((time.monotonic() - call_started) * 1000),
                 idle_timeout_ms=timeout * 1000,
                 deadline_ms=timeout * 1000,
@@ -234,7 +236,9 @@ class MiniMaxOpenAICompatibleClient:
         telemetry = StreamingTelemetry(
             requested=fallback_started is not None,
             supported=False,
-            mode="streaming_fallback_non_streaming" if fallback_started is not None else "non_streaming",
+            mode="streaming_fallback_non_streaming"
+            if fallback_started is not None
+            else "non_streaming",
             duration_ms=duration_ms,
             idle_timeout_ms=timeout * 1000,
             deadline_ms=timeout * 1000,
@@ -295,6 +299,11 @@ class MiniMaxOpenAICompatibleClient:
         self.budget.record_model_tokens(
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
+        )
+        self.budget.record_context_observation(
+            response.usage.input_tokens,
+            model_name=self.settings.model_name,
+            provider=self.provider,
         )
 
 

@@ -67,9 +67,7 @@ class OpenAICompatibleSettings:
             timeout_seconds=int(_env(env_prefix, "TIMEOUT_SECONDS", "90")),
             max_retries=int(_env(env_prefix, "MAX_RETRIES", "2")),
             streaming_enabled=_env_bool(env_prefix, "STREAMING", True),
-            stream_idle_timeout_seconds=int(
-                _env(env_prefix, "STREAM_IDLE_TIMEOUT_SECONDS", "30")
-            ),
+            stream_idle_timeout_seconds=int(_env(env_prefix, "STREAM_IDLE_TIMEOUT_SECONDS", "30")),
         )
 
 
@@ -95,6 +93,8 @@ class OpenAICompatibleClient:
                     estimate.total_tokens,
                     sections=estimate.sections,
                     duplicate_content_hashes=estimate.duplicate_content_hashes,
+                    model_name=self.settings.model_name,
+                    provider=self.provider,
                 )
                 self.budget.record_model_call(request.model_tier)
             except BudgetExceededError as exc:
@@ -120,7 +120,9 @@ class OpenAICompatibleClient:
         for attempt in range(self.settings.max_retries + 1):
             attempt_timeout = _remaining_timeout_seconds(call_started, timeout)
             if attempt_timeout <= 0:
-                last_error = OpenAICompatibleProviderError("provider deadline exceeded before retry")
+                last_error = OpenAICompatibleProviderError(
+                    "provider deadline exceeded before retry"
+                )
                 break
             try:
                 with self.logger.progress_context(request):
@@ -133,6 +135,11 @@ class OpenAICompatibleClient:
                     self.budget.record_model_tokens(
                         response.usage.input_tokens,
                         response.usage.output_tokens,
+                    )
+                    self.budget.record_context_observation(
+                        response.usage.input_tokens,
+                        model_name=self.settings.model_name,
+                        provider=self.provider,
                     )
                 self.logger.record_success(request, response)
                 return response
@@ -155,7 +162,9 @@ class OpenAICompatibleClient:
             streaming=StreamingTelemetry(
                 requested=self.settings.streaming_enabled,
                 supported=False,
-                mode="streaming_failed" if self.settings.streaming_enabled else "non_streaming_failed",
+                mode="streaming_failed"
+                if self.settings.streaming_enabled
+                else "non_streaming_failed",
                 duration_ms=int((time.monotonic() - call_started) * 1000),
                 idle_timeout_ms=timeout * 1000,
                 deadline_ms=timeout * 1000,
@@ -259,7 +268,9 @@ class OpenAICompatibleClient:
         telemetry = StreamingTelemetry(
             requested=fallback_started is not None,
             supported=False,
-            mode="streaming_fallback_non_streaming" if fallback_started is not None else "non_streaming",
+            mode="streaming_fallback_non_streaming"
+            if fallback_started is not None
+            else "non_streaming",
             duration_ms=duration_ms,
             idle_timeout_ms=timeout * 1000,
             deadline_ms=timeout * 1000,

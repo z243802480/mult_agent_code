@@ -158,9 +158,7 @@ class FakeBrokenStreamingTransport(FakeTransport):
                 "deadline_seconds": deadline_seconds,
             }
         )
-        raise HttpTransportError(
-            "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred>"
-        )
+        raise HttpTransportError("<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred>")
 
     def post_json(
         self,
@@ -517,3 +515,40 @@ def test_openai_compatible_client_retries_and_raises_on_empty_content(tmp_path: 
     # Empty/whitespace bodies (e.g. a stream that yielded only metadata deltas) are a
     # retryable provider failure, not a silent success.
     assert len(transport.calls) == 2
+
+
+def test_openai_compatible_client_feeds_usage_truth_and_per_model_window(tmp_path: Path) -> None:
+    # S90 regression: the REAL provider path (no MeteredModelClient wrapper) must record the
+    # context estimate against the model's true window and fold usage truth back into pressure
+    # + calibration. This was silently dead when only metered.py carried the wiring.
+    transport = FakeTransport(
+        HttpResponse(
+            200,
+            {
+                "model": "test-model",
+                "choices": [{"message": {"content": '{"ok": true}'}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 900, "completion_tokens": 5, "total_tokens": 905},
+            },
+        )
+    )
+    small_window_policy = policy()
+    small_window_policy["context"] = {"model_context_windows": {"test-model": 1000}}
+    budget = BudgetController(small_window_policy, run_id="run-1")
+    client = OpenAICompatibleClient(
+        OpenAICompatibleSettings(
+            api_key="test-key",
+            base_url="https://example.test/v1",
+            model_name="test-model",
+            streaming_enabled=False,
+        ),
+        transport=transport,
+        logger=ModelCallLogger(tmp_path, SchemaValidator(Path("schemas"))),
+        budget=budget,
+    )
+
+    client.chat(request())
+
+    assert budget.usage.context_window_tokens == 1000
+    assert budget.usage.latest_observed_prompt_tokens == 900
+    assert budget.usage.context_estimate_calibration != 1.0
+    assert budget.usage.context_pressure_status in {"near_limit", "hard_stop", "exceeded"}
