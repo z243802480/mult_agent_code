@@ -1686,6 +1686,10 @@ class ExecuteCommand:
             "\n\nOptional methodology (use by judgment — suggestions, NOT required; skip simple tasks):",
             "- For a multi-step or unfamiliar task, externalize a plan with todo_write and update it "
             "as you go — this is your working memory, not a gate.",
+            "- When you learn something durable — an approach that failed and why, a repo/tool "
+            "quirk, a decision and its reason — record it with remember so future runs start "
+            "knowing it. Especially before finishing a goal. The memory index in your context "
+            "lists what is already known; recall_memory fetches a truncated entry in full.",
         ]
         if skills:
             catalog = "\n".join(f"  - {item['name']}: {item['description']}" for item in skills)

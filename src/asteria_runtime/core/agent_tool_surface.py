@@ -160,6 +160,40 @@ class ModelToolSurfaceAdapter:
                 },
                 ["Writes run-local model planning state; does not mutate task_plan.json."],
             ),
+            self._tool(
+                "remember",
+                "memory",
+                "allow",
+                "remember",
+                {
+                    "content": "the durable lesson, stated so a future run can act on it "
+                    "without this conversation",
+                    "type": "user_preference | project_decision | architecture_note | "
+                    "research_claim | experiment_lesson | tool_knowledge | failure_lesson",
+                    "tags": "optional short keywords",
+                    "confidence": "0..1, how sure you are",
+                },
+                [
+                    "Appends to durable cross-goal memory (.asteria/memory); never mutates "
+                    "workspace files.",
+                    "Use for lessons worth keeping beyond this run: an approach that failed and "
+                    "why, tool/repo quirks discovered, decisions and their reasons. Especially "
+                    "when finishing a goal, record what a future run should know.",
+                    "Not a log: skip step-by-step narration and anything already visible in the "
+                    "workspace or task plan.",
+                ],
+            ),
+            self._tool(
+                "recall_memory",
+                "memory",
+                "allow",
+                "recall_memory",
+                {"memory_id": "id from the memory index in runtime_context"},
+                [
+                    "Reads the full text of one memory entry; use when an index summary is "
+                    "truncated or you need the details behind it.",
+                ],
+            ),
         ]
         return definitions
 

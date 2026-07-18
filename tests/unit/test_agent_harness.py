@@ -33,6 +33,8 @@ def test_agent_harness_builds_model_visible_capability_manifest() -> None:
             "find_files",
             "list_files",
             "read_file",
+            "recall_memory",
+            "remember",
             "run_command",
             "search_text",
             "todo_read",

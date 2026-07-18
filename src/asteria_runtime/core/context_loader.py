@@ -18,7 +18,8 @@ class ContextLoader:
         self,
         root: Path,
         validator: SchemaValidator,
-        memory_limit: int = 8,
+        memory_limit: int = 40,
+        memory_summary_chars: int = 200,
         acceptance_failure_limit: int = 5,
         workspace_file_limit: int = 20,
         workspace_file_chars: int = 1_200,
@@ -28,6 +29,7 @@ class ContextLoader:
         self.root = root.resolve()
         self.validator = validator
         self.memory_limit = memory_limit
+        self.memory_summary_chars = memory_summary_chars
         self.acceptance_failure_limit = acceptance_failure_limit
         self.workspace_file_limit = workspace_file_limit
         self.workspace_file_chars = workspace_file_chars
@@ -131,24 +133,51 @@ class ContextLoader:
         }
 
     def _memory(self, agent_dir: Path) -> list[dict]:
+        """A bounded INDEX over durable memory (.asteria/memory/*.jsonl: harness-written
+        decisions/failures plus the model's own ``remember`` notes), not a full-text tail.
+
+        The old shape fed the newest 8 entries verbatim — pure recency, so the one
+        failure_lesson from three weeks ago that is exactly relevant now could never surface
+        once the file grew. Index rows are cheap (~200 chars each), so many more entries stay
+        visible and the model itself judges relevance, fetching full text via ``recall_memory``
+        when a summary is truncated (mirrors the mainstream index-plus-recall memory shape).
+        Read-time hygiene: damaged rows are skipped (``_safe_read_jsonl``) and entries with
+        identical normalized content are deduped, newest wins — append-only files re-learn the
+        same lesson across runs and feeding N copies buys nothing."""
         memory_dir = agent_dir / "memory"
         if not memory_dir.exists():
             return []
-        entries: list[dict] = []
+        entries: list[tuple[dict, str]] = []
         for path in sorted(memory_dir.glob("*.jsonl")):
-            entries.extend(self._safe_read_jsonl(path, "memory_entry"))
-        entries.sort(key=lambda item: str(item.get("created_at", "")))
-        return [
-            {
-                "type": entry["type"],
-                "content": entry["content"],
-                "source": entry.get("source", {}),
-                "tags": entry.get("tags", []),
-                "confidence": entry.get("confidence"),
-                "created_at": entry.get("created_at"),
-            }
-            for entry in entries[-self.memory_limit :]
-        ]
+            for entry in self._safe_read_jsonl(path, "memory_entry"):
+                entries.append((entry, path.name))
+        entries.sort(key=lambda item: str(item[0].get("created_at", "")))
+        seen_content: set[str] = set()
+        newest_first: list[tuple[dict, str]] = []
+        for entry, source_file in reversed(entries):
+            key = " ".join(str(entry.get("content", "")).split())
+            if key in seen_content:
+                continue
+            seen_content.add(key)
+            newest_first.append((entry, source_file))
+            if len(newest_first) >= self.memory_limit:
+                break
+        index: list[dict] = []
+        for entry, source_file in reversed(newest_first):
+            content = str(entry.get("content", ""))
+            index.append(
+                {
+                    "memory_id": entry.get("memory_id"),
+                    "type": entry["type"],
+                    "summary": content[: self.memory_summary_chars],
+                    "truncated": len(content) > self.memory_summary_chars,
+                    "tags": entry.get("tags", [])[:5],
+                    "confidence": entry.get("confidence"),
+                    "created_at": entry.get("created_at"),
+                    "source_file": source_file,
+                }
+            )
+        return index
 
     def _latest_snapshot(self, agent_dir: Path, run_id: str | None) -> dict:
         snapshots_dir = agent_dir / "context" / "snapshots"

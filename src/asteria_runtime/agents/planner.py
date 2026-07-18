@@ -908,12 +908,18 @@ class RequirementPlanner:
         # are granted; todo_write mutates only run-local planning state (not workspace files) so it
         # rides with the implementation/report tool sets. All four are already advertised on the
         # agent tool surface — including them here closes the "advertised but contract-denied" gap.
+        # remember/recall_memory mutate only append-only agent memory under .asteria/memory
+        # (never workspace files), and the lessons most worth keeping — a failed approach, a
+        # repo quirk, a research claim — surface during diagnostic/research tasks as much as
+        # during implementation, so both ride every task kind including the readonly set.
         readonly = [
             "list_files",
             "read_file",
             "search_text",
             "find_files",
             "todo_read",
+            "remember",
+            "recall_memory",
             "run_command",
             "run_tests",
         ]
@@ -932,6 +938,8 @@ class RequirementPlanner:
                 "run_command",
                 "todo_read",
                 "todo_write",
+                "remember",
+                "recall_memory",
             ]
         return [
             "list_files",
@@ -946,6 +954,8 @@ class RequirementPlanner:
             "run_tests",
             "todo_read",
             "todo_write",
+            "remember",
+            "recall_memory",
         ]
 
     def _verification_policy(self, task: dict, goal_spec: dict) -> dict:

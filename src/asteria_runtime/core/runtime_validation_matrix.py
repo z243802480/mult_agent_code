@@ -108,6 +108,8 @@ def _evaluate_case(
                 "run_tests",
                 "todo_read",
                 "todo_write",
+                "remember",
+                "recall_memory",
             ],
             allow_shell=True,
         )

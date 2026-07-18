@@ -75,7 +75,67 @@ def test_context_loader_skips_stale_memory_rows(tmp_path: Path) -> None:
     context = ContextLoader(tmp_path, schema_validator).load()
 
     assert len(context["memory"]) == 1
-    assert context["memory"][0]["content"] == "Keep validation probes scoped."
+    row = context["memory"][0]
+    assert row["summary"] == "Keep validation probes scoped."
+    assert row["truncated"] is False
+    assert row["memory_id"] == "memory-0001"
+    assert row["source_file"] == "failures.jsonl"
+
+
+def _memory_row(memory_id: str, content: str, created_at: str) -> dict:
+    return {
+        "schema_version": "0.1.0",
+        "memory_id": memory_id,
+        "type": "experiment_lesson",
+        "content": content,
+        "source": {"kind": "test"},
+        "tags": ["lesson"],
+        "confidence": 0.8,
+        "created_at": created_at,
+    }
+
+
+def test_memory_index_dedupes_identical_content_and_truncates_long_entries(
+    tmp_path: Path,
+) -> None:
+    # The memory feed is an INDEX now: many cheap one-line rows instead of the newest 8 full
+    # texts. Append-only files re-learn the same lesson across runs, so identical content is
+    # deduped (newest wins) and long entries are truncated with a flag telling the model to
+    # fetch the full text via recall_memory.
+    memory_dir = tmp_path / ".asteria" / "memory"
+    memory_dir.mkdir(parents=True)
+    long_content = "A" * 500
+    rows = [
+        _memory_row("memory-0001", "Same lesson.", "2026-06-01T00:00:00+08:00"),
+        _memory_row("memory-0002", "Same lesson.", "2026-06-02T00:00:00+08:00"),
+        _memory_row("note-0001", long_content, "2026-06-03T00:00:00+08:00"),
+    ]
+    (memory_dir / "model_notes.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+    )
+
+    memory = ContextLoader(tmp_path, validator()).load()["memory"]
+
+    assert [row["memory_id"] for row in memory] == ["memory-0002", "note-0001"]
+    assert memory[0]["truncated"] is False
+    assert memory[1]["truncated"] is True
+    assert memory[1]["summary"] == "A" * 200
+
+
+def test_memory_index_keeps_newest_entries_within_limit(tmp_path: Path) -> None:
+    memory_dir = tmp_path / ".asteria" / "memory"
+    memory_dir.mkdir(parents=True)
+    rows = [
+        _memory_row(f"note-{index:04d}", f"Lesson {index}", f"2026-06-0{index}T00:00:00+08:00")
+        for index in range(1, 6)
+    ]
+    (memory_dir / "model_notes.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+    )
+
+    memory = ContextLoader(tmp_path, validator(), memory_limit=2).load()["memory"]
+
+    assert [row["memory_id"] for row in memory] == ["note-0004", "note-0005"]
 
 
 def test_context_loader_feeds_back_active_goal_memory(tmp_path: Path) -> None:

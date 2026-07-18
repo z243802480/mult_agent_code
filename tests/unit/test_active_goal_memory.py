@@ -165,3 +165,71 @@ def test_session_continuation_is_an_accepted_writer(tmp_path: Path) -> None:
     )
 
     assert memory.read_structured()["updated_by"] == "session_continuation"
+
+
+def test_goal_change_archives_previous_record_before_overwrite(tmp_path: Path) -> None:
+    # active_goal is a single-slot memory: switching goals used to overwrite the previous
+    # goal's record outright, so its completed work died in place. A goal_id change must park
+    # the outgoing record under memory/goals/ first; a same-goal refresh must NOT archive.
+    memory = ActiveGoalMemory(tmp_path)
+    memory.write_from_run(
+        goal_spec=_goal(),
+        task_plan=_task_plan(),
+        run_status=_run("run-1"),
+        review_status="unknown",
+        completion="implemented_needs_review",
+    )
+    memory.write_from_run(
+        goal_spec=_goal(),
+        task_plan=_task_plan(),
+        run_status=_run("run-1"),
+        review_status="approved",
+        completion="done",
+    )
+    archive_dir = tmp_path / ".asteria" / "memory" / "goals"
+    assert not archive_dir.exists() or not list(archive_dir.glob("*.json"))
+
+    memory.write_from_run(
+        goal_spec={
+            "goal_id": "goal-2",
+            "original_goal": "Build the next thing",
+            "normalized_goal": "Build the next thing",
+        },
+        task_plan={"tasks": []},
+        run_status=_run("run-2", phase="PLANNED"),
+        review_status="unknown",
+        completion="planned",
+    )
+
+    archived = list(archive_dir.glob("*.json"))
+    assert len(archived) == 1
+    parked = json.loads(archived[0].read_text(encoding="utf-8"))
+    assert parked["goal_id"] == "goal-1"
+    assert parked["current_goal"] == "Ship durable progress memory"
+    assert memory.read_structured()["goal_id"] == "goal-2"
+
+
+def test_goal_archive_is_bounded(tmp_path: Path) -> None:
+    memory = ActiveGoalMemory(tmp_path)
+    total = ActiveGoalMemory.ARCHIVE_LIMIT + 5
+    for index in range(total):
+        memory.write_from_run(
+            goal_spec={
+                "goal_id": f"goal-{index}",
+                "original_goal": f"Goal {index}",
+                "normalized_goal": f"Goal {index}",
+            },
+            task_plan={"tasks": []},
+            run_status=_run(f"run-{index}"),
+            review_status="unknown",
+            completion="done",
+        )
+    archive_dir = tmp_path / ".asteria" / "memory" / "goals"
+
+    archived = list(archive_dir.glob("*.json"))
+    assert len(archived) <= ActiveGoalMemory.ARCHIVE_LIMIT
+    archived_goal_ids = {
+        json.loads(item.read_text(encoding="utf-8"))["goal_id"] for item in archived
+    }
+    # The most recently displaced goal must have survived the prune.
+    assert f"goal-{total - 2}" in archived_goal_ids

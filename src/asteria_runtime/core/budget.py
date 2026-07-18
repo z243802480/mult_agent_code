@@ -315,9 +315,10 @@ READ_ONLY_TOOLS = {
     "search_text",
     "diff_workspace",
     "todo_read",
+    "recall_memory",
 }
 VERIFICATION_TOOLS = {"run_tests"}
-STATE_TOOLS = {"todo_write"}
+STATE_TOOLS = {"todo_write", "remember"}
 WRITE_TOOLS = {"write_file", "apply_patch", "restore_backup"}
 SHELL_TOOLS = {"run_command"}
 EXTERNAL_TOOLS = {"mcp", "skill"}

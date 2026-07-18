@@ -183,3 +183,150 @@ def test_runtime_context_reaches_plan_execute_and_debug_agents(tmp_path: Path) -
         model_client=ContextDebugClient(),
     ).run()
     assert repaired.repaired == 1
+
+
+class MemoryLoopPlanClient:
+    """Same goal-spec payload as ContextPlanClient, minus its decisions.jsonl mount assertion —
+    this scenario seeds no harness memory; the model writes its own."""
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return _response(
+            {
+                "schema_version": "0.1.0",
+                "goal_id": "goal-0001",
+                "original_goal": "create context aware artifact",
+                "normalized_goal": "Create context aware artifact",
+                "goal_type": "software_tool",
+                "assumptions": [],
+                "constraints": ["local_first"],
+                "non_goals": [],
+                "expanded_requirements": [
+                    {
+                        "id": "req-0001",
+                        "priority": "must",
+                        "description": "Create a context aware artifact",
+                        "source": "user",
+                        "acceptance": ["artifact exists"],
+                    }
+                ],
+                "target_outputs": ["CONTEXT.md"],
+                "definition_of_done": ["artifact exists"],
+                "verification_strategy": ["inspect file"],
+                "budget": {"max_iterations": 8, "max_model_calls": 60},
+            }
+        )
+
+
+class RememberingExecuteClient:
+    """Turn 1 writes the artifact AND remembers a durable lesson via the memory channel."""
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return spine_response(
+            request,
+            narration="创建产物并沉淀教训。",
+            tool_calls=[
+                {
+                    "tool_name": "write_file",
+                    "args": {"path": "CONTEXT.md", "content": "local\n", "overwrite": True},
+                },
+                {
+                    "tool_name": "remember",
+                    "args": {
+                        "content": "This workspace requires markdown-first local outputs.",
+                        "type": "project_decision",
+                        "tags": ["convention"],
+                        "confidence": 0.9,
+                    },
+                },
+                {
+                    "tool_name": "run_command",
+                    "args": {
+                        "command": "python -c \"from pathlib import Path; assert Path('CONTEXT.md').exists()\""
+                    },
+                },
+            ],
+            model_name="fake-context",
+        )
+
+
+class RecallCheckExecuteClient:
+    """A LATER run: asserts the previous run's remembered lesson reaches its prompt via the
+    memory index, then recalls it in full through recall_memory."""
+
+    def __init__(self) -> None:
+        self.saw_memory_index = False
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        if _mount_present(request, "requires markdown-first local outputs"):
+            self.saw_memory_index = True
+        return spine_response(
+            request,
+            narration="读回记忆并产出。",
+            tool_calls=[
+                {"tool_name": "recall_memory", "args": {"memory_id": "note-0001"}},
+                {
+                    "tool_name": "write_file",
+                    "args": {"path": "CONTEXT.md", "content": "local\n", "overwrite": True},
+                },
+                {
+                    "tool_name": "run_command",
+                    "args": {
+                        "command": "python -c \"from pathlib import Path; assert Path('CONTEXT.md').exists()\""
+                    },
+                },
+            ],
+            model_name="fake-context",
+        )
+
+
+def test_model_remembered_lesson_survives_into_next_runs_prompt(tmp_path: Path) -> None:
+    # The full memory loop on the real execute path: run 1's model calls `remember` (planner
+    # contract -> capability gate -> gateway -> tool), the entry lands schema-valid in
+    # .asteria/memory/model_notes.jsonl, and run 2's prompt carries it in the memory index —
+    # cross-run memory written by the model itself, not the harness.
+    InitCommand(tmp_path).run()
+
+    plan = PlanCommand(
+        tmp_path,
+        "create context aware artifact",
+        model_client=MemoryLoopPlanClient(),
+    ).run()
+    execute = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=RememberingExecuteClient(),
+    ).run()
+    assert execute.completed == 1
+
+    notes = tmp_path / ".asteria" / "memory" / "model_notes.jsonl"
+    rows = [json.loads(line) for line in notes.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(rows) == 1
+    assert rows[0]["memory_id"] == "note-0001"
+    assert rows[0]["source"]["kind"] == "model"
+    assert rows[0]["source"]["run_id"] == plan.run_id
+
+    second_plan = PlanCommand(
+        tmp_path,
+        "create context aware artifact",
+        model_client=MemoryLoopPlanClient(),
+    ).run()
+    recall_client = RecallCheckExecuteClient()
+    second = ExecuteCommand(
+        tmp_path,
+        run_id=second_plan.run_id,
+        model_client=recall_client,
+    ).run()
+    assert second.completed == 1
+    assert recall_client.saw_memory_index, "run 2's prompt must carry the remembered lesson"
+
+    observations = [
+        json.loads(line)
+        for line in (
+            tmp_path / ".asteria" / "runs" / second_plan.run_id / "tool_observations.jsonl"
+        )
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip()
+    ]
+    recall_obs = [item for item in observations if item["tool_name"] == "recall_memory"]
+    assert recall_obs and recall_obs[0]["ok"] is True

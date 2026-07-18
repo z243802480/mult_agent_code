@@ -92,6 +92,7 @@ class ActiveGoalMemory:
         # updated_by="session_continuation" drifted outside its own enum unnoticed. Validating
         # before either file is written keeps the .json and .md from diverging on a bad write.
         _validator().validate("active_goal_memory", structured)
+        self._archive_previous_goal(existing, structured)
         self.json_path.write_text(
             json.dumps(structured, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
@@ -338,6 +339,49 @@ class ActiveGoalMemory:
         if completion == "blocked":
             return "blocked"
         return "run_progress"
+
+    # Bounded goal-turnover archive: keep this many outgoing active_goal records under
+    # memory/goals/ before pruning the oldest.
+    ARCHIVE_LIMIT = 20
+
+    def _archive_previous_goal(self, existing: dict, new: dict) -> None:
+        """Park the outgoing goal's record before a NEW goal overwrites the single slot.
+
+        active_goal is keyed ``memory_id="active-goal"`` — switching goals used to overwrite the
+        previous goal's record outright, so its completed work/decisions died in place with no
+        trace. On a goal_id change the old record moves to ``memory/goals/`` where it stays
+        inspectable; distilling its durable lessons into memory_entry rows is the model's job
+        (``remember`` tool), this is only the deterministic half. Best-effort: archiving must
+        never block the memory write itself."""
+        try:
+            previous_goal_id = str(existing.get("goal_id") or "")
+            new_goal_id = str(new.get("goal_id") or "")
+            if not previous_goal_id or previous_goal_id == new_goal_id:
+                return
+            if not existing.get("current_goal"):
+                return
+            archive_dir = self.path.parent / "goals"
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            stamp = "".join(
+                ch for ch in str(existing.get("updated_at") or now_iso()) if ch.isdigit()
+            )[:14]
+            slug = "".join(
+                ch if ch.isalnum() or ch in "-_" else "-" for ch in previous_goal_id
+            )[:40]
+            target = archive_dir / f"{stamp or 'undated'}-{slug}.json"
+            target.write_text(
+                json.dumps(existing, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
+            # Prune oldest first by write time — filenames start with a second-resolution
+            # stamp, which ties for goals archived in the same second.
+            archived = sorted(
+                archive_dir.glob("*.json"),
+                key=lambda item: (item.stat().st_mtime_ns, item.name),
+            )
+            for stale in archived[: -self.ARCHIVE_LIMIT]:
+                stale.unlink(missing_ok=True)
+        except OSError:
+            return
 
     def _read_existing_for_write(self) -> dict:
         if not self.json_path.exists():

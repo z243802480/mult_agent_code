@@ -54,6 +54,8 @@ def test_tool_surface_contract_is_ready_when_all_model_primitives_have_backends(
             "run_tests",
             "todo_read",
             "todo_write",
+            "remember",
+            "recall_memory",
         ],
         allow_shell=True,
     )
@@ -66,6 +68,9 @@ def test_tool_surface_contract_is_ready_when_all_model_primitives_have_backends(
     assert contract["model_facing_standard_surface"]["missing_primitives"] == []
     assert tools["todo_read"]["status"] == "available"
     assert tools["todo_write"]["permission"] == "ask"
+    assert tools["remember"]["status"] == "available"
+    assert tools["remember"]["permission"] == "allow"
+    assert tools["recall_memory"]["status"] == "available"
 
 
 def test_adapt_model_tool_call_translates_model_primitive_to_runtime_tool() -> None:

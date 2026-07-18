@@ -965,6 +965,9 @@ class AgentHarness:
         write_like = {"write_file", "apply_patch"}
         planning_write = {"todo_write"}
         planning_read = {"todo_read"}
+        # remember writes append-only agent memory (not workspace files); labelling it "read"
+        # via the fallback would make this manifest lie about a write channel existing.
+        memory_tools = {"remember", "recall_memory"}
         tools: list[CapabilityTool] = []
         for name in self.tool_names:
             if name in shell_like:
@@ -979,6 +982,9 @@ class AgentHarness:
             elif name in planning_read:
                 permission = "allow"
                 kind = "planning"
+            elif name in memory_tools:
+                permission = "allow"
+                kind = "memory"
             else:
                 permission = "allow"
                 kind = "read"

@@ -17,6 +17,11 @@ class CapabilityInvocationPolicy:
         "diff_workspace": "read",
         "todo_read": "read",
         "todo_write": "read",
+        # Memory tools mutate only append-only agent memory under .asteria/memory (never
+        # workspace files), so like todo_write they ride the "read" permission kind — an
+        # unknown kind here would fall to deny and the model could never remember anything.
+        "remember": "read",
+        "recall_memory": "read",
         "write_file": "write",
         "apply_patch": "write",
         "restore_backup": "write",
