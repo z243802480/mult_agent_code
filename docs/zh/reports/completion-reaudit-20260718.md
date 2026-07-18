@@ -1,7 +1,7 @@
 # 完成度重审计（2026-07-18）——对照 S77 基线
 
 **为什么有这份报告**：S77 审计（`S77-commercial-readiness-audit-20260704.md`·实现≈71%）是 7 月 4 日的快照，
-此后 changelog 走到 1.2.112（自主环闭合、G 系列 15 条收官、S87/S88 双层写者守卫等），旧数字已失真且
+此后 changelog 走到 1.2.113（自主环闭合、G 系列 15 条收官、S87/S88 双层写者守卫等），旧数字已失真且
 其 P1④/P1⑥ 早被标注过期。「推进到高完成度」需要一个当前的可度量基线——这份就是。
 
 **方法（与 S77 同框架，可直接对比）**：沿用 S77 的 15 子系统拆分与「粗平均、关键项下拉」口径。
@@ -71,7 +71,7 @@ release 闸不含真 provider（nightly 带外承接）、压缩不缩活提示�
 
 - **background run 双 bug**：`local_background_run.py` spawn 的 `python -m asteria_runtime.cli` 是静默
   空操作（cli.py 无 `__main__` 块）⇒ 后台 run 从未真跑过；`_pid_is_alive` 的 `os.kill(pid,0)` 在
-  Windows 会**终止**目标进程。已挂独立任务片（1.2.111 记录）。
+  Windows 会**终止**目标进程。发现记于 1.2.111；本报告成文当天已由另一会话修掉（1.2.112）。
 - **MCP 子进程不擦洗 env**：`mcp_adapter.py:75` 全环境传给第三方 server，与 shell 路径的
   `sanitize_subprocess_env` 同边界不同姿态。已挂独立任务片。
 - 陈旧注释一条：`server.mjs:662` docstring 仍写「every 1.2s」，实际 `TAIL_POLL_MS=500`。
