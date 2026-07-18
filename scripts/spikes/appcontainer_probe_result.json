@@ -1,0 +1,48 @@
+{
+  "sid": "S-1-15-2-2366102414-1039486832-726926156-3878389917-2672987773-1231234733-694864165",
+  "interpreter_dir_needs_recursive_acl_is_prohibitive": true,
+  "escape_write_landed": false,
+  "results": [
+    {
+      "label": "whoami identity in container",
+      "expectation": "must_pass",
+      "launched": true,
+      "exit": 0,
+      "verdict": "OK",
+      "output_head": "�û���Ϣ\n----------------\n\n�û���                        SID                                          \n============================= =============================================\npc-20250914igks\\administ"
+    },
+    {
+      "label": "network egress (curl http)",
+      "expectation": "must_fail",
+      "launched": true,
+      "exit": 28,
+      "verdict": "OK",
+      "output_head": ""
+    },
+    {
+      "label": "write inside workspace",
+      "expectation": "must_pass",
+      "launched": true,
+      "exit": 0,
+      "verdict": "OK",
+      "output_head": ""
+    },
+    {
+      "label": "write outside workspace (C:\\Windows\\asteria_escape.txt)",
+      "expectation": "must_fail",
+      "launched": true,
+      "exit": 1,
+      "verdict": "OK",
+      "output_head": "�ܾ����ʡ�"
+    },
+    {
+      "label": "interpreter in user profile (no ACL grant)",
+      "expectation": "must_fail",
+      "launched": true,
+      "exit": 3221225506,
+      "verdict": "OK",
+      "output_head": ""
+    }
+  ],
+  "all_expectations_met": true
+}

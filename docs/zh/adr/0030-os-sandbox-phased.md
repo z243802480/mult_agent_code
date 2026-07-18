@@ -1,7 +1,10 @@
 # ADR-0030 · OS 级执行沙箱分阶段落地（唯一剩余 P0）
 
-- 状态：**Proposed（2026-07-18·待用户拍板）**。本 ADR 只定方案与阶段切分，零代码改动；
-  实现须逐阶段经用户 go（阶段一小刀可单独放行，阶段二先跑兼容性 spike 再决定投入）。
+- 状态：**Accepted（2026-07-18·用户「1+2 都做」授权 S-A + S-B-spike）**。
+  - **S-A（进程围栏）已落地**：changelog 1.2.117·`core/process_fence.py`·Job Object KILL_ON_JOB_CLOSE +
+    资源上限·4 单测含真 detached 孙进程被收掉 + 真栈探针零误伤 + 1362 pytest 零回归。
+  - **S-B-spike 已跑（结论：隔离原理证实，路线清晰）**：见下方 S-B 段末「spike 结果」。
+  - **S-B-impl / S-C 仍待用户拍板**（S-B-impl 的路线由 spike 结果收敛为「工具放置」问题·见下）。
 - 关联：[[0020]] env 擦洗（本案的纵深防御前作）· [[0025]] ShellGuard 复合命令分解 ·
   完成度重审计 `reports/completion-reaudit-20260718.md` §3 第 1 条（残余债之首）·
   S77 审计 P0① · 记忆 `beta-safe-redteam-posture`（13 外泄向量活体探针·本案验收复用）·
@@ -49,13 +52,19 @@ Codex 云任务 agent 阶段默认断网、Cursor Seatbelt 沙箱默认无网、
   **关掉威胁④（持久驻留）**——今天 `timeout` 只杀直接子进程，`start /b`、后台 `&`、
   detached 进程全部逃生。
 - `ActiveProcessLimit` + `ProcessMemoryLimit`：fork 炸弹/内存炸弹从「机器卡死」降为「命令失败」。
+- `ActiveProcessLimit=512` + `ProcessMemoryLimit=4GiB/进程`（**落地值·炸弹级阈值非精细配额**）。
 - 实现面：ctypes（CreateJobObject/SetInformationJobObject/AssignProcessToJobObject），
-  stdlib 零新依赖，与 S88 的锁同一工艺水位；子进程需 `CREATE_SUSPENDED` 起、入 Job 再放行，
-  防窗口期逃逸。
+  stdlib 零新依赖，与 S88 的锁同一工艺水位。
 - **诚实边界**：不管网络、不管文件写。它是围栏不是沙箱——但它把「run 结束=干净」这个
   用户直觉第一次变成 OS 保证。
-- 验收：探针=命令里 spawn detached 子进程 → run 结束后 OS 查无存活；fork 炸弹 → 命令失败
-  而非机器失去响应；既有 shell 测试零回归。
+- **已落地（1.2.117）·实现纠一处 ADR 初稿的话**：本节初稿写「子进程需 `CREATE_SUSPENDED` 起、
+  入 Job 再放行」——实现时选了 **Popen 后立即 assign**（不 suspend）：`subprocess.Popen` 不暴露
+  子进程主线程 handle，拿不到就 ResumeThread 不了，手写 CreateProcess+管道捕获进核心路径的
+  风险不划算。残留窗口=cmd.exe 加载/解析/CreateProcess 目标之间的微秒级，且默认 job 禁
+  breakaway ⇒ 逃逸要求攻击者显式带 breakaway flag（模型普通命令不会）——**如实记进 docstring，
+  不假装零窗口**。
+- 验收（已过）：真 detached 孙进程（`DETACHED_PROCESS` 每 50ms 写心跳）→ run 结束后心跳停增
+  （被 KILL_ON_JOB_CLOSE 收掉）；git + 8 并发子进程零误伤；既有 shell 测试 318 零回归。
 
 ### 阶段二 S-B「默认关网+限写」——AppContainer（周级·先 spike 再定投入）
 
@@ -74,6 +83,27 @@ Codex 云任务 agent 阶段默认断网、Cursor Seatbelt 沙箱默认无网、
     + 每工具的 ACL/capability 需求清单。**spike 结果决定 S-B 是「照做」「带 allowlist 豁免做」
     还是「换 WSL2 路线」**——用证据拍，不硬想（[[keep-docs-aligned-no-drift]]）。
   - **S-B-impl**：按 spike 结论接进咽喉 + 档位绑定 + 红队复跑。
+
+**★ spike 结果（2026-07-18·跑了·`scripts/spikes/appcontainer_probe.py` + `_result.json`）**：
+真起 AppContainer（`STARTUPINFOEX` + `PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES`·无 capability）
+对五个用例的实测，**5/5 期望达成、逃逸写入确认未落盘**——隔离原理证实：
+
+| 用例 | 结果 | 结论 |
+| --- | --- | --- |
+| whoami /user（System32） | exit 0 | AppContainer 能起进程、容器身份成立 |
+| curl http://example.com（无 capability） | **exit 28（超时）** | **无 internetClient ⇒ 出站在 OS/WFP 层死**——这正是 S-B 对威胁① 的承诺，`python -c urllib` 那类外泄够不着 socket |
+| 写工作区内（已授 full ACL） | exit 0 | 授权工作区可写 |
+| 写工作区外 `C:\Windows\…` | **exit 1 + 文件确认未落盘** | 工作区外写被 OS 拒（威胁②③） |
+| 用户目录解释器（无 ACL 授权） | **exit 0xC0000022 = ACCESS_DENIED** | 用户 profile 里的 `python.exe` 无 ACL 授权时容器读不了、起不来 |
+
+**路线由此收敛（不再是「照做/allowlist/WSL2」三选一的悬念）**：隔离**能用且默认就严**，唯一真工程
+问题是**工具放置**——第一版 spike 试 `icacls /T` 递归授整个 `python313`（含 site-packages 数千文件）
+**卡了几分钟**，这条路（per-container ACL 授用户 profile 解释器目录）**成本不可接受、判死**。
+S-B-impl 的正解是二选一：**(a)** 把运行时工具（python/git/node）装进/软链到一个**一次性授
+`ALL_APPLICATION_PACKAGES` 读执行**的固定位置（装机一次·非每 run）；**(b)** 只对 `workspace + 专属
+TEMP` 授容器 ACL（小树·快·spike 已证 `grant_full` 秒级），工具靠 (a) 的固定位置读。**不需要 WSL2 fallback**
+（隔离在原生 AppContainer 已成立）。**残余待测（S-B-impl 内做，非拦路）**：git/pytest/npm 在容器内跑
+真实多进程仓库的兼容性（命名管道/console handle/AV 交互）——spike 已证机制层通，这些是接线细节。
 - **否决的替代路线（记录理由防止兜圈）**：
   - Windows Sandbox：每命令一台 VM，秒级冷启+无持久工作区，与「发动机」节奏不容。
   - WSL2/Docker：真实仓库在 `/mnt/` 跨文件系统 IO 慢一个量级 + 要求用户装组件/许可证
@@ -99,11 +129,15 @@ Linux/KVM 级隔离，天花板最高，但绑定 CloudSessionExecutor（现为�
 
 高危 shell/deploy/push 的常开硬 guard 不随本案放松（AGENTS §5 不变）。
 
-## 决策请求（三个都可独立拍）
+## 决策请求（状态·2026-07-18 更新）
 
-1. **S-A 放行**：天级小刀、stdlib 零依赖、单咽喉改动、既有测试作回归网——建议直接 go。
-2. **S-B-spike 放行**：~2-3 天纯探针（不动生产码），产出兼容矩阵后**再回来拍 S-B-impl**。
-3. S-C 维持冻结，仅作 S-B 失败时的备选登记。
+1. ~~**S-A 放行**~~ **✅ 已做（1.2.117）**：进程围栏落地、验收过。
+2. ~~**S-B-spike 放行**~~ **✅ 已跑**：隔离原理证实（见上表），路线收敛为「工具放置」。
+3. **S-B-impl 待拍板** —— spike 已把它从「未知可行性」变成「已知路线的接线活」。建议：先做 (a)
+   固定位置授 `ALL_APPLICATION_PACKAGES` 的工具布置 + (b) 咽喉接 AppContainer 起进程 + 档位绑定
+   `allow_network`，再红队复跑 1.2.63 的 13 向量。工作量估 **2-4 周**（比原 6-12 周降——spike 砍掉
+   了「可行性未知」与「WSL2 备选」两个最大不确定性）。**待用户 go**。
+4. **S-C（云）维持冻结**，spike 证明原生方案够用，云路线连备胎都用不上，仅登记。
 
 ## 不做清单
 
