@@ -44,7 +44,10 @@ P2：G15 回放导出（1.2.90）、G14 记忆只读（1.2.91）、**G17 图片�
 - ~~跨 run 无守卫~~ **✅ 已修（1.2.110·S87·用户「按你建议进行」授权）**：核实 G19 时撞出、探针坐实
   （1.2.109·两会话真起两个 run·落在两个不同 OS 进程 ⇒ 进程内 RLock 结构上拦不住）。修=`startRuntimeJob`
   唯一咽喉，同工作区同时只允许一个**能改用户文件**的 run；只读 mode（chat/review/plan/decide）不受影响；
-  **未知 mode 当写者**。**残留洞（如实记）**：CLI 起两个 run 仍无守卫。详见路线表 §4 G19 条。
+  **未知 mode 当写者**。**残留洞已闭合（1.2.111·S88·用户 2026-07-18 授权动 DO_NOT_TOUCH）**：跨进程
+  文件锁（OS 持有·进程死亡自动释放）落在 CLI 三咽喉（continue_run/ExecuteCommand.run/promotions 非 list），
+  连 **CLI-vs-Studio**（S87 也护不住的组合）一并覆盖；`decide` 未纳入（只写 .asteria 决策记录·边界记在
+  模块 docstring）。详见路线表 §4 G19 条。
 - **OS 沙箱 = 唯一剩余 P0**；主观视觉手感需用户目视。
 
 当前 Brief / 审计签字：docs/zh/reports/S77-commercial-readiness-audit-20260704.md（实现≈71%、市场化 37→利基 43-45）。⚠️ **该报告的 P1④「自主环未闭合」/ P1⑥「DebugAgent 占位」已过期**——三环+软保险丝第四环已闭合且随权限档默认开（changelog 1.2.31/1.2.33/1.2.38），`agents/debug_agent.py` 已删（RA7b）。读该报告须对照 changelog。

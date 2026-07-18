@@ -78,6 +78,7 @@ from asteria_runtime.core.task_board import TaskBoard
 from asteria_runtime.core.tool_execution_gateway import ToolExecutionGateway
 from asteria_runtime.core.worker_recorder import WorkerExecutionRecorder, WorkerExecutionSlot
 from asteria_runtime.core.worker_runner import WorkerRunner
+from asteria_runtime.core.workspace_writer_lock import workspace_writer_lock
 from asteria_runtime.models.base import ModelClient
 from asteria_runtime.models.factory import create_model_client
 from asteria_runtime.models.metered import MeteredModelClient
@@ -269,6 +270,13 @@ class ExecuteCommand:
         self.tool_gateway = replace(self.tool_gateway, mcp_adapter=None)
 
     def run(self) -> ExecuteResult:
+        # S88: `debug` and bare `execute` enter here without passing RunCommand, so the
+        # cross-process writer lock must sit on this door too. Re-entrant when a RunCommand
+        # already holds it for this root.
+        with workspace_writer_lock(self.root, command="execute"):
+            return self._run_unlocked()
+
+    def _run_unlocked(self) -> ExecuteResult:
         agent_dir = self.root / ".asteria"
         if not agent_dir.exists():
             raise RuntimeError("Workspace is not initialized. Run `asteria init` first.")

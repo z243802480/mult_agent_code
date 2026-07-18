@@ -7,6 +7,7 @@ from pathlib import Path
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.core.candidate_workspace import CandidateWorkspace
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.workspace_writer_lock import workspace_writer_lock
 from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -93,6 +94,15 @@ class PromotionsCommand:
         self.queue = CandidatePromotionQueue(self.validator)
 
     def run(self) -> PromotionsResult:
+        # S88: promote copies candidate files back onto source_root, so every non-list action
+        # takes the cross-process writer lock. It must be taken HERE — inside _promote the
+        # refusal would be swallowed by the `except Exception` into mark_promotion_failed.
+        if self.action == "list":
+            return self._run_unlocked()
+        with workspace_writer_lock(self.root, command=f"promotions {self.action}"):
+            return self._run_unlocked()
+
+    def _run_unlocked(self) -> PromotionsResult:
         agent_dir = self.root / ".asteria"
         if not agent_dir.exists():
             raise RuntimeError("Workspace is not initialized. Run `asteria init` first.")

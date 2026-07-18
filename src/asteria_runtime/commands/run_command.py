@@ -28,6 +28,7 @@ from asteria_runtime.core.main_path import (
 )
 from asteria_runtime.core.execution_profile import execution_profile_from_run_config
 from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.core.workspace_writer_lock import workspace_writer_lock
 from asteria_runtime.core.permission_policy import autonomy_rings_default_on
 from asteria_runtime.core.run_config import load_run_config
 from asteria_runtime.core.run_recap import author_run_recap
@@ -287,6 +288,19 @@ class RunCommand:
         return self.continue_run(plan.run_id, steps, _progress=progress)
 
     def continue_run(
+        self,
+        run_id: str,
+        steps: list[RunStepSummary] | None = None,
+        _progress: UserProgressLogger | None = None,
+    ) -> RunResult:
+        # S88: every path that executes tasks against the user's files funnels through here
+        # (run/goal, --continue-session, resume, supervised loop, the warm worker). The lock is
+        # cross-process — the BFF guard in run-conflict.mjs cannot see a run started from a
+        # second terminal. Re-entrant, so the ExecuteCommand instances built inside are free.
+        with workspace_writer_lock(self.root, command="run", goal=self.goal):
+            return self._continue_run_unlocked(run_id, steps, _progress)
+
+    def _continue_run_unlocked(
         self,
         run_id: str,
         steps: list[RunStepSummary] | None = None,
