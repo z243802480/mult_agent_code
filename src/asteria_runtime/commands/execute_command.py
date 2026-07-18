@@ -29,6 +29,11 @@ from asteria_runtime.core.model_driven_turn import (
     TurnEvent,
     run_model_driven_turn,
 )
+from asteria_runtime.core.task_progress_digest import (
+    load_task_progress,
+    record_task_progress,
+    render_prior_progress,
+)
 from asteria_runtime.core.run_control import (
     clear_pause,
     pause_reason,
@@ -843,8 +848,20 @@ class ExecuteCommand:
         # edits need real headroom (read many files → then write) or the fuse trips mid-navigation and
         # the replan re-reads from scratch; the hard budget/hard-stop + loop guard still govern cost.
         max_iterations = self._model_turn_iteration_fuse(context.policy)
+        # residual② persistence half: if a previous attempt at this task ran (fuse trip / pause /
+        # resume), carry forward a compact ledger of what it already did so this attempt continues
+        # instead of re-reading from scratch. Empty on the first attempt → byte-identical to before.
+        prior_progress = render_prior_progress(
+            load_task_progress(context.run_dir, str(task.get("task_id") or ""))
+        )
         system_prompt, user_prompt = self._model_driven_prompts(
-            task, goal_spec, project_config, available_tools, runtime_context, can_delegate=True
+            task,
+            goal_spec,
+            project_config,
+            available_tools,
+            runtime_context,
+            can_delegate=True,
+            prior_progress=prior_progress,
         )
         model_tier = str(runtime_context.get("execution_model_tier") or "strong")
         max_subagent_depth = self._max_subagent_depth(context.policy)
@@ -1379,6 +1396,14 @@ class ExecuteCommand:
             },
         )
 
+        # residual② persistence half: merge this attempt's tool actions into the task's on-disk
+        # progress digest (before ANY status branch below returns), so a replan/pause-resume of THIS
+        # task carries forward what was already read/run instead of re-navigating from scratch. The
+        # ledger stores one-line action summaries only — never the file content that blew the budget.
+        record_task_progress(
+            context.run_dir, str(task.get("task_id") or ""), result.observations
+        )
+
         # 人审边界命中（ADR-0016：人审=显式边界）：脊梁在跑到需人批的工具批前整批停手，本轮无残留
         # 写入。复用 FSM 同一套 block/证据/进度落法（单一真源），把任务标 blocked 并留下 pending
         # DecisionPoint —— run 层据 pending_decisions 把整个 run 报成 paused。人批后 resume 重跑本任务，
@@ -1647,11 +1672,15 @@ class ExecuteCommand:
         available_tools: list[str],
         runtime_context: dict,
         can_delegate: bool = False,
+        prior_progress: str | None = None,
     ) -> tuple[str, str]:
         """Build the 立真身 turn envelope: rich task/goal/project/mounted context, but NO
         ``next_action`` enum / decision-table contract (that closed enum IS the FSM the
         model-driven loop escapes). The per-step JSON output contract is appended by
-        ``run_model_driven_turn`` itself; here we only supply the grounding context."""
+        ``run_model_driven_turn`` itself; here we only supply the grounding context.
+
+        ``prior_progress`` (when a previous attempt at this task ran) is a compact ledger of what the
+        model already did, so a replan/resume continues instead of re-reading everything (residual②)."""
         system_prompt = (
             "You are CoderAgent in a local-first autonomous development runtime.\n"
             "Drive the task to completion yourself: at each step call the tools you need, read the "
@@ -1680,6 +1709,8 @@ class ExecuteCommand:
             "allowed_tools": task.get("allowed_tools", []),
             "methodology_skills": self._methodology_skills(runtime_context),
         }
+        if prior_progress:
+            payload["prior_progress"] = prior_progress
         return system_prompt, json.dumps(payload, ensure_ascii=False, indent=2)
 
     def _methodology_skills(self, runtime_context: dict) -> list[dict]:

@@ -3583,3 +3583,39 @@ def test_model_driven_spine_completes_verified_work_even_when_round_fuse_trips(
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["status"] == "done"
+
+
+def test_model_driven_run_records_task_progress_digest(tmp_path: Path) -> None:
+    """residual② persistence half: a task turn writes a compact on-disk ledger of what it did, so a
+    later replan/resume of the same task continues instead of re-reading from scratch."""
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    client = FakeModelDrivenVerifiesNeverDoneClient()
+    ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    task_id = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))["tasks"][0][
+        "task_id"
+    ]
+    digest_path = run_dir / "task_progress" / f"{task_id}.json"
+    assert digest_path.is_file()
+    entries = json.loads(digest_path.read_text(encoding="utf-8"))["entries"]
+    # The fake wrote a file then ran a verify command — both actions must be in the ledger.
+    joined = "\n".join(entries)
+    assert any("write_file" in e for e in entries)
+    assert any("run_command" in e for e in entries)
+    assert joined  # non-empty
+
+
+def test_model_driven_prompts_injects_prior_progress(tmp_path: Path) -> None:
+    # The carried-forward ledger lands in the turn prompt on a re-attempt, and is absent otherwise.
+    InitCommand(tmp_path).run()
+    cmd = ExecuteCommand(tmp_path)
+    task = {"task_id": "task-0001", "allowed_tools": []}
+    _, with_prior = cmd._model_driven_prompts(
+        task, {}, {}, [], {}, prior_progress="PRIOR-LEDGER-MARKER"
+    )
+    assert "PRIOR-LEDGER-MARKER" in with_prior
+    _, without_prior = cmd._model_driven_prompts(task, {}, {}, [], {})
+    assert "prior_progress" not in without_prior
