@@ -139,7 +139,18 @@ def test_real_sandbox_denies_network_and_confines_writes(tmp_path: Path) -> None
     sys32 = os.path.join(os.environ["SystemRoot"], "System32")
     curl = os.path.join(sys32, "curl.exe")
 
-    # Network egress denied at the OS layer (default-deny is the security-critical guarantee).
+    # Regression guard for the cmd-quoting bug: a QUOTED exe path must actually run. Without this,
+    # the network-block assertion below could pass for the wrong reason — a mangled command that
+    # never launches curl also downloads 0 bytes, which is exactly how an early version fooled us.
+    ver = run_sandboxed(
+        ctx, f'"{curl}" --version', cwd=str(tmp_path), env=env, timeout=20, allow_network=False
+    )
+    assert ver.returncode == 0 and "curl" in ver.stdout.lower(), (
+        f"quoted-path command did not run (quoting regression): exit={ver.returncode}"
+    )
+
+    # Network egress denied at the OS layer (default-deny is the security-critical guarantee). Now
+    # meaningful: we just proved curl LAUNCHES, so 0 bytes here is a real block, not a mangled cmd.
     net = run_sandboxed(
         ctx,
         f'"{curl}" -s -o out.html --max-time 8 http://example.com',

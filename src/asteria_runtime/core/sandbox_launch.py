@@ -220,14 +220,19 @@ def run_sandboxed(
     if not _kernel32.InitializeProcThreadAttributeList(attr_buf, 1, 0, ctypes.byref(size)):
         raise SandboxUnavailable("InitializeProcThreadAttributeList failed")
 
-    # allow_network wires the internetClient capability at launch. HONEST LIMITATION (verified, not
-    # assumed): for a bare CreateAppContainerProfile container (not a full APPX package) the
-    # launch-time capability does NOT reach the token — probed `whoami /groups` shows S-1-15-3-1
-    # absent and egress stays blocked even with allow_network=True. Making the escape hatch work
-    # needs the container registered with a Windows Firewall rule (operator/admin setup), a
-    # documented S-B follow-up. The SECURITY-CRITICAL direction — default-deny — IS proven (blocks
-    # against a net-connected machine). So today the sandbox means "network OFF, writes confined";
-    # a workflow that genuinely needs network must not enable the sandbox yet. Fails CLOSED.
+    # allow_network wires the internetClient capability at launch. HONEST LIMITATION — and the story
+    # is subtler than an early note claimed, so it is corrected here from what was actually probed:
+    #   * Default-deny (allow_network=False) IS proven: a correctly-launched curl reaches the network
+    #     stack and is blocked — verbose curl shows `Trying <proxy>...` then times out. Security-
+    #     critical direction is solid.
+    #   * allow_network=True does NOT yet open egress, but NOT for the reason first written (that the
+    #     internetClient SID "isn't in the token"). That conclusion was confounded: this environment
+    #     routes egress through a LOOPBACK proxy (127.0.0.1:xxxx), and an AppContainer blocks loopback
+    #     regardless of internetClient — reaching a loopback proxy needs a loopback exemption
+    #     (CheckNetIsolation), while a direct-internet host would need internetClient + a firewall
+    #     rule. Which of those a machine needs depends on its network setup, so a single fix here
+    #     can't be verified as universal. Wired but treated as a documented S-B follow-up.
+    # Fails CLOSED either way: a workflow that needs network must not enable the sandbox yet.
     cap_array = None
     caps = _SECURITY_CAPABILITIES(ctx.sid_pointer, None, 0, 0)
     if allow_network:
@@ -256,8 +261,14 @@ def run_sandboxed(
     # shell=True equivalent: cmd.exe /c "<command>". cmd.exe is in System32, readable by every
     # AppContainer via ALL_APPLICATION_PACKAGES, so it always launches; the tools it then invokes
     # must live where sandbox_provision granted read/exec.
+    #
+    # Mirror CPython subprocess(shell=True) EXACTLY: `{comspec} /c "{command}"`. Do NOT list2cmdline
+    # the command — it is already a shell string, and list2cmdline backslash-escapes its inner quotes
+    # so cmd sees a mangled exe path (`\"C:\...\curl.exe\"` → "not recognized"). cmd /c strips the one
+    # outer quote pair and runs the rest verbatim. (This bug silently made an early network-block test
+    # pass for the wrong reason — the command never ran — until a verbose probe caught it.)
     comspec = str(Path(env.get("SystemRoot", r"C:\Windows")) / "System32" / "cmd.exe")
-    cmdline = subprocess.list2cmdline([comspec, "/c", command])
+    cmdline = f'{comspec} /c "{command}"'
 
     pi = _PROCESS_INFORMATION()
     ok = _kernel32.CreateProcessW(

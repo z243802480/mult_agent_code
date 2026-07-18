@@ -138,9 +138,12 @@ Linux/KVM 级隔离，天花板最高，但绑定 CloudSessionExecutor（现为�
    授权+workspace/io ACL）+ command_tools 咽喉接线（`permissions.sandbox_shell`·fail-closed）+
    `asteria sandbox status/provision` 命令。**核心机制真机证实**：默认无 capability ⇒ 网络出站 OS 层断
    （对联网本机实测·`python -c urllib` 解释器绕过也够不着 socket）+ 写限工作区（区外写被拒且未落盘）。
-   **诚实剩余**（写进代码 docstring）：①`allow_network=true` 逃生口暂无效（裸 AppContainer 启动期 capability
-   不进 token·实测 whoami 证·需防火墙注册·fails closed 故安全）②工具 provision 是显式一次性慢操作（已移出
-   热路径）③默认 OFF·真实大仓库 pytest/npm 容器内兼容性待广验后才谈默认开。
+   **诚实剩余**（写进代码 docstring）：①`allow_network=true` 逃生口暂无效——**1.2.121 纠正了 1.2.120 的
+   错误归因**：不是「capability 不进 token」（whoami /groups 本不显示 capability·方法弱），真相是本机出网走
+   **loopback 代理**（AppContainer 默认拦 loopback·与 internetClient 无关），到代理需 loopback 豁免、直连
+   互联网才需 internetClient+防火墙——依机器网络而定·fails closed 故安全；②工具 provision 是显式一次性慢操作
+   （已移出热路径）③默认 OFF·真实大仓库 pytest/npm 容器内兼容性待广验后才谈默认开。**另修 1.2.121：命令引号
+   bug 曾让 1.2.120 的网络证明假绿（命令没跑冒充网络被拦）·已修+回归护栏。**
 4. **S-C（云）维持冻结**，spike 证明原生方案够用，云路线连备胎都用不上，仅登记。
 
 ## 不做清单
