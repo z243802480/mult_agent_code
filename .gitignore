@@ -10,6 +10,7 @@ dist/
 studio/dist/
 studio/node_modules/
 studio/test-results/
+/test-results/
 studio/playwright-report/
 studio/blob-report/
 Thumbs.db
