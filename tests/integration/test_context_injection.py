@@ -395,7 +395,7 @@ def test_context_pressure_slims_workspace_excerpts_from_execute_grounding(tmp_pa
     assert client.saw_slimmed_grounding, (
         "near_limit 下 execute 的 grounding 必须瘦身：路径在、摘录不在、带 elision 说明"
     )
-    # 1.2.135: the slimmed seed itself is never persisted, so the slim action must leave a
+    # 1.2.137: the slimmed seed itself is never persisted, so the slim action must leave a
     # durable diagnostic event — otherwise live runs cannot prove the mechanism fired.
     progress_path = tmp_path / ".asteria" / "runs" / plan.run_id / "user_progress.jsonl"
     events = [

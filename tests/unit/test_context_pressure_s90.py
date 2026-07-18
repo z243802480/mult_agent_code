@@ -197,7 +197,7 @@ def test_non_context_hard_stop_still_pauses_immediately(tmp_path: Path, monkeypa
     assert _FakeCompact.calls == []
 
 
-# ---------- 1.2.131 修 B：回显名备选键 + 配置 miss 告警 ----------
+# ---------- 1.2.136 修 B：回显名备选键 + 配置 miss 告警 ----------
 
 
 def test_resolve_context_window_matches_server_echoed_alias() -> None:

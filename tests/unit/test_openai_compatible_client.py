@@ -555,7 +555,7 @@ def test_openai_compatible_client_feeds_usage_truth_and_per_model_window(tmp_pat
 
 
 def test_openai_compatible_client_window_matches_server_echoed_model_name(tmp_path: Path) -> None:
-    # 1.2.131 fix B: windows keyed by the server-echoed name (what operators see in logs) must
+    # 1.2.136 fix B: windows keyed by the server-echoed name (what operators see in logs) must
     # still bite — the echo rides along as an alias key on the observation path.
     transport = FakeTransport(
         HttpResponse(

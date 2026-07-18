@@ -1,4 +1,4 @@
-"""Workspace change scan (disk truth for the completion contract) — dogfood 1.2.131."""
+"""Workspace change scan (disk truth for the completion contract) — dogfood 1.2.136."""
 
 from pathlib import Path
 

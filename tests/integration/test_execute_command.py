@@ -3690,7 +3690,7 @@ def test_shell_written_artifact_satisfies_contract_and_unscoped_is_disclosed(
 
 
 def test_model_driven_prompts_carries_memory_protocol(tmp_path: Path) -> None:
-    # 1.2.131 fix D: the memory nudge is a first-class seed field (dogfood: tools offered via
+    # 1.2.136 fix D: the memory nudge is a first-class seed field (dogfood: tools offered via
     # surface + optional-methodology guidance alone → zero remember calls in 26 turns).
     InitCommand(tmp_path).run()
     cmd = ExecuteCommand(tmp_path)
