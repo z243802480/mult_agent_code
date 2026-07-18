@@ -300,10 +300,13 @@ class MiniMaxOpenAICompatibleClient:
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
         )
+        # Server-echoed name as alias key — same trap as the glm path: operators key
+        # model_context_windows by the log-visible echo, not the configured name.
         self.budget.record_context_observation(
             response.usage.input_tokens,
             model_name=self.settings.model_name,
             provider=self.provider,
+            model_aliases=(response.model_name,) if response.model_name else (),
         )
 
 

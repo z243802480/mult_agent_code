@@ -78,7 +78,12 @@ from asteria_runtime.core.runtime_policy import (
 from asteria_runtime.core.task_blocking_handler import BlockingResult, TaskBlockingHandler
 from asteria_runtime.core.task_attempt_runner import TaskAttemptRunner
 from asteria_runtime.core.fast_path_policy import classify_fast_path
-from asteria_runtime.core.task_contract import check_completion_contract, looks_like_file_path
+from asteria_runtime.core.task_contract import (
+    check_completion_contract,
+    looks_like_file_path,
+    path_in_write_scope,
+)
+from asteria_runtime.core.workspace_snapshot import changed_paths, snapshot_workspace
 from asteria_runtime.core.task_execution_evidence import TaskExecutionEvidenceRecorder
 from asteria_runtime.core.task_board import TaskBoard
 from asteria_runtime.core.tool_execution_gateway import ToolExecutionGateway
@@ -533,17 +538,11 @@ class ExecuteCommand:
             value = 0
         return max(0, value)
 
-
     def _loop_quality_guard_config(self, policy: dict) -> dict | None:
         raw_agent_loop = policy.get("agent_loop")
         agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
         guard = agent_loop.get("loop_quality_guard")
         return guard if isinstance(guard, dict) else None
-
-
-
-
-
 
     def _record_agent_loop_run_summary(
         self,
@@ -613,7 +612,9 @@ class ExecuteCommand:
             "latest_context_estimated_tokens": report.get("latest_context_estimated_tokens", 0),
             "max_context_estimated_tokens": report.get("max_context_estimated_tokens", 0),
             "context_compactions": report.get("context_compactions", 0),
-            "duplicate_content_hash_count": len(report.get("context_duplicate_content_hashes") or []),
+            "duplicate_content_hash_count": len(
+                report.get("context_duplicate_content_hashes") or []
+            ),
         }
         return (budget_state, context_pressure)
 
@@ -743,7 +744,6 @@ class ExecuteCommand:
             },
         )
         return self._blocked_task_summary(blocked)
-
 
     def _max_subagent_depth(self, policy: dict) -> int:
         raw_agent_loop = policy.get("agent_loop")
@@ -968,7 +968,9 @@ class ExecuteCommand:
                 "description": str(args.get("task") or ""),
                 "allowed_tools": child_allowed,
                 "read_scope": [
-                    str(item) for item in (args.get("read_scope") or task.get("read_scope") or []) if item
+                    str(item)
+                    for item in (args.get("read_scope") or task.get("read_scope") or [])
+                    if item
                 ],
                 "write_scope": (
                     []
@@ -1050,9 +1052,7 @@ class ExecuteCommand:
                     # expert, so "which expert cost what" is answerable without double counting (B7).
                     call_attribution={
                         "runtime_profile_id": runtime_context.get("runtime_profile_id"),
-                        "worker_invocation_id": runtime_context.get(
-                            "current_worker_invocation_id"
-                        ),
+                        "worker_invocation_id": runtime_context.get("current_worker_invocation_id"),
                         "run_id": context.run_id,
                         "subagent_role": expert.role,
                     },
@@ -1199,12 +1199,9 @@ class ExecuteCommand:
                 )
 
             workers = min(len(prepared_list), max_parallel_workers)
-            with ThreadPoolExecutor(
-                max_workers=workers, thread_name_prefix="expert-write"
-            ) as pool:
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="expert-write") as pool:
                 futures = {
-                    pool.submit(_run_indexed, index): index
-                    for index in range(len(prepared_list))
+                    pool.submit(_run_indexed, index): index for index in range(len(prepared_list))
                 }
                 for future in as_completed(futures):
                     outcomes[futures[future]] = future.result()
@@ -1356,6 +1353,12 @@ class ExecuteCommand:
                 context=context,
             )
 
+        # Disk truth for the completion contract (dogfood run-20260718-0001): a doer denied by
+        # tool-layer scope can still write through run_command; the tool ledger then reports zero
+        # changed files while the work sits finished on disk. Stat-level snapshot before/after the
+        # turn lets the contract count in-scope disk changes and disclose out-of-scope ones.
+        pre_turn_snapshot = snapshot_workspace(context.root)
+
         result = run_model_driven_turn(
             model_client=coder.model_client,
             tool_runner=tool_runner,
@@ -1400,9 +1403,7 @@ class ExecuteCommand:
         # progress digest (before ANY status branch below returns), so a replan/pause-resume of THIS
         # task carries forward what was already read/run instead of re-navigating from scratch. The
         # ledger stores one-line action summaries only — never the file content that blew the budget.
-        record_task_progress(
-            context.run_dir, str(task.get("task_id") or ""), result.observations
-        )
+        record_task_progress(context.run_dir, str(task.get("task_id") or ""), result.observations)
 
         # 人审边界命中（ADR-0016：人审=显式边界）：脊梁在跑到需人批的工具批前整批停手，本轮无残留
         # 写入。复用 FSM 同一套 block/证据/进度落法（单一真源），把任务标 blocked 并留下 pending
@@ -1455,6 +1456,24 @@ class ExecuteCommand:
             for ref in getattr(obs, "artifact_refs", [])
             if ref
         ]
+        # Union the tool ledger with what actually changed on disk. In-scope disk changes count as
+        # progress no matter which path produced them (write_file or a shell command); out-of-scope
+        # ones are disclosed on the contract instead of staying invisible. An empty/absent
+        # write_scope means the tool layer imposed no path restriction, so nothing is "unscoped".
+        disk_changed = changed_paths(pre_turn_snapshot, snapshot_workspace(context.root))
+        write_scope = [str(item) for item in (task.get("write_scope") or []) if item]
+        if write_scope:
+            scope_kind = str(task.get("task_kind") or "") or None
+            in_scope_disk = [
+                path
+                for path in disk_changed
+                if path_in_write_scope(path, write_scope, kind=scope_kind)
+            ]
+            unscoped_disk = [path for path in disk_changed if path not in in_scope_disk]
+        else:
+            in_scope_disk = disk_changed
+            unscoped_disk = []
+        changed_files = sorted({*changed_files, *in_scope_disk})
         # 验证证据口径与 review 的确定性快评保持一致(单一真源语义):仅 bug_fix/single_file_bugfix
         # 要求可执行命令验证,其余(含 doc_update)读回产物即算验证。用同一 classify_fast_path 判定,
         # 避免执行门与评审门对"何为验证"各执一词。
@@ -1481,7 +1500,9 @@ class ExecuteCommand:
         # safe, mainstream-aligned choice — completion requires a real changed artifact AND the real
         # verification passing. The changed-files detection gap is fixed at the source, not papered
         # over by trusting an arbitrary passing verification.
-        contract = check_completion_contract(task, changed_files, verification_results)
+        contract = check_completion_contract(
+            task, changed_files, verification_results, unscoped_changed_files=unscoped_disk
+        )
         tool_calls = len(observations)
         verification_calls = contract.verification_total
 
@@ -1578,9 +1599,7 @@ class ExecuteCommand:
             validation_refs=validation_refs,
         )
 
-    def _paused_activity_counts(
-        self, result: Any, goal_spec: dict, task: dict
-    ) -> tuple[int, int]:
+    def _paused_activity_counts(self, result: Any, goal_spec: dict, task: dict) -> tuple[int, int]:
         """How much work actually happened before the pause. Counted with the SAME detectors as the
         completion path (classify_fast_path → allow_readback → _latest_verification_per_command), so a
         paused task reports real (tool_calls, verification_calls) instead of a hardcoded 0. A pause is
@@ -1693,6 +1712,21 @@ class ExecuteCommand:
             "have verified it.\n"
             "- narration is one short sentence in the user's language (Chinese) describing THIS step."
         ) + self._methodology_guidance(runtime_context, can_delegate=can_delegate)
+        # First-class seed field, not buried in the optional-methodology tail: dogfood
+        # run-20260718-0001 offered remember/recall in the surface + guidance and the doer used
+        # them zero times in 26 calls — salience in the task seed is the cheapest next lever.
+        memory_index = runtime_context.get("memory")
+        memory_protocol = (
+            "Before finishing: if this task surfaced a durable cross-task fact (a convention, "
+            "a pitfall, a decision and its why), record it with remember — one short note, "
+            "never file contents."
+        )
+        if isinstance(memory_index, list) and memory_index:
+            memory_protocol += (
+                f" The memory index in runtime_context has {len(memory_index)} known entries; "
+                "when one looks relevant, fetch its full text with recall_memory before "
+                "re-deriving it yourself."
+            )
         payload = {
             "task": task,
             "goal_spec": goal_spec,
@@ -1703,6 +1737,7 @@ class ExecuteCommand:
                 "validation_commands": task.get("validation_commands", []),
                 "acceptance": task.get("acceptance", []),
             },
+            "memory_protocol": memory_protocol,
             "project": project_config,
             "runtime_context": context_prompt_view(runtime_context),
             "available_tools": available_tools,
@@ -1851,8 +1886,7 @@ class ExecuteCommand:
                     event_type="message",
                     phase="execute",
                     status="running",
-                    title=f"工具结果 · {obs.tool_name}"
-                    + ("" if obs.ok else " (失败)"),
+                    title=f"工具结果 · {obs.tool_name}" + ("" if obs.ok else " (失败)"),
                     summary=obs.model_summary(),
                     display_level="inspector",
                     data={

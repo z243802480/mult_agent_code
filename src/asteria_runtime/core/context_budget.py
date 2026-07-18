@@ -189,6 +189,7 @@ def resolve_context_window(
     *,
     model_name: str | None = None,
     provider: str | None = None,
+    model_aliases: tuple[str, ...] = (),
 ) -> int:
     """The context window for the ACTIVE model, not a global constant.
 
@@ -199,7 +200,7 @@ def resolve_context_window(
     context = policy.get("context") or {}
     windows = context.get("model_context_windows")
     if isinstance(windows, dict):
-        for key in (model_name, provider):
+        for key in (model_name, *model_aliases, provider):
             if key and key in windows:
                 try:
                     return max(1, int(windows[key]))
@@ -208,15 +209,40 @@ def resolve_context_window(
     return max(1, int(context.get("model_context_window_tokens", 200_000)))
 
 
+def context_window_config_miss(
+    policy: dict,
+    *,
+    model_name: str | None = None,
+    provider: str | None = None,
+    model_aliases: tuple[str, ...] = (),
+) -> bool:
+    """True when ``model_context_windows`` is configured but matched nothing for this call.
+
+    A configured-but-unmatched window is worse than no config: the operator believes the real
+    ceiling applies while pressure is still measured against the 200k fallback (dogfood
+    run-20260718-0001: windows keyed by the server-echoed name "glm-5.2" while resolution uses
+    the env-configured name "glm-5" and the internal provider id "zai" — silent miss)."""
+    windows = (policy.get("context") or {}).get("model_context_windows")
+    if not isinstance(windows, dict) or not windows:
+        return False
+    candidates = [key for key in (model_name, *model_aliases, provider) if key]
+    if not candidates:
+        return False
+    return not any(key in windows for key in candidates)
+
+
 def context_pressure(
     policy: dict,
     estimated_tokens: int,
     *,
     model_name: str | None = None,
     provider: str | None = None,
+    model_aliases: tuple[str, ...] = (),
 ) -> ContextPressure:
     context = policy.get("context") or {}
-    window_tokens = resolve_context_window(policy, model_name=model_name, provider=provider)
+    window_tokens = resolve_context_window(
+        policy, model_name=model_name, provider=provider, model_aliases=model_aliases
+    )
     compaction_threshold = float(context.get("compaction_threshold", 0.75))
     hard_stop_threshold = float(context.get("hard_stop_threshold", 0.9))
     ratio = max(0.0, estimated_tokens / window_tokens)

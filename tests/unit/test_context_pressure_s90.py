@@ -10,6 +10,7 @@ from asteria_runtime.commands.run_command import RunCommand
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.context_budget import (
     context_pressure,
+    context_window_config_miss,
     resolve_context_window,
     slim_workspace_files,
 )
@@ -194,3 +195,40 @@ def test_non_context_hard_stop_still_pauses_immediately(tmp_path: Path, monkeypa
     assert stopped is True
     assert paused
     assert _FakeCompact.calls == []
+
+
+# ---------- 1.2.131 修 B：回显名备选键 + 配置 miss 告警 ----------
+
+
+def test_resolve_context_window_matches_server_echoed_alias() -> None:
+    # Operators key windows by the log-visible echoed name ("glm-5.2") while resolution runs on
+    # the env-configured name ("glm-5") — the echo rides along as an alias so both keys work.
+    policy = _policy(model_context_windows={"glm-5.2": 16_000})
+
+    assert resolve_context_window(policy, model_name="glm-5", model_aliases=("glm-5.2",)) == 16_000
+    assert (
+        context_window_config_miss(policy, model_name="glm-5", model_aliases=("glm-5.2",)) is False
+    )
+    assert context_window_config_miss(policy, model_name="glm-5", provider="zai") is True
+    # No config / no model info → not a miss (nothing to warn about).
+    assert context_window_config_miss(_policy(), model_name="glm-5") is False
+    assert context_window_config_miss(policy) is False
+
+
+def test_budget_warns_once_on_window_config_miss() -> None:
+    policy = {
+        "budgets": {"max_model_calls_per_goal": 10},
+        "context": {"model_context_windows": {"glm-5.2": 16_000}},
+    }
+    budget = BudgetController(policy, run_id="run-warn")
+
+    budget.record_context_estimate(1_000, model_name="glm-5", provider="zai")
+    budget.record_context_estimate(1_100, model_name="glm-5", provider="zai")
+
+    misses = [w for w in budget.usage.warnings if "model_context_windows matched nothing" in w]
+    assert len(misses) == 1
+    # A matching alias silences the warning path entirely on a fresh controller.
+    clean = BudgetController(policy, run_id="run-clean")
+    clean.record_context_estimate(1_000, model_name="glm-5", model_aliases=("glm-5.2",))
+    assert not any("matched nothing" in w for w in clean.usage.warnings)
+    assert clean.usage.context_window_tokens == 16_000

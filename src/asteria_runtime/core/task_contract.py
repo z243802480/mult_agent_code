@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -60,6 +60,10 @@ class TaskContractCheck:
     expected_changed_files: list[str]
     verification_total: int
     verification_passed: int
+    # Disk-observed changes OUTSIDE the task's write_scope (e.g. written via shell, which the
+    # tool-layer scope guard cannot see). Disclosure, not a violation: hard prevention is the
+    # OS sandbox's job; app/test byproducts also land here and must not fail an honest task.
+    unscoped_changed_files: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
         if self.ok:
@@ -74,6 +78,7 @@ class TaskContractCheck:
             "expected_changed_files": self.expected_changed_files,
             "verification_total": self.verification_total,
             "verification_passed": self.verification_passed,
+            "unscoped_changed_files": self.unscoped_changed_files,
         }
 
 
@@ -161,11 +166,14 @@ def path_in_write_scope(path: str, scope: list[str], *, kind: str | None = None)
         if not normalized_scope:
             continue
         if normalized_scope in GENERIC_ARTIFACT_SCOPES:
-            if normalized_scope == "implementation artifact" and _implementation_artifact_path_allowed(
-                normalized_path, resolved_kind
+            if (
+                normalized_scope == "implementation artifact"
+                and _implementation_artifact_path_allowed(normalized_path, resolved_kind)
             ):
                 return True
-            if normalized_scope == "planning artifact" and _planning_artifact_path_allowed(normalized_path):
+            if normalized_scope == "planning artifact" and _planning_artifact_path_allowed(
+                normalized_path
+            ):
                 return True
             continue
         if normalized_scope.endswith("/"):
@@ -173,7 +181,9 @@ def path_in_write_scope(path: str, scope: list[str], *, kind: str | None = None)
             if normalized_path == prefix or normalized_path.startswith(prefix + "/"):
                 return True
             continue
-        if normalized_path == normalized_scope or normalized_path.startswith(normalized_scope + "/"):
+        if normalized_path == normalized_scope or normalized_path.startswith(
+            normalized_scope + "/"
+        ):
             return True
     return False
 
@@ -220,7 +230,9 @@ def path_in_read_scope(path: str, scope: list[str], *, kind: str | None = None) 
             normalized_path, resolved_kind
         ):
             return True
-        if normalized_scope == "planning artifact" and _planning_artifact_path_allowed(normalized_path):
+        if normalized_scope == "planning artifact" and _planning_artifact_path_allowed(
+            normalized_path
+        ):
             return True
     return False
 
@@ -308,6 +320,7 @@ def check_completion_contract(
     changed_files: list[str],
     verification_results: list,
     allow_verified_noop: bool = False,
+    unscoped_changed_files: list[str] | None = None,
 ) -> TaskContractCheck:
     contract = completion_contract(task)
     expected_files = _expected_changed_files(task)
@@ -348,6 +361,9 @@ def check_completion_contract(
         expected_changed_files=expected_files,
         verification_total=verification_total,
         verification_passed=verification_passed,
+        unscoped_changed_files=sorted(
+            set(str(item) for item in (unscoped_changed_files or []) if item)
+        ),
     )
 
 

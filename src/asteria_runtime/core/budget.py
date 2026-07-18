@@ -3,7 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from threading import RLock
 
-from asteria_runtime.core.context_budget import ContextPressure, context_pressure
+from asteria_runtime.core.context_budget import (
+    ContextPressure,
+    context_pressure,
+    context_window_config_miss,
+)
 
 
 class BudgetExceededError(RuntimeError):
@@ -147,6 +151,7 @@ class BudgetController:
         duplicate_content_hashes: list[str] | None = None,
         model_name: str | None = None,
         provider: str | None = None,
+        model_aliases: tuple[str, ...] = (),
     ) -> None:
         if estimated_tokens is None:
             return
@@ -157,9 +162,16 @@ class BudgetController:
             # the char heuristic systematically drifts per model family; real usage is the truth.
             calibrated = max(0, int(raw * self.usage.context_estimate_calibration))
             pressure = context_pressure(
-                self.policy, calibrated, model_name=model_name, provider=provider
+                self.policy,
+                calibrated,
+                model_name=model_name,
+                provider=provider,
+                model_aliases=model_aliases,
             )
             self._apply_context_pressure(pressure)
+            self._warn_on_window_config_miss(
+                model_name=model_name, provider=provider, model_aliases=model_aliases
+            )
             if sections:
                 clean_sections = {
                     str(key): max(0, _as_int(value)) for key, value in sections.items()
@@ -183,6 +195,7 @@ class BudgetController:
         *,
         model_name: str | None = None,
         provider: str | None = None,
+        model_aliases: tuple[str, ...] = (),
     ) -> None:
         """Fold the provider-reported prompt token count back into the pressure signal (S90).
 
@@ -202,9 +215,43 @@ class BudgetController:
                     0.5 * self.usage.context_estimate_calibration + 0.5 * ratio, 4
                 )
             pressure = context_pressure(
-                self.policy, observed, model_name=model_name, provider=provider
+                self.policy,
+                observed,
+                model_name=model_name,
+                provider=provider,
+                model_aliases=model_aliases,
             )
             self._apply_context_pressure(pressure)
+            self._warn_on_window_config_miss(
+                model_name=model_name, provider=provider, model_aliases=model_aliases
+            )
+
+    def _warn_on_window_config_miss(
+        self,
+        *,
+        model_name: str | None,
+        provider: str | None,
+        model_aliases: tuple[str, ...] = (),
+    ) -> None:
+        """A configured-but-unmatched model_context_windows is a silent config trap — say so once.
+
+        Dogfood run-20260718-0001: windows keyed by the server-echoed model name never matched
+        the env-configured name / internal provider id, so pressure was silently measured against
+        the 200k fallback the operator thought they had replaced."""
+        if not context_window_config_miss(
+            self.policy,
+            model_name=model_name,
+            provider=provider,
+            model_aliases=model_aliases,
+        ):
+            return
+        warning = (
+            "model_context_windows matched nothing for model "
+            f"'{model_name}' (provider '{provider}'); using the global window — "
+            "key entries by the configured model name (e.g. AGENT_MODEL_*_NAME) or provider id"
+        )
+        if warning not in self.usage.warnings:
+            self.usage.warnings.append(warning)
 
     def _apply_context_pressure(self, pressure: ContextPressure) -> None:
         self.usage.latest_context_estimated_tokens = pressure.estimated_tokens

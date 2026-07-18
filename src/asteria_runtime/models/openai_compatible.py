@@ -136,10 +136,15 @@ class OpenAICompatibleClient:
                         response.usage.input_tokens,
                         response.usage.output_tokens,
                     )
+                    # The server-echoed model name rides along as an alias key: operators
+                    # naturally key model_context_windows by the name they see in logs
+                    # (the echo), which can differ from the configured name (dogfood:
+                    # env "glm-5" vs echoed "glm-5.2").
                     self.budget.record_context_observation(
                         response.usage.input_tokens,
                         model_name=self.settings.model_name,
                         provider=self.provider,
+                        model_aliases=(response.model_name,) if response.model_name else (),
                     )
                 self.logger.record_success(request, response)
                 return response

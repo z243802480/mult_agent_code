@@ -1816,15 +1816,7 @@ class FakeInvalidExecuteClient:
 
 class FakeProviderNetworkFailureClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
-        raise RuntimeError(
-            "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred>"
-        )
-
-
-
-
-
-
+        raise RuntimeError("<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred>")
 
 
 def _enable_auto_repair(tmp_path: Path, *, max_repair_attempts_per_task: int) -> None:
@@ -1839,8 +1831,6 @@ def _enable_auto_repair(tmp_path: Path, *, max_repair_attempts_per_task: int) ->
     if profile and isinstance(profiles, dict) and isinstance(profiles.get(profile), dict):
         profiles[profile]["max_repair_attempts_per_task"] = max_repair_attempts_per_task
     policy_path.write_text(json.dumps(policy), encoding="utf-8")
-
-
 
 
 def test_validation_probe_plan_uses_deterministic_goal_spec_fallback(
@@ -1867,9 +1857,7 @@ def test_validation_probe_plan_uses_deterministic_goal_spec_fallback(
     assert goal_spec["goal_id"] == "goal-validation-probe"
     assert goal_spec["goal_type"] == "report"
     assert task["task_kind"] == "diagnostic"
-    assert task["runtime_profile_hints"]["validation_probe_ids"] == [
-        "capability_selection_path"
-    ]
+    assert task["runtime_profile_hints"]["validation_probe_ids"] == ["capability_selection_path"]
     assert any(item["type"] == "goal_spec_fallback" for item in events)
 
 
@@ -1911,10 +1899,6 @@ def test_execute_command_blocks_high_risk_low_quality_delegation_before_model(
     assert evidence[-1]["failure_type"] == "delegation_brief_quality_gate"
 
 
-
-
-
-
 def test_execute_command_attributes_provider_network_failure_before_tools(
     tmp_path: Path,
 ) -> None:
@@ -1947,34 +1931,6 @@ def test_execute_command_attributes_provider_network_failure_before_tools(
     assert not (run_dir / "tool_calls.jsonl").exists()
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def test_execute_command_blocks_implementation_task_without_changed_artifacts(
     tmp_path: Path,
 ) -> None:
@@ -1991,22 +1947,6 @@ def test_execute_command_blocks_implementation_task_without_changed_artifacts(
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["status"] == "blocked"
     assert "required changed artifact was not produced" in task_plan["tasks"][0]["notes"]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def test_execute_command_pauses_direct_execute_when_task_plan_quality_fails(
@@ -2109,7 +2049,7 @@ class FakeModelDrivenClient:
                             "command": (
                                 "python -c "
                                 '"from src.notes_tool import add_note; '
-                                'assert add_note([], \'x\') == [\'x\']"'
+                                "assert add_note([], 'x') == ['x']\""
                             )
                         },
                     },
@@ -2148,8 +2088,8 @@ def test_execute_command_model_driven_turn_flag_routes_through_real_thing(
     # 每轮都走 JSON transport（立真身通路），不是 FSM 的 next_action 填表。
     assert client.transports and all(transport == "json" for transport in client.transports)
     # 真的经 gateway 产出了工件。
-    assert (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith(
-        "def add_note"
+    assert (
+        (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith("def add_note")
     )
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     user_progress = [
@@ -2165,9 +2105,7 @@ def test_execute_command_model_driven_turn_flag_routes_through_real_thing(
         for event in user_progress
     )
     # 收口没被 schema-double-trap 静默降级。
-    loop_summary = json.loads(
-        (run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8")
-    )
+    loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
     assert loop_summary["status"] == "completed"
     assert loop_summary["exit_reason"] == "completed"
 
@@ -2286,11 +2224,13 @@ def test_execute_command_model_driven_turn_multi_file(tmp_path: Path) -> None:
 
     assert result.completed == 1
     assert result.blocked == 0
-    assert (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith(
-        "def add_note"
+    assert (
+        (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith("def add_note")
     )
-    assert (tmp_path / "src" / "test_notes_tool.py").read_text(encoding="utf-8").startswith(
-        "from notes_tool"
+    assert (
+        (tmp_path / "src" / "test_notes_tool.py")
+        .read_text(encoding="utf-8")
+        .startswith("from notes_tool")
     )
 
 
@@ -2316,8 +2256,8 @@ def test_execute_command_model_driven_turn_failed_observation_does_not_crash(
     assert result.blocked == 0
     assert client.calls == 3  # fail → recover → done
     # The failed observation was recorded (a valid-status progress event), and recovery overwrote.
-    assert (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith(
-        "def add_note"
+    assert (
+        (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith("def add_note")
     )
 
 
@@ -2585,7 +2525,11 @@ def test_stop_guardrail_ignores_prose_placeholder(tmp_path: Path) -> None:
 def test_turn_start_reminder_skips_strong_tier() -> None:
     record = {
         "hook_name": "turn_start",
-        "data": {"iteration": 1, "model_tier": "strong", "methodology_skill_names": ["skill__debug"]},
+        "data": {
+            "iteration": 1,
+            "model_tier": "strong",
+            "methodology_skill_names": ["skill__debug"],
+        },
     }
     assert _methodology_turn_start_decision(record) is None
 
@@ -2593,7 +2537,11 @@ def test_turn_start_reminder_skips_strong_tier() -> None:
 def test_turn_start_reminder_fires_weak_tier_kickoff_only() -> None:
     weak = {
         "hook_name": "turn_start",
-        "data": {"iteration": 1, "model_tier": "medium", "methodology_skill_names": ["skill__debug"]},
+        "data": {
+            "iteration": 1,
+            "model_tier": "medium",
+            "methodology_skill_names": ["skill__debug"],
+        },
     }
     decision = _methodology_turn_start_decision(weak)
     assert decision is not None
@@ -2620,8 +2568,8 @@ def test_execute_command_model_driven_turn_premature_stop_continues_and_fires_ho
     result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
 
     assert result.completed == 1
-    assert (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith(
-        "def add_note"
+    assert (
+        (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith("def add_note")
     )
     # Control hooks are no longer blocked by policy — the pre_final point fired and was recorded.
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
@@ -2711,8 +2659,8 @@ def test_execute_command_model_driven_turn_spawn_subagent(tmp_path: Path) -> Non
     assert client.spawned is True  # lead delegated
     assert client.child_calls >= 2  # the child ran its OWN loop
     # The child expert produced the artifact through the real gateway.
-    assert (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith(
-        "def add_note"
+    assert (
+        (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith("def add_note")
     )
 
     # Part B4 frontend pull-up: delegation is VISIBLE on the lead's main thread as two
@@ -2777,7 +2725,9 @@ class FakeConcurrentReviewersClient:
                     pass
                 payload = {
                     "narration": f"审阅 {task_id}。",
-                    "tool_calls": [{"tool_name": "read_file", "args": {"path": "notes/subject.md"}}],
+                    "tool_calls": [
+                        {"tool_name": "read_file", "args": {"path": "notes/subject.md"}}
+                    ],
                     "done": False,
                 }
             else:
@@ -2788,13 +2738,23 @@ class FakeConcurrentReviewersClient:
                 payload = {
                     "narration": "并发委派两位 reviewer 专家审阅。",
                     "tool_calls": [
-                        {"tool_name": "spawn_subagent", "args": {"role": "reviewer", "task": "review section A"}},
-                        {"tool_name": "spawn_subagent", "args": {"role": "reviewer", "task": "review section B"}},
+                        {
+                            "tool_name": "spawn_subagent",
+                            "args": {"role": "reviewer", "task": "review section A"},
+                        },
+                        {
+                            "tool_name": "spawn_subagent",
+                            "args": {"role": "reviewer", "task": "review section B"},
+                        },
                     ],
                     "done": False,
                 }
             else:
-                payload = {"narration": "两位 reviewer 已完成审阅。", "tool_calls": [], "done": True}
+                payload = {
+                    "narration": "两位 reviewer 已完成审阅。",
+                    "tool_calls": [],
+                    "done": True,
+                }
         return ChatResponse(
             content=json.dumps(payload, ensure_ascii=False),
             finish_reason="stop",
@@ -2848,9 +2808,7 @@ def test_execute_command_concurrent_readonly_subagent_fanout(tmp_path: Path) -> 
     # B4: the read-only fan-out stamps its own batch identity too, so the UI can say "2 experts in
     # parallel" without inferring it from card order.
     assert all((e.get("data") or {}).get("concurrent") is True for e in result_cards)
-    assert all(
-        (e.get("data") or {}).get("batch_mode") == "readonly_fanout" for e in result_cards
-    )
+    assert all((e.get("data") or {}).get("batch_mode") == "readonly_fanout" for e in result_cards)
     assert len({(e.get("data") or {}).get("batch_id") for e in result_cards}) == 1
     assert all((e.get("data") or {}).get("read_only") is True for e in result_cards)
 
@@ -3026,7 +2984,9 @@ def test_autopilot_mode_is_not_marked_stricter_than_balanced_on_the_tool_surface
     assert cmd._shell_allowed({"permission_mode": "reviewed_auto"}) is True
     assert cmd._shell_allowed({"permission_mode": "ask_everything"}) is False
 
-    surface = model_tool_surface(["run_command"], allow_shell=cmd._shell_allowed({"permission_mode": "auto"}))
+    surface = model_tool_surface(
+        ["run_command"], allow_shell=cmd._shell_allowed({"permission_mode": "auto"})
+    )
     offered = {tool["name"]: tool["permission"] for tool in surface}
     assert offered["shell"] != "deny"
     assert offered["run_tests"] != "deny"
@@ -3039,7 +2999,9 @@ def test_execute_command_concurrent_isolated_writes_disjoint_promote(tmp_path: P
     proven by both files landing and a merge-gate-ok card."""
     InitCommand(tmp_path).run()
     _enable_isolated_writes(tmp_path, isolated=True)
-    plan = PlanCommand(tmp_path, "create alpha and beta modules", model_client=FakePlanClient()).run()
+    plan = PlanCommand(
+        tmp_path, "create alpha and beta modules", model_client=FakePlanClient()
+    ).run()
     client = FakeConcurrentWritersClient()
 
     result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
@@ -3059,9 +3021,7 @@ def test_execute_command_concurrent_isolated_writes_disjoint_promote(tmp_path: P
         json.loads(line)
         for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    merge_cards = [
-        e for e in events if (e.get("data") or {}).get("subagent_phase") == "merge_gate"
-    ]
+    merge_cards = [e for e in events if (e.get("data") or {}).get("subagent_phase") == "merge_gate"]
     assert merge_cards and all((e.get("data") or {}).get("ok") is True for e in merge_cards)
     # Distinct child_task_ids + globally unique event_ids under concurrency (counter lock / per-path
     # sequence).
@@ -3092,9 +3052,7 @@ def test_execute_command_concurrent_isolated_writes_conflict_blocked(tmp_path: P
         json.loads(line)
         for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    merge_cards = [
-        e for e in events if (e.get("data") or {}).get("subagent_phase") == "merge_gate"
-    ]
+    merge_cards = [e for e in events if (e.get("data") or {}).get("subagent_phase") == "merge_gate"]
     assert merge_cards and all((e.get("data") or {}).get("ok") is False for e in merge_cards)
 
 
@@ -3104,7 +3062,9 @@ def test_execute_command_isolated_writes_flag_off_stays_serial(tmp_path: Path) -
     via direct writes and no merge-gate card is emitted."""
     InitCommand(tmp_path).run()
     _enable_isolated_writes(tmp_path, isolated=False)
-    plan = PlanCommand(tmp_path, "create alpha and beta modules", model_client=FakePlanClient()).run()
+    plan = PlanCommand(
+        tmp_path, "create alpha and beta modules", model_client=FakePlanClient()
+    ).run()
     client = FakeConcurrentWritersClient(use_barrier=False)
 
     result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
@@ -3232,7 +3192,9 @@ def test_concurrent_batch_stamps_batch_identity_on_cards(tmp_path: Path) -> None
     so the UI reads the fact off a field. The merge-gate card binds back to the batch it reconciled."""
     InitCommand(tmp_path).run()
     _enable_isolated_writes(tmp_path, isolated=True)
-    plan = PlanCommand(tmp_path, "create alpha and beta modules", model_client=FakePlanClient()).run()
+    plan = PlanCommand(
+        tmp_path, "create alpha and beta modules", model_client=FakePlanClient()
+    ).run()
 
     ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeConcurrentWritersClient()).run()
 
@@ -3263,7 +3225,9 @@ def test_serial_spawn_carries_no_batch_identity(tmp_path: Path) -> None:
     and crucially no ``concurrent`` flag that would let the UI claim parallelism that never happened."""
     InitCommand(tmp_path).run()
     _enable_isolated_writes(tmp_path, isolated=False)
-    plan = PlanCommand(tmp_path, "create alpha and beta modules", model_client=FakePlanClient()).run()
+    plan = PlanCommand(
+        tmp_path, "create alpha and beta modules", model_client=FakePlanClient()
+    ).run()
 
     ExecuteCommand(
         tmp_path, run_id=plan.run_id, model_client=FakeConcurrentWritersClient(use_barrier=False)
@@ -3295,15 +3259,15 @@ def test_execute_command_default_routes_through_model_driven_spine(tmp_path: Pat
     assert result.blocked == 0
     # 默认（无 flag）就走 JSON transport 的立真身通路，而不是 FSM 的 next_action 填表。
     assert client.transports and all(transport == "json" for transport in client.transports)
-    assert (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith("def add_note")
+    assert (
+        (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith("def add_note")
+    )
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     user_progress = [
         json.loads(line)
         for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert any((event.get("data") or {}).get("model_driven_turn") for event in user_progress)
-
-
 
 
 # --- RA7b-4 立真身正确性 gate（确定性证据边界，ADR-0016）--------------------------------------
@@ -3619,3 +3583,93 @@ def test_model_driven_prompts_injects_prior_progress(tmp_path: Path) -> None:
     assert "PRIOR-LEDGER-MARKER" in with_prior
     _, without_prior = cmd._model_driven_prompts(task, {}, {}, [], {})
     assert "prior_progress" not in without_prior
+
+
+class FakeShellWriterClient:
+    """Dogfood run-20260718-0001 mirror: the doer writes files through run_command (shell), never
+    write_file — the tool-layer changed-file ledger stays empty. The contract must count the
+    in-scope disk change as progress and disclose the out-of-scope one, instead of judging the
+    task blocked while the work sits finished in the workspace."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.calls += 1
+        if self.calls == 1:
+            # chr(10) instead of a \n escape: the command survives several quoting layers
+            # (test source -> shell -> python -c) and a backslash is too easy to lose on the way.
+            write_cmd = (
+                "python -c "
+                "\"import pathlib; pathlib.Path('src').mkdir(exist_ok=True); "
+                "pathlib.Path('src/notes_tool.py').write_text(chr(10).join("
+                "['def add_note(notes, text):', '    return [*notes, text]', ''])); "
+                "pathlib.Path('stray_data.bin').write_bytes(b'scratch')\""
+            )
+            verify_cmd = (
+                "python -c "
+                '"from src.notes_tool import add_note; '
+                "assert add_note([], 'x') == ['x']\""
+            )
+            tool_calls = [
+                {"tool_name": "run_command", "args": {"command": write_cmd}},
+                {"tool_name": "run_command", "args": {"command": verify_cmd}},
+            ]
+            payload = {
+                "narration": "用 shell 写实现并验证。",
+                "tool_calls": tool_calls,
+                "done": False,
+            }
+        else:
+            payload = {"narration": "完成。", "tool_calls": [], "done": True}
+        return ChatResponse(
+            content=json.dumps(payload, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-shell-writer",
+            raw_response={},
+        )
+
+
+def test_shell_written_artifact_satisfies_contract_and_unscoped_is_disclosed(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    result = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeShellWriterClient()
+    ).run()
+
+    assert result.completed == 1
+    assert result.blocked == 0
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    evidence = [
+        json.loads(line)
+        for line in (run_dir / "task_execution_evidence.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip()
+    ]
+    contract = evidence[-1]["contract_check"]
+    assert "src/notes_tool.py" in contract["changed_files"]
+    assert contract["unscoped_changed_files"] == ["stray_data.bin"]
+
+
+def test_model_driven_prompts_carries_memory_protocol(tmp_path: Path) -> None:
+    # 1.2.131 fix D: the memory nudge is a first-class seed field (dogfood: tools offered via
+    # surface + optional-methodology guidance alone → zero remember calls in 26 turns).
+    InitCommand(tmp_path).run()
+    cmd = ExecuteCommand(tmp_path)
+    task = {"task_id": "task-0001", "allowed_tools": []}
+
+    _, seed = cmd._model_driven_prompts(task, {}, {}, [], {})
+    assert "memory_protocol" in seed
+    assert "remember" in seed
+
+    _, seeded_with_index = cmd._model_driven_prompts(
+        task, {}, {}, [], {"memory": [{"memory_id": "m1"}, {"memory_id": "m2"}]}
+    )
+    assert "2 known entries" in seeded_with_index
+    assert "recall_memory" in seeded_with_index

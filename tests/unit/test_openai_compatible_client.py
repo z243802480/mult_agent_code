@@ -552,3 +552,37 @@ def test_openai_compatible_client_feeds_usage_truth_and_per_model_window(tmp_pat
     assert budget.usage.latest_observed_prompt_tokens == 900
     assert budget.usage.context_estimate_calibration != 1.0
     assert budget.usage.context_pressure_status in {"near_limit", "hard_stop", "exceeded"}
+
+
+def test_openai_compatible_client_window_matches_server_echoed_model_name(tmp_path: Path) -> None:
+    # 1.2.131 fix B: windows keyed by the server-echoed name (what operators see in logs) must
+    # still bite — the echo rides along as an alias key on the observation path.
+    transport = FakeTransport(
+        HttpResponse(
+            200,
+            {
+                "model": "echo-name-5.2",
+                "choices": [{"message": {"content": '{"ok": true}'}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 900, "completion_tokens": 5, "total_tokens": 905},
+            },
+        )
+    )
+    echo_keyed_policy = policy()
+    echo_keyed_policy["context"] = {"model_context_windows": {"echo-name-5.2": 1000}}
+    budget = BudgetController(echo_keyed_policy, run_id="run-1")
+    client = OpenAICompatibleClient(
+        OpenAICompatibleSettings(
+            api_key="test-key",
+            base_url="https://example.test/v1",
+            model_name="cfg-name",
+            streaming_enabled=False,
+        ),
+        transport=transport,
+        logger=ModelCallLogger(tmp_path, SchemaValidator(Path("schemas"))),
+        budget=budget,
+    )
+
+    client.chat(request())
+
+    assert budget.usage.context_window_tokens == 1000
+    assert budget.usage.latest_observed_prompt_tokens == 900
