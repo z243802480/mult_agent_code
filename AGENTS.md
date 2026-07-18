@@ -48,7 +48,8 @@ P2：G15 回放导出（1.2.90）、G14 记忆只读（1.2.91）、**G17 图片�
   文件锁（OS 持有·进程死亡自动释放）落在 CLI 三咽喉（continue_run/ExecuteCommand.run/promotions 非 list），
   连 **CLI-vs-Studio**（S87 也护不住的组合）一并覆盖；`decide` 未纳入（只写 .asteria 决策记录·边界记在
   模块 docstring）。详见路线表 §4 G19 条。
-- **OS 沙箱 = 唯一剩余 P0**；主观视觉手感需用户目视。
+- **OS 沙箱 = 唯一剩余 P0**——分阶段方案已出：**ADR-0030（Proposed·2026-07-18·待拍板）**，
+  S-A 进程围栏(天级)/S-B AppContainer 断网限写(先 spike)/S-C 云(维持冻结)；主观视觉手感需用户目视。
 
 当前审计签字：docs/zh/reports/completion-reaudit-20260718.md（**实现≈80%**·同框架对照 S77 的 ≈71%·15 子系统逐断言回代码核实·残余债按咬人程度排序在其 §3）。历史基线：docs/zh/reports/S77-commercial-readiness-audit-20260704.md（≈71%、市场化 37→利基 43-45·其 P1④⑥已过期，读须对照 changelog）。两份都是快照，引用前对照 changelog。
 执行顺序：Part B 前端拉齐——**用户拍板的队列已跑完**（G8 全案 1.2.104–1.2.106·G6 刀二 1.2.107）。**剩余项全部卡在用户**：①主观视觉手感需目视 ②G12/G13/G16/G19 需真 friction 证据 ③OS 沙箱 P0 → P0 沙箱（唯一剩余 P0·按内部发动机定位已降级）→ 利基 Beta
