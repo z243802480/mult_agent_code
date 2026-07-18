@@ -1,0 +1,44 @@
+{
+  "results": [
+    {
+      "tool": "python --version",
+      "exit": 0,
+      "output_head": "Python 3.13.13"
+    },
+    {
+      "tool": "stdlib import",
+      "exit": 0,
+      "output_head": "ok\nFailed to find real location of C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python313\\python.exe"
+    },
+    {
+      "tool": "git --version",
+      "exit": 128,
+      "output_head": "fatal: could not open '/dev/null' for reading and writing: Permission denied"
+    },
+    {
+      "tool": "git status",
+      "exit": 128,
+      "output_head": "fatal: could not open '/dev/null' for reading and writing: Permission denied"
+    },
+    {
+      "tool": "pytest (real run, 2 tests)",
+      "exit": 1,
+      "output_head": "Failed to find real location of C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python313\\python.exe\nTraceback (most recent call last):\n  File \"C:\\Users\\Administrator\\AppData\\"
+    },
+    {
+      "tool": "ruff check",
+      "exit": 0,
+      "output_head": "All checks passed!\nFailed to find real location of C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python313\\python.exe"
+    },
+    {
+      "tool": "node --version",
+      "exit": 1,
+      "output_head": "????????"
+    },
+    {
+      "tool": "npm --version",
+      "exit": 1,
+      "output_head": "????????"
+    }
+  ]
+}

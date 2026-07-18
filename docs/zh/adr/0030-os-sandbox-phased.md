@@ -142,8 +142,10 @@ Linux/KVM 级隔离，天花板最高，但绑定 CloudSessionExecutor（现为�
    错误归因**：不是「capability 不进 token」（whoami /groups 本不显示 capability·方法弱），真相是本机出网走
    **loopback 代理**（AppContainer 默认拦 loopback·与 internetClient 无关），到代理需 loopback 豁免、直连
    互联网才需 internetClient+防火墙——依机器网络而定·fails closed 故安全；②工具 provision 是显式一次性慢操作
-   （已移出热路径）③默认 OFF·真实大仓库 pytest/npm 容器内兼容性待广验后才谈默认开。**另修 1.2.121：命令引号
-   bug 曾让 1.2.120 的网络证明假绿（命令没跑冒充网络被拦）·已修+回归护栏。**
+   （已移出热路径）③**默认 OFF 有据不是保守——1.2.122 工具链兼容性 spike 证「默认开不可行」**：AppContainer 里
+   ✅python/stdlib/ruff 能跑，❌**git**（/dev/null 设备被拒·msys）/**pytest**（解释器真路径解析被拦）/**node·npm**
+   均挂 ⇒ 常见开发工具链要逐工具兼容性工作（各根因独立·多日活·S-B-impl backlog）才谈默认开。**另修 1.2.121：命令
+   引号 bug 曾让 1.2.120 的网络证明假绿（命令没跑冒充网络被拦）·已修+回归护栏。**
 4. **S-C（云）维持冻结**，spike 证明原生方案够用，云路线连备胎都用不上，仅登记。
 
 ## 不做清单
