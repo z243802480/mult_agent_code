@@ -26,7 +26,7 @@ class ModelClient(Protocol):
 
 class BridgeResearchClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
-        payload = json.loads(request.messages[-1].content)
+        payload = json.loads(request.messages[-1].text())
         source = payload["sources"][0]
         research_type = payload.get("research_type", "general")
         return ChatResponse(

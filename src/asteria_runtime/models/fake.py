@@ -117,7 +117,7 @@ class FakeModelClient:
         return {"ok": True, "purpose": request.purpose}
 
     def _goal_spec(self, request: ChatRequest) -> dict:
-        prompt = request.messages[-1].content
+        prompt = request.messages[-1].text()
         goal = self._extract_goal(prompt)
         contract = self._goal_contract(goal)
         return {
@@ -146,7 +146,7 @@ class FakeModelClient:
         }
 
     def _execution_action(self, request: ChatRequest) -> dict:
-        payload = json.loads(request.messages[-1].content)
+        payload = json.loads(request.messages[-1].text())
         task = payload["task"]
         target_paths = self._task_target_paths(task)
         tool_calls = []
@@ -197,7 +197,7 @@ class FakeModelClient:
             if getattr(message, "role", "") != "user":
                 continue
             try:
-                payload = json.loads(message.content)
+                payload = json.loads(message.text())
             except (json.JSONDecodeError, TypeError):
                 continue
             if isinstance(payload, dict) and isinstance(payload.get("task"), dict):
@@ -234,7 +234,7 @@ class FakeModelClient:
         }
 
     def _eval_report(self, request: ChatRequest) -> dict:
-        context = json.loads(request.messages[-1].content)
+        context = json.loads(request.messages[-1].text())
         run_id = context["run_id"]
         checks = context.get("deterministic_checks", {})
         completion = float(checks.get("task_completion_rate", 0))
@@ -265,7 +265,7 @@ class FakeModelClient:
         }
 
     def _slice_completion_judge(self, request: ChatRequest) -> dict:
-        prompt = request.messages[-1].content
+        prompt = request.messages[-1].text()
         try:
             context = json.loads(prompt)
         except json.JSONDecodeError:
@@ -290,7 +290,7 @@ class FakeModelClient:
         }
 
     def _research_report(self, request: ChatRequest) -> dict:
-        payload = json.loads(request.messages[-1].content)
+        payload = json.loads(request.messages[-1].text())
         sources = payload.get("sources", [])
         return {
             "schema_version": "0.1.0",
@@ -336,7 +336,7 @@ class FakeModelClient:
         }
 
     def _brainstorm_report(self, request: ChatRequest) -> dict:
-        payload = json.loads(request.messages[-1].content)
+        payload = json.loads(request.messages[-1].text())
         goal = payload.get("goal", "offline verification")
         return {
             "schema_version": "0.1.0",

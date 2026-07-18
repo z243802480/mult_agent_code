@@ -13,6 +13,22 @@ class ChatMessage:
     content: str | list[dict]
     name: str | None = None
 
+    def text(self) -> str:
+        """Flatten content to plain text for parsers that predate multimodal input.
+
+        A plain ``str`` passes through untouched; a multimodal parts list contributes
+        only its ``{"type": "text"}`` parts (images and other opaque parts are dropped),
+        joined with newlines. This lets ``json.loads`` / goal extraction keep taking a
+        ``str`` after G17 widened ``content`` to ``str | list[dict]``.
+        """
+        if isinstance(self.content, str):
+            return self.content
+        return "\n".join(
+            str(part.get("text") or "")
+            for part in self.content
+            if isinstance(part, dict) and part.get("type") == "text"
+        )
+
     def to_payload(self) -> dict:
         payload = {"role": self.role, "content": self.content}
         if self.name:

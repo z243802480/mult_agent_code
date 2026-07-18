@@ -46,6 +46,7 @@ falls back to a cold spawn for other modes.
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import sys
@@ -184,10 +185,10 @@ def _prewarm() -> None:
 
 def main() -> None:
     # Line-buffered stdout so control lines are delivered promptly even without explicit flush.
-    try:
-        sys.stdout.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
-    except AttributeError:
-        pass
+    # ``reconfigure`` lives on TextIOWrapper, not the ``TextIO`` protocol mypy sees for
+    # ``sys.stdout``; narrow with isinstance so the call is type-safe instead of ignored.
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(line_buffering=True)
     try:
         _prewarm()
     except Exception:  # noqa: BLE001 — if warm-up import fails, still serve; runs will surface the error
