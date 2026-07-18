@@ -1,0 +1,5 @@
+{
+  "launch_exit": 0,
+  "in_container_nul_open": "crt_nul/RDWR=FAIL(errno13,winNone)\ncrt_nul/RDONLY=FAIL(errno13,winNone)\ndosdev_nul/RDWR=FAIL(errno13,winNone)\ndosdev_nul/RDONLY=FAIL(errno13,winNone)\nglobalroot/RDWR=FAIL(errno13,winNone)\nglobalroot/RDONLY=FAIL(errno13,winNone)",
+  "stderr_head": "Failed to find real location of C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python313\\python.exe\n"
+}

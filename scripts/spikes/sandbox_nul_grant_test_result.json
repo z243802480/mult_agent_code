@@ -1,0 +1,33 @@
+{
+  "original_nul_dacl": "D:(A;;0x1201bf;;;WD)(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;RC)",
+  "before_grant": {
+    "nul_open": "FAIL(errno13)",
+    "git": {
+      "exit": 128,
+      "tail": "fatal: could not open '/dev/null' for reading and writing: Permission denied\n"
+    },
+    "pytest": {
+      "exit": 1,
+      "tail": "ne = os.open(os.devnull, os.O_RDWR)\n                                        ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^\nPermissionError: [Errno 13] Permission denied: 'nul'\n"
+    }
+  },
+  "granted_nul_dacl": "D:(A;;0x1201bf;;;WD)(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;RC)(A;;FA;;;AC)",
+  "after_grant": {
+    "nul_open": "OK",
+    "git": {
+      "exit": 0,
+      "tail": "git version 2.52.0.windows.1\n"
+    },
+    "pytest": {
+      "exit": 2,
+      "tail": "ion !!!!!!!!!!!!!!!!!!!!\n2 warnings, 1 error in 7.61s\nFailed to find real location of C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python313\\python.exe\n"
+    }
+  },
+  "restored_nul_dacl": "D:(A;;0x1201bf;;;WD)(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;RC)",
+  "verdict": {
+    "nul_open_fixed_by_grant": true,
+    "git_fixed_by_grant": true,
+    "pytest_fixed_by_grant": false,
+    "summary": "NUL AC-ace grant is FEASIBLE and fixes git; pytest passes the NUL wall but may hit a second wall (stat/traverse of un-granted ancestor dirs — same AppContainer-ignores-World semantics, now on directories). See ADR-0030 S-B-fix."
+  }
+}

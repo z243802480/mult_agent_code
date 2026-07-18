@@ -172,6 +172,42 @@ Linux/KVM 级隔离，天花板最高，但绑定 CloudSessionExecutor（现为�
 负载。**node/npm 的乱码 exit 1 是独立项**（疑编码/console handle·本 spike 未深挖·记 backlog）。**明确不做**：本 spike
 只取证据+纠正归因·未改任何生产码（1 探针脚本+1 结果 json+本 ADR 段+changelog）·NUL 设备授权的真实现是下一刀 impl。
 
+### S-B-fix phase 2「NUL 授权可行性」真机验证（1.2.14x·用户「先证可行再 impl」授权·`sandbox_nul_grant_probe.py`（诊断）+ `sandbox_nul_grant_test.py`（授权测试·可逆）+ 各 `_result.json`）
+
+**结论：NUL 设备 AAP 授权可行·完全修好 git·让 pytest 越过 NUL 墙（但 pytest 还有第二道同源墙）。全程可逆·真机实测。**
+
+1. **先安全排除 namespace 假设**（phase 1·零系统改动）：容器内用三条路径开 NUL——`nul`（CRT→DOS 设备映射）/
+   `\\.\NUL`（Win32 设备路径）/`\\?\GLOBALROOT\Device\Null`（对象管理器·**绕过** DOS 映射）——**三条全 errno13**。
+   ⇒ **不是 DOS 设备映射缺失**，是设备对象层的访问控制。
+2. **只读查 NUL 设备 DACL**（零改动）：`O:BA D:(A;;0x1201bf;;;WD)(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;RC)`——
+   **`WD`=Everyone 已被授读+写·世界都能开 NUL·容器却打不开**。⇒ **拦截不是没授权·是 AppContainer 语义不认
+   「Everyone」ACE**：对 AppContainer token·设备对象 DACL 必须**显式**含 `ALL_APPLICATION_PACKAGES`(AC) ACE
+   才放行（跟 provision 给工具目录授 AAP 同一个道理）。NUL 的 DACL 恰**无 AC ACE**。
+3. **授权测试**（可逆·finally 恢复原 DACL·additive+benign）：给 NUL DACL 追加 `(A;;FA;;;AC)` → 容器内重测：
+
+   | | before grant | after grant（+AC ACE）|
+   | --- | --- | --- |
+   | `os.open('nul', O_RDWR)` | FAIL(errno13) | **OK** |
+   | `git --version` | exit 128（/dev/null）| **exit 0**（`git version 2.52.0.windows.1`）|
+   | `python -m pytest -q` | exit 1（`os.open(os.devnull,O_RDWR)` PermissionError 'nul'）| **exit 2**（越过 NUL 墙·撞第二墙）|
+
+   恢复后 DACL 逐字节回到原样。
+4. **pytest 第二道墙（同源·已定位）**：加 AC 后 pytest 不再挂 devnull·改挂 collection——`os.stat('C:\Users\…\Temp')`
+   → **WinError 5 拒绝访问**。根子是**同一个 AppContainer 语义**：容器 stat/遍历任何**未显式授 AAP 的目录**都被拒
+   （Everyone 不算数·现在体现在**目录**上）·pytest 的 rootdir 发现**向上遍历祖先目录**撞到未授权祖先。**本 spike 里祖先
+   是 Temp（因工作区建在 Temp 下·部分是 spike 产物）·生产里是工作区的祖先目录**。设 `TEMP`/`TMP` env 不解（祖先来自
+   工作区路径而非 env）。
+
+**⇒ 给 S-B-impl 的判据（已从「三选一悬念」收敛到明确工序）**：
+- **git**：NUL 设备授一条 AC ACE 即完全解——这是 **provision 层一次性操作**（`SetSecurityInfo` 加 AC ace·**非持久：
+  内核每次 boot 重建 `\Device\Null` 用默认 DACL·无 AC** ⇒ provision 须每 boot/每 provision 重加·记进设计）。
+- **pytest**：NUL 授权 + 解决**祖先目录遍历**——两条候选（impl 再定）：**(a)** 给容器授工作区**祖先链**的 AAP 遍历（X）
+  权（小心别过度放大暴露面）；**(b)** 给 pytest 注入 `--rootdir=<ws>`/`confcutdir` 边界让它别向上走（run_tests 工具规范化·
+  但改的是模型命令·须权衡）。
+- **风险/边界（诚实）**：NUL 授 AC 是系统设备 DACL 改动·但 **additive+benign**（NUL 是位桶·Everyone 本就可读写·授
+  容器无新增安全暴露）且**非持久**（boot 自愈）；祖先遍历授权要**收窄到工作区链**别顺手放大。**明确不做**：本 phase 仍
+  只取证据·未改任何生产码（2 探针脚本+2 结果 json+本段+changelog）·真 provision 接线是下一刀 impl。
+
 ## 不做清单
 
 多租户隔离、防恶意用户、harness 自身沙箱化、kernel 级监控、跨机隔离——均超出威胁模型；
