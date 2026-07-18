@@ -1731,8 +1731,13 @@ class ExecuteCommand:
             "- Work efficiently: put independent tool calls in one step (batch them), and prefer the "
             "specialized tools (read_file / search_text / find_files) over ad-hoc shell for reading "
             "and searching.\n"
-            "- Tool or command failures come back to you as observations — adapt and retry; a "
-            "failure does not block you and does not require anyone's permission to continue.\n"
+            "- When something fails, debug it — do not guess: reproduce the failure, find the true "
+            "root cause from the ACTUAL error/output (not an unchecked hypothesis), then make the "
+            "minimal fix and confirm it is resolved. A failure comes back as an observation, does "
+            "not block you, and needs no one's permission to continue.\n"
+            "- Before you finish, check each acceptance criterion is actually met and point to the "
+            "evidence for it; if something is only partly done, say so honestly rather than "
+            "reporting done.\n"
             "- Only finish (done=true, empty tool_calls) once the expected artifact exists AND you "
             "have verified it.\n"
             "- narration is one short sentence in the user's language (Chinese) describing THIS step."
@@ -2044,6 +2049,29 @@ class ExecuteCommand:
             runtime_context["context_pressure_note"] = (
                 "Context budget is under pressure: workspace file excerpts were elided from this "
                 "grounding. The file inventory is intact; use read_file for any content you need."
+            )
+            # Leave a durable trace: the slimmed seed payload itself is never persisted, so
+            # without this event the live behaviour of S90's grounding slimming is unverifiable
+            # from run artifacts (dogfood run-20260718 #2 could not confirm it either way).
+            self._record_progress(
+                context,
+                task,
+                channel="diagnostic",
+                event_type="evidence",
+                phase="execute",
+                status="running",
+                title="Context pressure: grounding slimmed",
+                summary=(
+                    "workspace file excerpts elided from task grounding under context pressure "
+                    f"({context.budget.usage.context_pressure_status}: "
+                    f"{context.budget.usage.latest_context_estimated_tokens}"
+                    f"/{context.budget.usage.context_window_tokens} tokens)"
+                ),
+                data={
+                    "context_pressure_status": context.budget.usage.context_pressure_status,
+                    "estimated_tokens": context.budget.usage.latest_context_estimated_tokens,
+                    "window_tokens": context.budget.usage.context_window_tokens,
+                },
             )
         try:
             self._record_progress(
