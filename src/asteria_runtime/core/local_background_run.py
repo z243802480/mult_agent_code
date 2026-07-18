@@ -171,8 +171,34 @@ def build_background_goal_argv(root: Path, goal: str) -> list[str]:
 def _pid_is_alive(pid: int) -> bool:
     if pid <= 0:
         return False
+    if sys.platform == "win32":
+        # os.kill(pid, 0) is not a probe on Windows: CPython routes non-CTRL "signals"
+        # through TerminateProcess, so checking liveness would kill the child — the same
+        # trap workspace_writer_lock.py's design deliberately routes around (S88).
+        import ctypes
+        from ctypes import wintypes
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False
+        try:
+            exit_code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                return False
+            # A process that exited with literal code 259 would read as alive; nothing
+            # we spawn exits with STILL_ACTIVE on purpose.
+            return exit_code.value == STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # alive, just owned by another user
     except OSError:
         return False
     return True

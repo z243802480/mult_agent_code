@@ -2474,3 +2474,10 @@ def _run_cli() -> None:
         return
 
     parser.error(f"Unsupported command: {args.command}")
+
+
+if __name__ == "__main__":
+    # Without this guard `python -m asteria_runtime.cli …` imported cleanly, ran nothing,
+    # and exited 0 — background runs spawned that way never executed their goal (S88).
+    # The packaged `asteria` entry point targets main() directly and never hits this.
+    main()

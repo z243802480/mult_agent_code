@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import subprocess
+import sys
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -7,6 +10,7 @@ from asteria_runtime.commands.background_run_command import BackgroundRunCommand
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.core.local_background_run import (
     BackgroundRunRegistry,
+    _pid_is_alive,
     background_run_projection,
     build_background_goal_argv,
     registry_path,
@@ -21,6 +25,39 @@ def test_build_background_goal_argv_includes_root_and_no_research(tmp_path: Path
     assert "demo goal" in argv
     assert "--no-research" in argv
     assert str(tmp_path.resolve()) in argv
+
+
+def test_background_argv_module_is_a_real_entry_point(tmp_path: Path) -> None:
+    # The spawned module used to be a silent no-op: asteria_runtime.cli had no
+    # `__main__` guard, so `python -m asteria_runtime.cli goal …` imported, ran
+    # nothing, and exited 0 — background runs never executed their goal (S88).
+    argv = build_background_goal_argv(tmp_path, "demo goal")
+    module = argv[argv.index("-m") + 1]
+    result = subprocess.run(
+        [sys.executable, "-m", module, "--help"],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert result.stdout.strip(), "module entry produced no output — silent no-op"
+
+
+def test_pid_is_alive_observes_without_killing() -> None:
+    # os.kill(pid, 0) on Windows is TerminateProcess: the old probe killed the very
+    # process it was checking. The probe must observe, never touch.
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        assert _pid_is_alive(proc.pid) is True
+        time.sleep(0.2)
+        assert proc.poll() is None, "probe killed the process it was checking"
+    finally:
+        proc.kill()
+        proc.wait(timeout=10)
+    assert _pid_is_alive(proc.pid) is False
+    assert _pid_is_alive(0) is False
+    assert _pid_is_alive(-1) is False
 
 
 def test_registry_append_and_projection(tmp_path: Path) -> None:
