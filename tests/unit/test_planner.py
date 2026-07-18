@@ -1049,3 +1049,20 @@ def test_task_kind_stays_implementation_when_description_mentions_verify() -> No
         {},
     )
     assert kind == "implementation"
+
+
+def test_prose_target_output_with_embedded_path_is_not_a_file_path() -> None:
+    # Dogfood run-20260718 #2: the goal-spec model emitted a prose target_output
+    # ("新增测试用例在 tests/test_storage.py") whose BASENAME looks like a file, so the
+    # single-file branch adopted the whole sentence as THE artifact — it became write_scope
+    # verbatim and denied every real file. Whitespace → prose, same rule as task_contract.
+    planner = RequirementPlanner()
+    assert planner._looks_like_file_path("tests/test_storage.py") is True
+    assert planner._looks_like_file_path("新增测试用例在 tests/test_storage.py") is False
+    goal_spec = {
+        "target_outputs": [
+            "修改后的 Note 模型(含 tags 字段)",
+            "新增测试用例在 tests/test_storage.py",
+        ],
+    }
+    assert planner._single_output_file(goal_spec) is None

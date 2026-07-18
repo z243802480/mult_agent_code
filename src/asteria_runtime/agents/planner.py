@@ -177,6 +177,12 @@ class RequirementPlanner:
     def _looks_like_file_path(self, value: str) -> bool:
         if not value or value.endswith(("/", "\\")):
             return False
+        # Whitespace → prose, same rule as task_contract.looks_like_file_path. Checking only the
+        # basename let a goal-spec model's prose target_output ("新增测试用例在 tests/test_storage.py")
+        # pass as THE single output file — it became write_scope verbatim, denying every real file
+        # while the doer dutifully created a file named after the sentence (dogfood run-20260718 #2).
+        if any(ch.isspace() for ch in value):
+            return False
         name = value.replace("\\", "/").rsplit("/", 1)[-1]
         return bool(re.match(r"^[\w.-]+\.[A-Za-z0-9]{1,8}$", name))
 
@@ -460,11 +466,14 @@ class RequirementPlanner:
             requirement,
             requirement["expected_artifacts"],
         )
-        expected_changed = self._expected_changed_files(
-            task_kind,
-            requirement["expected_artifacts"],
-            requirement,
-        ) or source_artifacts
+        expected_changed = (
+            self._expected_changed_files(
+                task_kind,
+                requirement["expected_artifacts"],
+                requirement,
+            )
+            or source_artifacts
+        )
         task = {
             "schema_version": "0.1.0",
             "task_id": "task-0001",
@@ -675,9 +684,8 @@ class RequirementPlanner:
             and item.replace("\\", "/") not in explicit_paths
         )
         if (
-            ("readme" in target_outputs or "doc" in description or "documentation" in description)
-            and not any(path.lower().endswith("readme.md") for path in artifacts)
-        ):
+            "readme" in target_outputs or "doc" in description or "documentation" in description
+        ) and not any(path.lower().endswith("readme.md") for path in artifacts):
             artifacts.append("README.md")
         if "test" in description or "unit_tests" in goal_spec.get("verification_strategy", []):
             artifacts.append("tests/")
@@ -797,9 +805,7 @@ class RequirementPlanner:
                 for path in requirement.get("context_workspace_paths", [])
                 if path
             }
-            explicit_paths = [
-                path for path in explicit_paths if path.lower() not in context_inputs
-            ]
+            explicit_paths = [path for path in explicit_paths if path.lower() not in context_inputs]
         explicit_paths = self._filter_non_modified_test_paths(explicit_paths, text)
         if explicit_paths:
             return explicit_paths
@@ -839,8 +845,7 @@ class RequirementPlanner:
             r"(?:in|under|inside)\s+(?:the\s+)?docs/?\s+directory", lowered
         ):
             normalized = [
-                "docs/README.md" if path.lower() == "readme.md" else path
-                for path in normalized
+                "docs/README.md" if path.lower() == "readme.md" else path for path in normalized
             ]
         return list(dict.fromkeys(normalized))
 
@@ -904,11 +909,7 @@ class RequirementPlanner:
             }
         ):
             return paths
-        return [
-            path
-            for path in paths
-            if not self._is_test_path(path)
-        ]
+        return [path for path in paths if not self._is_test_path(path)]
 
     def _is_test_path(self, path: str) -> bool:
         normalized = path.replace("\\", "/")
@@ -1106,7 +1107,9 @@ class RequirementPlanner:
             item.startswith("tests/") for item in scope
         ):
             return
-        if all(self._looks_like_file_path(item) for item in scope) and len(set(scope)) == len(scope):
+        if all(self._looks_like_file_path(item) for item in scope) and len(set(scope)) == len(
+            scope
+        ):
             task["parallel_safety"] = "disjoint_writes"
 
     def _attach_workspace_file_context(self, requirement: dict, runtime_context: dict) -> dict:
@@ -1117,9 +1120,7 @@ class RequirementPlanner:
         refined["context_workspace_paths"] = paths
         return refined
 
-    def _attach_existing_artifact_context(
-        self, requirement: dict, runtime_context: dict
-    ) -> dict:
+    def _attach_existing_artifact_context(self, requirement: dict, runtime_context: dict) -> dict:
         if isinstance(requirement.get("expected_artifacts"), list) and requirement.get(
             "expected_artifacts"
         ):
