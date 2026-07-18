@@ -602,6 +602,141 @@ def test_requirement_planner_groups_targeted_failing_test_repair() -> None:
     assert "targeted repair slice" in task["notes"]
 
 
+def test_atomic_multifile_title_reflects_goal_not_generic_template() -> None:
+    # dogfood friction #4: the atomic multi-file branch hardcoded "Implement complete multi-file CLI
+    # artifact set" for every goal — the main thread showed a title unrelated to the ask. The title
+    # must now name the actual goal.
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-0001",
+        "original_goal": (
+            "Create a small multi-file Python notes CLI. Use a package directory named "
+            "notes_app with storage.py and cli.py, plus a runnable notes.py entrypoint. "
+            'It must support `python notes.py add "ship validation"` and `python notes.py list`, '
+            "storing notes in notes.json under the current directory."
+        ),
+        "normalized_goal": "Create a multi-file Python notes CLI",
+        "target_outputs": ["local_cli", "python_module"],
+        "definition_of_done": [
+            'python notes.py add "ship validation" exits successfully',
+            "python notes.py list prints ship validation",
+            "notes are stored in notes.json",
+        ],
+        "verification_strategy": [
+            'python notes.py add "ship validation"',
+            "python notes.py list",
+        ],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Create notes_app storage and CLI modules",
+                "acceptance": ["storage.py and cli.py exist"],
+            },
+            {
+                "id": "req-0002",
+                "priority": "must",
+                "description": "Create notes.py entrypoint and notes.json storage behavior",
+                "acceptance": ["notes.py delegates to notes_app", "notes.json stores notes"],
+            },
+        ],
+    }
+
+    task = RequirementPlanner().build_task_plan(goal_spec)["tasks"][0]
+
+    # Atomic multi-file branch (single grouped task) with a goal-derived title.
+    assert task["notes"].__contains__("complete multi-file tool slice")
+    assert task["title"] == "Create a multi-file Python notes CLI"
+    assert task["title"] != "Implement complete multi-file CLI artifact set"
+
+
+def test_planner_widens_write_scope_when_goal_requests_test_authoring() -> None:
+    # dogfood friction #4: a goal that asks for unit tests but names no test file used to scope only
+    # the source files, so the doer's test write landed outside write_scope and was denied. Test
+    # authoring must be ALLOWED (write_scope) without becoming REQUIRED (expected_changed_files).
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-0001",
+        "original_goal": (
+            "Create a small multi-file Python notes CLI with a package directory named notes_app "
+            "containing storage.py and cli.py, plus a runnable notes.py entrypoint. Add unit tests "
+            "for the CLI behavior."
+        ),
+        "normalized_goal": "Create a multi-file Python notes CLI with unit tests",
+        "target_outputs": ["local_cli", "python_module"],
+        "definition_of_done": ["python notes.py list works", "unit tests cover the CLI"],
+        "verification_strategy": ["python notes.py list"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Create notes_app storage.py and cli.py plus notes.py entrypoint",
+                "acceptance": ["storage.py and cli.py exist"],
+            },
+            {
+                "id": "req-0002",
+                "priority": "must",
+                "description": "Add unit tests covering the CLI behavior",
+                "acceptance": ["unit tests exist and pass"],
+            },
+        ],
+    }
+
+    task = RequirementPlanner().build_task_plan(goal_spec)["tasks"][0]
+
+    # The doer may now author a test anywhere under tests/ ...
+    assert "tests/" in task["write_scope"]
+    # ... but tests are not forced: the completion contract still keys off the source deliverable.
+    assert not any(
+        str(path).startswith("tests/") or "test_" in str(path)
+        for path in task["expected_changed_files"]
+    )
+
+
+def test_planner_does_not_widen_scope_for_repair_or_forbidding_goal() -> None:
+    # The scope-widening must never fire for a targeted repair (verifies against a pre-existing test —
+    # widening would let the model edit the very test it is graded against) or a goal that explicitly
+    # forbids touching tests.
+    planner = RequirementPlanner()
+    repair_goal = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-repair",
+        "original_goal": "Fix the failing unit tests by repairing buggy_math.py and make them pass.",
+        "normalized_goal": "Fix failing tests by repairing buggy_math.py",
+        "target_outputs": ["buggy_math.py"],
+        "definition_of_done": ["pytest passes"],
+        "verification_strategy": ["pytest"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Repair buggy_math.py so the unit tests pass",
+                "acceptance": ["tests pass"],
+            }
+        ],
+    }
+    assert planner._wants_test_authoring(repair_goal) is False
+
+    forbid_goal = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-forbid",
+        "normalized_goal": "Add a checker with unit tests",
+        "original_goal": "Add a checker module and unit tests, but do not modify the test harness.",
+        "target_outputs": ["checker.py"],
+        "definition_of_done": ["checker works"],
+        "verification_strategy": ["pytest"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Implement checker.py. Do not modify test files.",
+                "acceptance": ["No test files were modified."],
+            }
+        ],
+    }
+    assert planner._wants_test_authoring(forbid_goal) is False
+
+
 def test_requirement_planner_keeps_docs_readme_directory_target() -> None:
     goal_spec = {
         "schema_version": "0.1.0",

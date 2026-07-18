@@ -315,7 +315,9 @@ class RequirementPlanner:
         task = {
             "schema_version": "0.1.0",
             "task_id": "task-0001",
-            "title": "Implement complete multi-file CLI artifact set",
+            "title": self._goal_derived_title(
+                goal_spec, fallback="Implement complete multi-file CLI artifact set"
+            ),
             "description": requirement["description"],
             "status": "ready",
             "priority": "high",
@@ -640,6 +642,19 @@ class RequirementPlanner:
             return trimmed
         return trimmed[:57].rstrip() + "..."
 
+    def _goal_derived_title(self, goal_spec: dict, *, fallback: str) -> str:
+        """A task title that names the actual goal instead of a canned template. dogfood friction #4:
+        the atomic multi-file branch hardcoded "Implement complete multi-file CLI artifact set" for
+        every goal, so the main thread showed a title unrelated to what the user asked — confusing to
+        watch. Derive a concise one-line title from the (normalized) goal; fall back to the template
+        only when the goal text is empty."""
+        goal_text = str(
+            goal_spec.get("normalized_goal") or goal_spec.get("original_goal") or ""
+        ).strip()
+        # A normalized goal can span multiple lines / requirements — collapse to one clean title line.
+        goal_text = re.sub(r"\s+", " ", goal_text)
+        return self._title(goal_text) if goal_text else fallback
+
     def _expected_artifacts(self, requirement: dict, goal_spec: dict) -> list[str]:
         explicit = requirement.get("expected_artifacts")
         if isinstance(explicit, list) and explicit:
@@ -903,6 +918,78 @@ class RequirementPlanner:
             or normalized.startswith("tests/")
         )
 
+    def _wants_test_authoring(self, goal_spec: dict | None) -> bool:
+        """Does the goal explicitly ask the agent to AUTHOR new tests? Used to widen write_scope so a
+        requested test file isn't denied for landing outside the source-only scope (friction #4).
+
+        Deliberately narrow to avoid over-firing:
+        - A targeted repair / bugfix ("make the failing tests pass") verifies against a *pre-existing*
+          test; the deliverable is the fix, never a new/edited test (letting the model touch the test
+          it's graded against is the gaming risk _protect_verification_specs guards). Never widen those.
+        - Explicit "leave the tests alone" phrasing wins over any incidental mention.
+        - Positive intent needs a create/add/write verb bound to tests (or an explicit unit-test ask),
+          not the bare word "pytest"/"test files" that merely appears in verification or forbid clauses."""
+        if not goal_spec:
+            return False
+        if self._is_targeted_repair_goal(goal_spec):
+            return False
+        text = self._goal_text(goal_spec).lower()
+        forbid = (
+            "no test files",
+            "no modifications to test",
+            "without modifying test",
+            "do not modify test",
+            "don't modify test",
+            "not modify test",
+            "preserve the existing test",
+            "existing test intent",
+        )
+        if any(marker in text for marker in forbid):
+            return False
+        positive = (
+            "add unit test",
+            "add a unit test",
+            "add tests",
+            "add a test",
+            "adding test",
+            "write test",
+            "write a test",
+            "write unit test",
+            "writing test",
+            "create test",
+            "create a test",
+            "author test",
+            "include unit test",
+            "with unit tests",
+            "and unit tests",
+            "add test coverage",
+            "单元测试",
+            "加测试",
+            "加单测",
+            "写测试",
+            "补测试",
+            "添加测试",
+            "增加测试",
+        )
+        return any(marker in text for marker in positive)
+
+    def _ensure_test_authoring_allowed(self, task: dict, goal_spec: dict | None) -> None:
+        """dogfood friction #4: when the goal asks for unit tests but names no explicit test file, the
+        planner scoped only the explicitly-named source files — so the doer's attempt to author a test
+        lands OUTSIDE write_scope and is denied, and the requested tests never get written. If
+        test-authoring intent is present and no test path is already writable, add a permissive
+        ``tests/`` allowance. This widens write_scope ONLY; ``expected_changed_files`` (what MUST
+        change) is untouched, so tests are ALLOWED, not REQUIRED — the completion contract still keys
+        off the source deliverable, and a run that legitimately names its own test path is unaffected."""
+        if task.get("task_kind") != "implementation":
+            return
+        if not self._wants_test_authoring(goal_spec):
+            return
+        scope = [str(item) for item in task.get("write_scope") or [] if item]
+        if any(self._is_test_path(item) or item.rstrip("/") == "tests" for item in scope):
+            return
+        task["write_scope"] = scope + ["tests/"]
+
     def _allowed_tools(self, kind: str) -> list[str]:
         # find_files (glob) and todo_read are read-only and belong wherever the other read tools
         # are granted; todo_write mutates only run-local planning state (not workspace files) so it
@@ -976,6 +1063,9 @@ class RequirementPlanner:
         apply_execution_preferences_to_task(task, goal_spec)
         task["read_scope"] = read_scope(task)
         task["write_scope"] = write_scope(task)
+        # friction #4: let the doer author the tests the goal asked for (widens scope only, never
+        # expected_changed_files) before downstream hardening/disjoint marking see the final scope.
+        self._ensure_test_authoring_allowed(task, goal_spec)
         task["context_requirements"] = context_requirements(task)
         task["validation_commands"] = validation_commands(task)
         task["failure_policy"] = failure_policy(task)
