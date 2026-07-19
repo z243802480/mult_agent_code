@@ -178,9 +178,18 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) {
     const channel = String(event.channel || "");
     const eventType = String(event.event_type || "");
     const transcriptKind = String(event.transcript_kind || "");
+    const phase = String(event.phase || "");
     let type = "reasoning_delta";
     if (transcriptKind === "final" || transcriptKind === "stop") {
-      type = "final_answer";
+      // A "final" milestone from the REVIEW/REPAIR phase of a still-running goal (the auto-replan
+      // loop emits one per cycle: "创建 N 个修复任务") is progress, NOT the turn's answer. Mapping it
+      // to final_answer mid-run had two proven casualties (dogfood replay, run-20260719-0001):
+      // isSessionLive's cutoff discarded everything before it — the next model think was an empty
+      // window that read DEAD — and the thread treated the turn as answered, unmounting the live
+      // stream for the rest of the run. The goal's real final arrives with phase result/next; a
+      // standalone review job still gets its terminal final_answer from the job-completion event
+      // (server.mjs runtime job exit), so nothing loses its ending.
+      type = phase === "review" || phase === "repair" ? "assistant_delta" : "final_answer";
     } else if (transcriptKind === "tool_use") {
       type = "tool_start";
     } else if (transcriptKind === "tool_result") {

@@ -596,9 +596,27 @@ export function isSessionLive(events: StudioEvent[]): boolean {
     e.type === "tool_end" ||
     e.type === "final_answer" ||
     e.type === "error";
-  let lastTerminalTime = -Infinity;
-  for (const event of liveEvents) {
-    if (isTerminal(event)) lastTerminalTime = Math.max(lastTerminalTime, eventTime(event));
-  }
-  return liveEvents.some((event) => isActive(event) && eventTime(event) > lastTerminalTime);
+  // The verdict belongs to the LATEST decisive event in (time, seq, arrival-order) order — NOT to
+  // "any active event STRICTLY newer than the last terminal". The strict-`>` comparison lost on
+  // ties: the server tail forwards a runtime burst within the same millisecond, so the burst's
+  // closing "Thinking (running)" TIED with its neighbouring completed events and the whole grinding
+  // run read as dead (event-replay of dogfood run-20260719-0001: DEAD for 4.5 of the 5-minute
+  // execute window, composer flipped idle, every live indicator unmounted — F2/F3).
+  const rank = (event: StudioEvent, index: number): [number, number] => {
+    const raw = event as unknown as Record<string, unknown>;
+    const seq = Number(raw.seq ?? raw.sequence);
+    return [eventTime(event), Number.isFinite(seq) ? seq : index];
+  };
+  let verdict = false;
+  let best: [number, number] | null = null;
+  liveEvents.forEach((event, index) => {
+    const active = isActive(event);
+    if (!active && !isTerminal(event)) return;
+    const current = rank(event, index);
+    if (!best || current[0] > best[0] || (current[0] === best[0] && current[1] >= best[1])) {
+      best = current;
+      verdict = active;
+    }
+  });
+  return verdict;
 }

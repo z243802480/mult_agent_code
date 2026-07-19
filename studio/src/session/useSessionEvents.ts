@@ -75,7 +75,13 @@ export function useSessionEvents(
   const [settled, setSettled] = useState(false);
 
   useEffect(() => {
-    if (!activeSession || !eventsLive) {
+    // Probe while EITHER signal says (or could say) a run is alive. Gating on eventsLive alone
+    // stopped the probe the moment the event hint misread a grinding run as dead — so the registry
+    // (the authority, per runState.ts) was never even consulted during exactly the window it was
+    // needed (F2/F3, dogfood replay 2026-07-19). `jobsRunning === null` (never asked / last ask
+    // failed) also probes, so a session opened mid-run learns the truth on the first tick.
+    const registryMayBeLive = jobsRunning === null || jobsRunning > 0;
+    if (!activeSession || (!eventsLive && !registryMayBeLive)) {
       setStaleChecks(0);
       return;
     }
@@ -105,7 +111,9 @@ export function useSessionEvents(
       cancelled = true;
       clearInterval(timer);
     };
-  }, [activeSession?.session_id, eventsLive]);
+    // jobsRunning is a dep on purpose: its 0↔N/null transitions open and close the probe window
+    // (steady-state probes set the same value, so no effect churn between transitions).
+  }, [activeSession?.session_id, eventsLive, jobsRunning]);
 
   const runState = deriveRunState({
     eventsLive,

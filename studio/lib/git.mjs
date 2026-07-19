@@ -38,6 +38,16 @@ export function createGitHelpers({ getWorkspace, runCommand }) {
     "*.key",
     "id_rsa*",
     "id_ed25519*",
+    // Build/runtime noise a real repo's .gitignore would normally hide — without these the
+    // Changes pane lists .pyc churn next to the agent's real edits (live-caught 2026-07-19).
+    "__pycache__/",
+    "*.pyc",
+    "node_modules/",
+    ".venv/",
+    "venv/",
+    ".pytest_cache/",
+    ".mypy_cache/",
+    ".ruff_cache/",
   ];
   // Commit identity pinned so shadow commits work on machines with no global git identity.
   const SHADOW_IDENTITY = {

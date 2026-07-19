@@ -11,6 +11,14 @@ describe("deriveRunState", () => {
     expect(deriveRunState({ eventsLive: true, jobsRunning: 1, staleChecks: 0 })).toBe("running");
   });
 
+  it("registry authority holds in BOTH directions: a live job outranks a dead-looking event log", () => {
+    // F2/F3 (dogfood replay 2026-07-19): isSessionLive misread a grinding run as dead for 4.5 of
+    // its 5 execute minutes; the old `!eventsLive → idle` first line let that hint veto a registry
+    // that KNEW the job was alive — composer flipped idle and live indicators unmounted mid-run.
+    expect(deriveRunState({ eventsLive: false, jobsRunning: 1, staleChecks: 0 })).toBe("running");
+    expect(deriveRunState({ eventsLive: false, jobsRunning: 3, staleChecks: 99 })).toBe("running");
+  });
+
   it("trusts the event log when the registry cannot be reached", () => {
     // Not being able to ask is NOT evidence of death — never fabricate an interruption.
     expect(

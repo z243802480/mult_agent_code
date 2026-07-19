@@ -55,10 +55,15 @@ export function deriveRunState(input: {
   waitingForUser?: boolean;
 }): RunState {
   const { eventsLive, jobsRunning, staleChecks, waitingForUser = false, settled = false } = input;
+  if (waitingForUser && eventsLive) return "waiting";
+  // AUTHORITY REPAIR (dogfood replay 2026-07-19): the registry must be the source of truth in BOTH
+  // directions, as the doc above already claims. The old first line `!eventsLive → idle` let the
+  // event HINT veto a registry that KNEW the job was alive: isSessionLive misread a grinding run as
+  // dead for 4.5 of its 5 execution minutes (same-millisecond burst appends lost the strict-`>`
+  // tie-break), so the composer flipped to idle and every live indicator unmounted mid-run (F2/F3).
+  if ((jobsRunning ?? 0) > 0) return "running";
   if (!eventsLive) return "idle";
-  if (waitingForUser) return "waiting";
   if (jobsRunning === null) return "running"; // unknown registry: trust the events, never fabricate death
-  if (jobsRunning > 0) return "running";
   // jobsRunning === 0: the run either settled cleanly (job terminal in the registry, final event a
   // beat behind) or lost track (no job record at all). Only the latter can be an interruption.
   if (settled) return "running"; // finishing — flips to idle when the final event lands, never "已中断"

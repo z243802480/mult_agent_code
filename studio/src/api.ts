@@ -341,8 +341,9 @@ export function subscribeToEvents(
 
   if (typeof EventSource !== "undefined") {
     openStream();
-    // Baseline poll: runtime events from user_progress.jsonl bypass SSE, and this doubles as the
-    // fallback delivery path while SSE is reconnecting.
+    // Baseline poll: pure fallback delivery while SSE is down/reconnecting. (An older comment here
+    // claimed runtime events "bypass SSE" — stale: the server tail forwards them through
+    // appendEvent, which broadcasts every event to SSE. Verified in lib/event-bus.mjs.)
     startPoll(8000);
   } else {
     startPoll(1500);
