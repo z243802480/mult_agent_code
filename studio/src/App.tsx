@@ -157,14 +157,33 @@ export function App() {
     }
   }
 
+  // Header/notification title. bootstrap.activeSession is a snapshot taken at session-open and is NOT
+  // refreshed when the runtime later summarizes the goal into session.title — but bootstrap.sessions IS
+  // (the sidebar polls it, which is exactly why F10 saw the sidebar update to the goal while the header
+  // stayed stuck on the stale English "New task"). Prefer the fresh sessions-list title, fall back to
+  // the open-time snapshot, then the Chinese default.
+  const activeSessionId = bootstrap.activeSession?.session_id;
+  const freshSession = activeSessionId
+    ? bootstrap.sessions.find((s) => s.session_id === activeSessionId)
+    : undefined;
+  const cleanedTitle = bootstrap.activeSession
+    ? cleanSessionTitle(freshSession?.title || bootstrap.activeSession.title)
+    : "新任务";
+  // When the title is still the unnamed placeholder (a run that hasn't summarized a title yet), fall
+  // back to the goal so the header tracks the task the way CC does — never a generic "未命名会话" atop a
+  // thread that plainly shows the goal. goal_preview gets the same mojibake guard as the title.
+  const goalFallback = cleanSessionTitle(
+    freshSession?.goal_preview || bootstrap.activeSession?.goal_preview,
+  );
+  const headerTitle =
+    cleanedTitle !== "未命名会话" ? cleanedTitle : goalFallback !== "未命名会话" ? goalFallback : cleanedTitle;
+
   // OS notifications ("done and you're not looking") + favicon status dot (G1).
   useNotifications({
     isRunning: sessionEvents.isRunning,
     waiting: sessionEvents.waiting,
     interrupted: sessionEvents.interrupted,
-    sessionTitle: bootstrap.activeSession
-      ? cleanSessionTitle(bootstrap.activeSession.title)
-      : "新任务",
+    sessionTitle: headerTitle,
   });
 
   const {
@@ -388,9 +407,8 @@ export function App() {
       <MissionPaneHeader
         // Same mojibake guard the sidebar uses — the header was the third leak of raw legacy-CLI
         // titles (misdecoded console bytes rendered as debris in the most prominent spot on screen).
-        title={
-          bootstrap.activeSession ? cleanSessionTitle(bootstrap.activeSession.title) : "新任务"
-        }
+        // headerTitle prefers the fresh sessions-list title so it tracks the goal (F10).
+        title={headerTitle}
         settings={bootstrap.settings}
         viewMode={viewMode}
         panelOpen={panelOpen}

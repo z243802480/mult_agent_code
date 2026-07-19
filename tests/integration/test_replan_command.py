@@ -92,6 +92,11 @@ def test_replan_command_creates_repair_task_from_task_failure_evidence(tmp_path:
     assert [task["status"] for task in task_plan["tasks"]] == ["discarded", "ready"]
     repair_task = task_plan["tasks"][1]
     assert repair_task["task_id"] == "task-0002"
+    # F5: the plan-panel title is Chinese and NEVER carries the raw task-000x bookkeeping id (the
+    # surface layer neutralizes those). It distinguishes repairs by the source task's own title.
+    assert repair_task["title"].startswith(("修复", "为「", "修改"))
+    assert "task-000" not in repair_task["title"]
+    assert not repair_task["title"].startswith(("Add ", "Repair ", "Modify "))
     assert repair_task["replan"]["source_evidence_id"] == "task-execution-0001"
     assert repair_task["expected_changed_files"] == ["complete_module.py"]
     assert "list_files" in repair_task["allowed_tools"]

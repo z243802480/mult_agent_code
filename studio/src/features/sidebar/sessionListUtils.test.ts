@@ -106,6 +106,16 @@ describe("cleanSessionTitle — mojibake guard for legacy CLI sessions", () => {
     expect(cleanSessionTitle("   ")).toBe("未命名会话");
   });
 
+  it("normalizes the legacy 'New task' / '新任务' placeholder to the unnamed fallback (F10)", () => {
+    // Historical session.json files carry the English default "New task"; it is a placeholder
+    // sentinel, not a real title, and must never leak into the sidebar/header/notifications.
+    expect(cleanSessionTitle("New task")).toBe("未命名会话");
+    expect(cleanSessionTitle("  new task  ")).toBe("未命名会话");
+    expect(cleanSessionTitle("新任务")).toBe("未命名会话");
+    // A real title that merely CONTAINS the words is untouched.
+    expect(cleanSessionTitle("New task runner for CI")).toBe("New task runner for CI");
+  });
+
   it("never throws on a missing title — untitled sessions carry no title field", () => {
     // The header crashed the whole app on cleanSessionTitle(undefined) when this guard was first
     // wired there (2026-07-16); a display guard must be total.

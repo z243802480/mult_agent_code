@@ -60,6 +60,32 @@ export function projectTitle(title: string | null | undefined): string {
   return INTERNAL_TITLE_PROJECTION[value] ?? value;
 }
 
+// Pure runtime persistence/setup bookkeeping — the engine telling you it saved one of its OWN
+// artifacts (cost_report.json, the goalspec, plan files, evidence records, captured diffs). CC-class
+// tools never surface "wrote cost report" on the main thread; those belong in the Inspector's raw
+// evidence. Most of these are already emitted at display_level="inspector" by the runtime and dropped
+// upstream, but a handful still leak in at display_level="main" (dogfood run-20260719-0001: "Cost
+// report written" landed as the plan-completion narrative title — F4). Suppressed by their RAW English
+// literal (before projection) so the projected Chinese ("已写出成本报告") never reaches the thread.
+// Deliberately excludes anything user-meaningful: the plan itself ("Task plan built"), the promotion
+// story ("Candidate promoted"), verification results ("Validation conclusion"), and the final report.
+const BOOKKEEPING_TITLES = new Set<string>([
+  "Workspace selected",
+  "Workspace and outputs selected",
+  "GoalSpec file written",
+  "Task plan files written",
+  "Task plan evaluation written",
+  "Cost report written",
+  "Task execution evidence recorded",
+  "File changes captured",
+  "File changes recorded",
+  "Validation results recorded",
+]);
+
+export function isBookkeepingTitle(title: string | null | undefined): boolean {
+  return BOOKKEEPING_TITLES.has(String(title ?? ""));
+}
+
 // Dynamic summary literals the runtime emits in English (they carry ids/counts, so a static map can't
 // catch them). Kept here beside the title map so the surface has one localization source. Evidence
 // stays English at source (asserted by tests); this only rewrites the human-facing summary line.

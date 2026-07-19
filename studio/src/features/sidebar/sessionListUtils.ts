@@ -92,6 +92,13 @@ const STRAY_SCRIPT = /[À-ɏʰ-˿Ͱ-ۿ]/g;
 export function cleanSessionTitle(value: string | null | undefined): string {
   // A display guard must never throw — untitled sessions carry no title field at all.
   if (value == null) return "未命名会话";
+  // "New task" is the legacy default session title (the server default is now Chinese, but historical
+  // session.json files still carry the English literal). It is a placeholder sentinel, not a real user
+  // title — normalize it to the unnamed fallback so the English never leaks into the sidebar/header/
+  // notifications (F10). Matched case-insensitively after trimming; the Chinese "新任务" default is
+  // treated the same so a brand-new session reads "未命名会话" rather than echoing its placeholder.
+  const sentinel = value.trim().toLowerCase();
+  if (sentinel === "new task" || sentinel === "新任务") return "未命名会话";
   // Sessions created from a mis-encoded console (a GBK terminal whose UTF-8 bytes were decoded with
   // the wrong codepage) stored mojibake in session.json. Two shapes appear: (1) a good UTF-8 prefix
   // with a mangled tail of lone surrogates / U+FFFD — e.g. "用一句话说明素数的定义�\udc80\udc82", where

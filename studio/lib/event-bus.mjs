@@ -89,7 +89,7 @@ export function createEventBus({ sessionPath, getWorkspace }) {
       session.workspace = session.workspace || getWorkspace();
       session.updated_at = full.created_at;
       if (full.type === "user_message") {
-        session.title = String(full.summary || session.title || "New task").slice(0, 64);
+        session.title = String(full.summary || session.title || "新任务").slice(0, 64);
         session.goal_preview = String(
           full.content_delta || full.summary || session.goal_preview || "",
         ).slice(0, 160);

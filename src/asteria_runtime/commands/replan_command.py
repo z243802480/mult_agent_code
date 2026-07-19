@@ -429,11 +429,15 @@ class ReplanCommand:
         return task
 
     def _title(self, source_task: dict, evidence: dict, violations: list[str]) -> str:
+        # User-facing plan-panel title: Chinese, and NEVER the raw task-000x id (the surface layer
+        # deliberately neutralizes those — titleProjection.ts). Distinguish repairs by the source
+        # task's own title instead of its bookkeeping id.
+        label = str(source_task.get("title") or "上一轮任务").strip()
         if "required verification was not provided" in violations:
-            return f"Add verification for {source_task['task_id']}"
+            return f"为「{label}」补充验证"
         if any(item.startswith("expected changed files were not modified") for item in violations):
-            return f"Modify expected artifact for {source_task['task_id']}"
-        return f"Repair replanned task for {source_task['task_id']}"
+            return f"修改「{label}」的预期产物"
+        return f"修复「{label}」"
 
     def _description(self, source_task: dict, evidence: dict, violations: list[str]) -> str:
         recommendations = evidence.get("recommendations", [])

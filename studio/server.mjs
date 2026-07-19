@@ -1512,7 +1512,7 @@ async function createSession() {
   const session = {
     schema_version: "0.1.0",
     session_id: sessionId,
-    title: "New task",
+    title: "新任务",
     workspace,
     created_at: now,
     updated_at: now,

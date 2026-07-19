@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { projectSummary, projectTitle } from "./titleProjection";
+import { isBookkeepingTitle, projectSummary, projectTitle } from "./titleProjection";
 
 describe("projectSummary — no English leak on the Chinese thread", () => {
   it("localizes the plan/workspace binding summary observed leaking live", () => {
@@ -29,5 +29,30 @@ describe("projectTitle", () => {
   it("projects a known internal title, passes others through", () => {
     expect(projectTitle("Workspace selected")).toBe("已选定工作区");
     expect(projectTitle("写入 primes.py")).toBe("写入 primes.py");
+  });
+});
+
+describe("isBookkeepingTitle — persistence noise off the main thread (F4)", () => {
+  it("flags the runtime's own persistence/setup milestones by RAW English literal", () => {
+    // dogfood run-20260719-0001: this one landed as the plan-completion narrative title.
+    expect(isBookkeepingTitle("Cost report written")).toBe(true);
+    expect(isBookkeepingTitle("GoalSpec file written")).toBe(true);
+    expect(isBookkeepingTitle("Task plan files written")).toBe(true);
+    expect(isBookkeepingTitle("Validation results recorded")).toBe(true);
+    expect(isBookkeepingTitle("Workspace selected")).toBe(true);
+  });
+
+  it("does NOT flag user-meaningful milestones (plan, promotion, verification, final)", () => {
+    expect(isBookkeepingTitle("Task plan built")).toBe(false);
+    expect(isBookkeepingTitle("Candidate promoted")).toBe(false);
+    expect(isBookkeepingTitle("Validation conclusion")).toBe(false);
+    expect(isBookkeepingTitle("Final report written")).toBe(false);
+    expect(isBookkeepingTitle("Thinking")).toBe(false);
+    expect(isBookkeepingTitle("我已实现 stats 子命令。")).toBe(false);
+  });
+
+  it("is robust to null/undefined", () => {
+    expect(isBookkeepingTitle(null)).toBe(false);
+    expect(isBookkeepingTitle(undefined)).toBe(false);
   });
 });

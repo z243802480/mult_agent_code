@@ -1,6 +1,6 @@
 import type { StudioEvent, NarrativeStep, RunNarrative } from "./types";
 import { capabilityInfo } from "./capability";
-import { projectTitle, projectSummary } from "./titleProjection";
+import { projectTitle, projectSummary, isBookkeepingTitle } from "./titleProjection";
 
 function eventTime(event: StudioEvent): number {
   const value = Date.parse(String(event.created_at ?? ""));
@@ -314,6 +314,14 @@ export function buildRunNarrative(events: StudioEvent[]): RunNarrative {
   const steps: NarrativeStep[] = [];
   for (const event of events) {
     if (isInternalLoopScaffolding(event)) continue;
+    // Honor the runtime's own display_level, same as the live view (runtimeSessionEvents drops
+    // non-main upstream, but the session-owns-output path feeds raw events.jsonl straight here, so
+    // inspector-level rows would otherwise leak into the completed thread). Only drops when the
+    // runtime explicitly marked it non-main; unlabeled events pass through unchanged.
+    if (event.display_level && event.display_level !== "main") continue;
+    // Pure persistence/setup bookkeeping that leaks in at display_level="main" (F4) — matched on the
+    // RAW English title before projection, so the projected Chinese never reaches the thread.
+    if (isBookkeepingTitle(event.title)) continue;
     const kind = narrativeKind(event);
     if (MACHINERY_KINDS.has(kind)) continue;
     const label = narrativeLabel(kind, event);
