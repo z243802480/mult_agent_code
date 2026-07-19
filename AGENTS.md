@@ -57,7 +57,7 @@ P2：G15 回放导出（1.2.90）、G14 记忆只读（1.2.91）、**G17 图片�
   全部搁置·非取消·云路线落地前无收益。**强隔离推给云 CubeSandbox(阶段三·维持推迟)**。主观视觉手感仍需用户目视。
 
 当前审计签字：docs/zh/reports/completion-reaudit-20260718.md（**实现≈80%**·同框架对照 S77 的 ≈71%·15 子系统逐断言回代码核实·残余债按咬人程度排序在其 §3）。历史基线：docs/zh/reports/S77-commercial-readiness-audit-20260704.md（≈71%、市场化 37→利基 43-45·其 P1④⑥已过期，读须对照 changelog）。两份都是快照，引用前对照 changelog。
-执行顺序：Part B 前端拉齐——**用户拍板的队列已跑完**（G8 全案 1.2.104–1.2.106·G6 刀二 1.2.107）。**剩余项**：①主观视觉手感需目视（卡用户）②G12/G13/G16/G19 需真 friction 证据（卡用户）③~~OS 沙箱 P0~~ **已收口·降级·不再 P0（2026-07-19·见上「OS 沙箱」条）**。**⇒ 已无 P0**。下一步自主可推的后端诚实债=验证环两洞（重审计 §3 第 4：`record_repair_attempt` 零调用方·`accept --skip-review` 后门）→ 利基 Beta
+执行顺序：Part B 前端拉齐——**用户拍板的队列已跑完**（G8 全案 1.2.104–1.2.106·G6 刀二 1.2.107）。**剩余项**：①主观视觉手感需目视（卡用户）②G12/G13/G16/G19 需真 friction 证据（卡用户）③~~OS 沙箱 P0~~ **已收口·降级·不再 P0（2026-07-19·见上「OS 沙箱」条）**。**⇒ 已无 P0**。~~验证环两洞~~ **已复核收口（1.2.144·两条均系审计夸大·修文档诚实+1 护栏测试）**。**2026-07-19 用户定新主线：前端打磨到「跟主流产品能打」**——真用产品对比主流找差异化差距·吸收优秀经验完善（dogfood-driven·这同时正是 G12/G13/G16/G19 需要的真 friction 证据的产生方式）→ 利基 Beta
 冻结（仍有效）：新编排 Wave、任务批 disjoint-write 调度（task_graph 冻结点·需重建冲突检测）、无真实 friction 证据的 Studio 新功能、北极星/swarm/12-Agent、真 cloud VM background。
 **已解冻并落地（勿再当冻结项）**：①B1-a/B1-b 并发专家（含隔离并发写）**全局默认开**·随权限档·merge-gate 保护（2026-07-14·ADR-0023·v1.2.33）；②**自主环四环**（auto_repair / auto_replan / auto_replan_goal / auto_continue 软保险丝）**默认随权限档开**（auto/reviewed_auto → ON·ask_everything → OFF·2026-07-13/14·ADR-0017/0027·v1.2.31/1.2.38）；③**auto-accept 默认开**——`run` 不再为 promotion 停下等人审（2026-07-13 用户知情同意·推翻 2026-07-02 的「run 必停」DecisionPoint·v1.2.15）。高危 shell/deploy/push 仍走常开硬 guard。
 ```
@@ -215,6 +215,12 @@ hard_stop_threshold: 0.90
 ```
 
 See full policy in prior AGENTS sections; long-task autonomy is governed by goal progress, context pressure, repair/replan limits, permission risk, provider health, and loop detection.
+
+**诚实注（repair 上限的真实执法方式·2026-07-19·v1.2.144）**：`max_repair_attempts_per_task`
+不走独立 repair 台账——它喂进 run 层**派生内循环 cap**（`min(iterations, replans+repairs+1)`）
+间接兜底，外加无进展检测。独立台账 `budget.record_repair_attempt`/`max_repair_attempts_total`
+**有意不接线**（1.2.15 调研判定：主流 Codex/Claude Code 都用简单计数兜底·独立 repair 预算是
+过度设计），故 cost_report 里 `repair_attempts` 恒 0——**别拿它断言 repair 行为**。
 
 ## 13. Agent Operating Rules
 

@@ -96,6 +96,26 @@ def test_accept_command_blocks_when_review_has_not_passed(tmp_path: Path) -> Non
     assert final_events[-1]["data"]["validation"]["accepted"] is False
 
 
+def test_accept_skip_review_is_not_a_review_gate_bypass(tmp_path: Path) -> None:
+    """钉死不变式：``skip_review=True`` 只跳过「重跑 reviewer」，绝不绕过评审状态闸。
+
+    completion-reaudit-20260718 §3 第 4 条曾把 supervised loop 的 skip_review=True
+    称为「后门」——代码核实为夸大：AcceptCommand.run 里 ``review_status != "pass"``
+    的 blocker 是无条件的，且 eval_report 缺失时 review 状态为 "unknown"（≠pass）。
+    本测试把「从未评审过的 run 即使 skip_review 也必被拦」固化为回归护栏，
+    防未来重构把 skip_review 悄悄变成真旁路。
+    """
+    root, run_dir, _candidate = _workspace_ready_for_accept(tmp_path)
+    (run_dir / "eval_report.json").unlink()  # run 从未被评审过
+
+    result = AcceptCommand(root, skip_review=True).run()
+
+    assert result.accepted is False
+    assert result.status == "blocked"
+    assert result.review_status == "unknown"
+    assert any("review status is unknown" in blocker for blocker in result.blockers)
+
+
 def _workspace_ready_for_accept(
     tmp_path: Path,
     *,

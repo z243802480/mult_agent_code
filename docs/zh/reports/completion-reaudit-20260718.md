@@ -51,6 +51,10 @@ release 闸不含真 provider（nightly 带外承接）、~~压缩不缩活提�
 1. **OS 沙箱缺席**（安全 ①③⑤⑩）：`subprocess.run(shell=True)` 无封禁、`allow_shell` 默认开
    （`templates/policies.default.json:69`）、beta_safe 需显式 opt-in、解释器一行绕扫描（代码自己承认·
    `shell_guard.py:93-94`）。env 擦洗把凭证面收窄了，但架构性缺口未变。
+   **⚠️ 状态更新（2026-07-19·v1.2.143·晚于本报告成文）**：本条**已收口降级·不再 P0**——核实主流本地
+   编码 agent 默认跑开发者环境+权限门·不做本地 OS 沙箱（唯一做的 Codex 用 mac/Linux 原语非 Windows
+   AppContainer）。已落地轻量层=S-A 进程围栏(1.2.117)+S-B confinement opt-in(1.2.120)；强隔离推给云
+   CubeSandbox。见 ADR-0030 文末「收口决定」段。
 2. **release 闸不含真 provider**：verify/release 全程 `-m "not real_provider"`；真栈证明只在两条 nightly
    （有 key 才跑）。闸的诚实性依赖 nightly 红了有人看。
 3. ~~**「压缩」从不缩活提示**~~ **✅ 已闭（1.2.123·S90·2026-07-18 用户授权·晚于本报告成文）**：
@@ -59,9 +63,19 @@ release 闸不含真 provider（nightly 带外承接）、~~压缩不缩活提�
    ②压力 ≥near_limit 时 execute grounding 真丢文件摘录只留清单 ③hard_stop 对 context 轴先自动
    compact+瘦身续跑（≤2 次）仍超才 pause ④per-model 真窗口 + provider usage 真值校准估算。
    详见 ADR-0032 / changelog 1.2.123。
-4. **验证环两洞**：`record_repair_attempt` 零调用方（`budget.py:185`·repair 上限形同虚设，实际靠
-   迭代保险丝/续跑上限兜底）；`accept --skip-review` 后门在且被 `supervised_goal_loop_command.py:147`
-   主动使用。
+4. ~~**验证环两洞**~~ **⚠️ 复核后两条均夸大（2026-07-19·v1.2.144·逐条回代码核实·晚于本报告成文）**：
+   原文=「`record_repair_attempt` 零调用方·repair 上限形同虚设」+「`accept --skip-review` 后门在且被
+   `supervised_goal_loop_command.py:147` 主动使用」。核实：**(a)** `record_repair_attempt` 零调用方**属实**，
+   但那是**有意不接线的设计决策**（1.2.15 调研判定独立 repair 台账=过度设计·方法体 docstring 白纸黑字）；
+   且 `max_repair_attempts_per_task` **有真实效果**——喂进 run 层派生内循环 cap（`run_command.py:2077-2079`
+   `min(iterations, replans+repairs+1)`）。「形同虚设」只对 `_total` 那半成立（其 check 永不触发·cost_report
+   `repair_attempts` 恒 0）。修=AGENTS.md §12 加诚实注，不改代码。**(b)** `skip_review=True` **不是评审闸
+   旁路**：`AcceptCommand.run` 里 `review_status != "pass"` 的 blocker **无条件**（`accept_command.py:193`），
+   `skip_review` 只跳过「重跑 reviewer」；eval_report 缺失时状态="unknown"（≠pass）照拦。supervised loop
+   用它是 auto-accept 合法路径（AGENTS §5 sanctioned）。修=新增回归护栏测试
+   `test_accept_skip_review_is_not_a_review_gate_bypass` 把闸的无条件性固化为不变式。
+   **审计教训**（[[lying-audit]] 又一例·「验了存在性声称了语义」变体）：零调用方/参数名眼见为实，
+   但「形同虚设」「后门」是**语义断言**——须读完整控制流再下，本报告当时没读到 `:193` 的无条件拦截。
 5. **持久化三件**：手搓校验器忽略 minimum/pattern/$ref（而 `run_loop_summary.schema.json` 真声明了
    minimum=声明被静默忽略）；零 fsync；audit_chain 默认关（`audit_chain.py:33`）。
 6. **MCP 三件**：stdio-only；mcp/skill allowlist 空=放行（fail-open·`capability_decision_recorder.py:203-209`，
@@ -83,6 +97,8 @@ release 闸不含真 provider（nightly 带外承接）、~~压缩不缩活提�
 ## 5. 对「高完成度」的含义
 
 以内部发动机定位衡量，**管道层（Studio/CLI/打包/持久化）已进 85-95 区间，承诺层（自主环/评估）
-已从"拖底"翻到 72-88**。把总分从 80 再往上推，性价比排序就是 §3 的顺序：沙箱（P0·6-12 周）>
-release 真栈闸 > 压缩真缩 > 验证环补洞。其余（MCP/Skills/规划启发式）按真 friction 证据拉起即可。
+已从"拖底"翻到 72-88**。把总分从 80 再往上推，性价比排序就是 §3 的顺序：~~沙箱（P0·6-12 周）>
+release 真栈闸 > 压缩真缩 > 验证环补洞~~ **（2026-07-19 更新：沙箱已收口降级 v1.2.143·压缩真缩已闭
+v1.2.123·验证环两洞复核为夸大 v1.2.144 ⇒ 此排序仅剩「release 真栈闸」一条实活·其需 CI 放 key=卡用户）**。
+其余（MCP/Skills/规划启发式）按真 friction 证据拉起即可。
 本报告数字的有效期同 S77：**它是快照**，引用前对照 changelog。
