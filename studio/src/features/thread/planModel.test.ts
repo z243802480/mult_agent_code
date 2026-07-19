@@ -55,6 +55,25 @@ describe("derivePlan", () => {
     } as unknown as RunDetailPayload);
     expect(plan?.source).toBe("task_plan");
   });
+
+  it("excludes discarded/superseded tasks from the live plan (F12)", () => {
+    // Auto-replan marks the original task "discarded" and adds a fresh repair task. Counting the
+    // discards inflated the denominator to "1/4" after the work was done — the user's plan is the
+    // live tasks, not the discarded repair-churn lineage.
+    const plan = derivePlan({
+      ok: true,
+      task_plan: {
+        tasks: [
+          { task_id: "task-0001", title: "加 stats 子命令", task_status: "discarded" },
+          { task_id: "task-0002", title: "补 stats 测试", task_status: "discarded" },
+          { task_id: "task-0003", title: "修复「加 stats 子命令」", task_status: "completed" },
+        ],
+      },
+    } as unknown as RunDetailPayload);
+    expect(plan?.total).toBe(1);
+    expect(plan?.done).toBe(1);
+    expect(plan?.items.map((i) => i.title)).toEqual(["修复「加 stats 子命令」"]);
+  });
 });
 
 describe("raw todo_write tool row", () => {

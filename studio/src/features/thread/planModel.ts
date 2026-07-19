@@ -69,7 +69,13 @@ export function derivePlan(runDetail: RunDetailPayload | null | undefined): Plan
     const rec = asRecord(task);
     const title = String(rec.title ?? rec.content ?? "").trim();
     if (!title) return;
-    const state = normalizeState(String(rec.task_status ?? rec.status ?? "pending"));
+    const rawStatus = String(rec.task_status ?? rec.status ?? "pending").toLowerCase();
+    // Superseded tasks are DEAD, not part of the live plan (F12). When auto-replan repairs a task it
+    // marks the original "discarded" and adds a fresh repair task; counting the discards inflated the
+    // denominator ("1/4" after the work was done, with 3 discarded repair-churn tasks). The user's
+    // plan is the live tasks — the discarded lineage stays in the Inspector's task_plan evidence.
+    if (rawStatus === "discarded" || rawStatus === "superseded") return;
+    const state = normalizeState(rawStatus);
     items.push({ id: String(rec.task_id ?? rec.id ?? `task-${index}`), title, state });
   });
   return tally(items, "task_plan", "");

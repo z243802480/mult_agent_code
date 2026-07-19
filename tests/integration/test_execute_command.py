@@ -3617,6 +3617,16 @@ def test_model_driven_prompts_injects_project_guidance_into_system(tmp_path: Pat
     assert "PROJECT GUIDANCE" not in system_without
 
 
+def test_model_driven_prompts_tells_doer_to_disclose_missing_file(tmp_path: Path) -> None:
+    # F8: the goal often presupposes a file exists ("add X to taskman.py") when it does not. The doer
+    # must not silently pretend it edited — the system prompt carries an always-on disclosure rule.
+    InitCommand(tmp_path).run()
+    cmd = ExecuteCommand(tmp_path)
+    system, _ = cmd._model_driven_prompts({"task_id": "task-0001", "allowed_tools": []}, {}, {}, [], {})
+    assert "Disclose broken assumptions" in system
+    assert "created it new" in system
+
+
 class FakeShellWriterClient:
     """Dogfood run-20260718-0001 mirror: the doer writes files through run_command (shell), never
     write_file — the tool-layer changed-file ledger stays empty. The contract must count the

@@ -62,6 +62,21 @@ def test_build_plan_completion_copy_uses_chinese_summary() -> None:
     assert "计划质量：良好" in summary
 
 
+def test_plan_completion_copy_hides_raw_score_to_avoid_contradiction() -> None:
+    # F6: the evaluator sets "warn" whenever there are issues, independent of the score — so a plan
+    # can score 0.98 and still be "需留意". Pairing that label with "0.98" reads as a contradiction.
+    # The main-thread copy shows the actionable label only; the score stays in the evidence event.
+    _, summary = build_plan_completion_copy(
+        task_count=1,
+        task_titles=["加 stats 子命令"],
+        quality_status="warn",
+        quality_score=0.98,
+    )
+    assert "计划质量：需留意" in summary
+    assert "0.98" not in summary
+    assert "（" not in summary.split("计划质量")[1]  # no score parenthetical after the label
+
+
 def test_status_json_exposes_plan_summary_after_plan(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     PlanCommand(tmp_path, "做一个密码测试工具", model_client=FakePlanClient()).run()

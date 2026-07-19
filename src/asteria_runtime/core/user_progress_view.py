@@ -61,10 +61,14 @@ def build_plan_completion_copy(
             preview = f"{preview} 等 {task_count} 项"
         parts.append(f"包括：{preview}")
     quality_label = _PLAN_QUALITY_LABELS.get(str(quality_status).lower(), quality_status)
-    if quality_score is not None:
-        parts.append(f"计划质量：{quality_label}（{quality_score:.2f}）")
-    else:
-        parts.append(f"计划质量：{quality_label}")
+    # Show the plain-language status only — NOT the raw overall_score (F6). The evaluator sets "warn"
+    # whenever there are ANY issues, independent of the score (task_plan_evaluator._status), so a plan
+    # can score 0.98 and still be "需留意" — pairing "需留意" with "0.98" reads as a contradiction to the
+    # user (dogfood: "计划质量：需留意（0.98）"). The exact score + issue list stay in the "计划质量核对"
+    # evidence event (Inspector); the main thread gets the actionable label. quality_score is accepted
+    # for call-site compatibility but deliberately not rendered.
+    _ = quality_score
+    parts.append(f"计划质量：{quality_label}")
     return title, "；".join(parts) + "。"
 
 
