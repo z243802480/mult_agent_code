@@ -1,6 +1,9 @@
-# ADR-0030 · OS 级执行沙箱分阶段落地（唯一剩余 P0）
+# ADR-0030 · OS 级执行沙箱分阶段落地（**已收口·降级·2026-07-19**）
 
-- 状态：**Accepted（2026-07-18·用户「1+2 都做」授权 S-A + S-B-spike）**。
+- 状态：**收口（2026-07-19·用户「收口吧·有一个轻量的就行·暂时对标主流·能稳定运行即可·以后上云在 cube 环境跑」）**。
+  OS 沙箱**不再是 P0**——见文末「收口决定（2026-07-19）」段。轻量层已落地并保留：权限门（主安全层·对标主流）
+  \+ S-A 进程围栏 + opt-in confinement；AppContainer 全工具兼容**不再追**；强隔离推迟到云 CubeSandbox（阶段三）。
+- 历史状态：**Accepted（2026-07-18·用户「1+2 都做」授权 S-A + S-B-spike）**。
   - **S-A（进程围栏）已落地**：changelog 1.2.117·`core/process_fence.py`·Job Object KILL_ON_JOB_CLOSE +
     资源上限·4 单测含真 detached 孙进程被收掉 + 真栈探针零误伤 + 1362 pytest 零回归。
   - **S-B-spike 已跑（结论：隔离原理证实，路线清晰）**：见下方 S-B 段末「spike 结果」。
@@ -243,6 +246,46 @@ git 还需更多·下一刀】。** 诊断补充（真机·`_diag_ancestor` 探�
   （网络/写围栏+pytest 已成立·git push 本就常开硬 guard）；**(B) git 走 WSL2/容器运行时 fallback**（阶段三推迟项·
   独立一条线）。**不再走祖先授权**（本段证伪）。**明确不做**：`ensure_sandbox` 未加任何祖先授权（证伪故未接线·生产码
   只有 1.2.141 的 NUL 授权）·git 半边的后续走向待用户在 (A)/(B) 间定。
+
+## 收口决定（2026-07-19·用户「收口·轻量对标主流·稳定运行即可·强隔离以后上云」）
+
+**触发**：用户质疑整条 OS 沙箱 P0 的前提——「其他软件都怎么做的？我感觉它们没这个问题啊，都是用开发者自己的
+环境吧」。逐条核实主流本地编码 agent 的执行安全姿态（置信度标注·非记忆断言即需查证）：
+
+| 工具 | 本地默认做法 | 置信 |
+| --- | --- | --- |
+| Claude Code / Cursor / Aider | 跑在**开发者自己的环境** + 权限门（ask/allowlist/denylist）。OS 沙箱是**后加可选项**（CC：mac Seatbelt / Linux bubblewrap），默认不开 | 高 |
+| OpenAI Codex CLI | **唯一**默认做本地 OS 沙箱——但用 **mac Seatbelt / Linux landlock+seccomp**，**不是 Windows AppContainer** | 高 |
+| Devin / 云 agent | 隔离靠**远程 VM/容器**·非本地沙箱 | 高 |
+| 任何工具用 Windows AppContainer | 查无 | 中高 |
+
+**⇒ 纠正本 ADR「主流锚点」段的一处混淆（诚实）**：38–43 行把「主流沙箱默认=断网+限写」当成主流的**本地默认形态**——
+不准确。那是这些工具的**云任务/沙箱模式**的默认；它们的**本地默认**是「开发者环境 + 权限门」。也就是说：**做本地
+OS 沙箱的只有 Codex 一家·且用 mac/Linux 原语·主流没人走 Windows AppContainer 这条路。** 我们跟 git/pytest/NUL/
+祖先遍历死磕的一路摩擦，本质是**选了主流不走的路自找的**（AppContainer 对 msys/git 的 cwd 规范化天然不友好）。
+
+**决定**：
+1. **OS 沙箱降级·不再是 P0**。理由：①主流本地不做 OS 沙箱·做的是权限门 ②权限门我们**早就有**（ShellGuard
+   段 leader 分解 + 深度正则 + 秘密路径门 + 网络出口门·env 擦洗·beta_safe 密不透风档·shell/deploy/push 常开硬
+   guard·跨 run 锁）——这一层已对标主流 ③AppContainer 全兼容是主流没验证过的路·投入产出比差。
+2. **保留的「轻量层」（已落地·即产品的稳定安全姿态）**：**权限门=主安全层**（对标 Claude Code/Cursor/Aider 的
+   本地默认）+ **S-A 进程围栏**（1.2.117·Job Object·run 结束=进程树必死·这是纯增益无摩擦）+ **S-B confinement 作为
+   opt-in**（`permissions.sandbox_shell`·网络断+写限工作区·1.2.120 已真机证·给偏执负载用·不默认开）。
+3. **AppContainer 全工具兼容不再追**：git 仓库操作（status/add）是 native AppContainer 的**已知原生限制**（`mingw_getcwd`
+   的 cwd 规范化在容器里失败·祖先授权已证伪·见上段）；pytest 靠 NUL 授权（1.2.141）已能跑但不作为默认开的理由。
+   **不再投入 AppContainer 兼容性工作**（allow_network 防火墙注册、大仓库广验、档位默认开全部**搁置**·非取消·云路线
+   落地前无收益）。
+4. **强隔离推给云 CubeSandbox（阶段三·维持推迟）**：真要 Linux/KVM 级隔离，等上云了在 cube 环境专门跑（记忆
+   [[cubesandbox-cloud-sandbox-candidate]]）·不在本地手搓。启动仍须另行 DecisionPoint。
+
+**保留不删的资产**（沉没成本转为可选能力·非废弃）：`sandbox_launch.py` / `sandbox_provision.py`（含
+`ensure_nul_device_access`）/ `process_fence.py` / `command_tools` 的 `sandbox_shell` 咽喉接线 + `asteria sandbox
+status/provision` 命令——都留着·S-A 围栏默认生效·confinement 走 opt-in·NUL 授权在 provision 时机会性执行。
+**三个 spike 脚本**（`sandbox_toolchain_fix_probe`/`sandbox_nul_grant_probe`/`sandbox_nul_grant_test`）留作证据档。
+
+**这不是失败收场·是威胁模型对齐**：本案真正兑现的是——把「run 结束=干净」变成 OS 保证（S-A）、把网络/写围栏证到
+可用（S-B confinement opt-in）、把主流其实怎么做查清并纠正了本 ADR 自己的锚点混淆。AppContainer 全兼容这个**过度目标**
+被主流现实和真机负面结果一起证否，及时止损。
 
 ## 不做清单
 

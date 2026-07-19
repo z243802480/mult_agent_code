@@ -48,12 +48,16 @@ P2：G15 回放导出（1.2.90）、G14 记忆只读（1.2.91）、**G17 图片�
   文件锁（OS 持有·进程死亡自动释放）落在 CLI 三咽喉（continue_run/ExecuteCommand.run/promotions 非 list），
   连 **CLI-vs-Studio**（S87 也护不住的组合）一并覆盖；`decide` 未纳入（只写 .asteria 决策记录·边界记在
   模块 docstring）。详见路线表 §4 G19 条。
-- **OS 沙箱**——ADR-0030 核心机制已落地：S-A 进程围栏(1.2.117)+**S-B AppContainer 首刀**(1.2.120·
-  `sandbox_shell` opt-in·真机证网络 OS 层断+写限工作区+fail-closed)；剩 allow_network 防火墙注册+
-  真实大仓库兼容性广验+档位默认开(证据驱动)。主观视觉手感仍需用户目视。
+- **OS 沙箱**——**✅ 已收口·降级·不再 P0（2026-07-19·用户「收口·轻量对标主流·稳定运行即可·强隔离以后上云」·
+  ADR-0030 文末「收口决定」段）**。核实清楚了主流本地编码 agent（Claude Code/Cursor/Aider）**默认跑在开发者自己
+  环境 + 权限门·不做本地 OS 沙箱**（做的只有 Codex·且用 mac/Linux 原语非 Windows AppContainer）——我们跟
+  git/pytest/NUL/祖先遍历死磕是选了主流不走的路自找的。**保留的轻量层**=权限门(主安全层·已对标主流)+S-A 进程围栏
+  (1.2.117·纯增益)+S-B confinement(`sandbox_shell` opt-in·1.2.120 真机证网络断+写限工作区)。**AppContainer 全兼容
+  不再追**(git 仓库操作是 native 已知限制·祖先授权已证伪·1.2.142)：allow_network 防火墙注册/大仓库广验/档位默认开
+  全部搁置·非取消·云路线落地前无收益。**强隔离推给云 CubeSandbox(阶段三·维持推迟)**。主观视觉手感仍需用户目视。
 
 当前审计签字：docs/zh/reports/completion-reaudit-20260718.md（**实现≈80%**·同框架对照 S77 的 ≈71%·15 子系统逐断言回代码核实·残余债按咬人程度排序在其 §3）。历史基线：docs/zh/reports/S77-commercial-readiness-audit-20260704.md（≈71%、市场化 37→利基 43-45·其 P1④⑥已过期，读须对照 changelog）。两份都是快照，引用前对照 changelog。
-执行顺序：Part B 前端拉齐——**用户拍板的队列已跑完**（G8 全案 1.2.104–1.2.106·G6 刀二 1.2.107）。**剩余项全部卡在用户**：①主观视觉手感需目视 ②G12/G13/G16/G19 需真 friction 证据 ③OS 沙箱 P0 → P0 沙箱（唯一剩余 P0·按内部发动机定位已降级）→ 利基 Beta
+执行顺序：Part B 前端拉齐——**用户拍板的队列已跑完**（G8 全案 1.2.104–1.2.106·G6 刀二 1.2.107）。**剩余项**：①主观视觉手感需目视（卡用户）②G12/G13/G16/G19 需真 friction 证据（卡用户）③~~OS 沙箱 P0~~ **已收口·降级·不再 P0（2026-07-19·见上「OS 沙箱」条）**。**⇒ 已无 P0**。下一步自主可推的后端诚实债=验证环两洞（重审计 §3 第 4：`record_repair_attempt` 零调用方·`accept --skip-review` 后门）→ 利基 Beta
 冻结（仍有效）：新编排 Wave、任务批 disjoint-write 调度（task_graph 冻结点·需重建冲突检测）、无真实 friction 证据的 Studio 新功能、北极星/swarm/12-Agent、真 cloud VM background。
 **已解冻并落地（勿再当冻结项）**：①B1-a/B1-b 并发专家（含隔离并发写）**全局默认开**·随权限档·merge-gate 保护（2026-07-14·ADR-0023·v1.2.33）；②**自主环四环**（auto_repair / auto_replan / auto_replan_goal / auto_continue 软保险丝）**默认随权限档开**（auto/reviewed_auto → ON·ask_everything → OFF·2026-07-13/14·ADR-0017/0027·v1.2.31/1.2.38）；③**auto-accept 默认开**——`run` 不再为 promotion 停下等人审（2026-07-13 用户知情同意·推翻 2026-07-02 的「run 必停」DecisionPoint·v1.2.15）。高危 shell/deploy/push 仍走常开硬 guard。
 ```
