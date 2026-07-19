@@ -49,6 +49,13 @@ def test_accept_command_promotes_pending_candidate_and_finalizes_run(tmp_path: P
     assert any(event["title"] == "开始验收收尾" for event in user_progress)
     assert any(event["event_type"] == "final_report" for event in user_progress)
     assert any(event["title"] == "验收完成" for event in user_progress)
+    # The conclusion is the last main-thread bubble after accepting — it must speak the user's
+    # language, not engine bookkeeping (dogfood 2026-07-19: English "Use the final report as the
+    # durable handoff artifact." was the final thing the user saw).
+    conclusion = next(event for event in user_progress if event["title"] == "验收完成")
+    assert conclusion["summary"] == "已验收——评审通过，改动全部落定。"
+    assert "durable handoff" not in str(conclusion.get("content_delta") or "")
+    assert "任务已验收完成" in str(conclusion.get("content_delta") or "")
 
 
 def test_accept_command_links_run_to_north_star_milestone(tmp_path: Path) -> None:

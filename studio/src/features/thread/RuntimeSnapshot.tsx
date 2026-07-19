@@ -168,39 +168,73 @@ function DecisionCard({
 }
 
 /**
+ * Session-scoped workflow terminal state ("accepted" | "blocked" | ...) read from the run's own
+ * summaries — NOT from the workspace-level `overview.workflow`, which reflects `asteria status`
+ * on whatever run is latest in the workspace and may belong to another session entirely.
+ */
+export function sessionWorkflowState(runDetail: RunDetailPayload | null): string {
+  const loopSummary = asRecord(runDetail?.run_loop_summary);
+  const finalSummary = asRecord(runDetail?.final_report_summary);
+  return String(loopSummary.workflow_state ?? finalSummary.workflow_state ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+/**
  * Single source of truth for "does this run have an actionable next step?" The bottom Next-action
  * bar (this component) and the per-turn SuggestedActions chips both key off this so the thread never
  * shows two competing next-step prompts — e.g. a stale inline "Decide" chip while the run has
  * actually passed review and the bar is offering Accept. When this is true the bar owns the next
  * step and the inline chips defer; when it is false (no lifecycle state) the inline chips are the
  * only hint and still render.
+ *
+ * Honesty gates (dogfood 2026-07-19 caught the completion banner lying through the whole
+ * lifecycle — shown 2s after goal submit, kept during the run, kept after acceptance):
+ *  1. While the session's job is actively running, only mid-run interrupts (decision cards /
+ *     permission requests) are actionable — never review/accept affordances. Mainstream agents
+ *     (Claude Code, Cursor) never offer "mark done" while working; the live activity stream owns
+ *     that surface.
+ *  2. Workspace-level `overview.workflow.can_review/can_accept` comes from `asteria status` on the
+ *     workspace's LATEST run — which can belong to a different session (the t=2s lie: a brand-new
+ *     goal showed the previous run's "changes applied" banner). Without this session's own run
+ *     evidence (`runDetail.ok`), those flags are not trusted.
+ *  3. Once this session's run is accepted, the workflow is terminal — the final narration and the
+ *     diffs remain in the thread, and no accept affordance is re-offered.
  */
 export function runtimeSnapshotActionable(
   overview: OverviewPayload | null,
   runDetail: RunDetailPayload | null,
   events: StudioEvent[],
+  isRunning = false,
 ): boolean {
-  const workflow = asRecord(overview?.workflow);
-  const canReview = Boolean(workflow.can_review);
-  const canAccept = Boolean(workflow.can_accept);
-  const progress = runtimeProgress(runDetail);
-  if (!Object.keys(progress).length && !runDetail?.ok && !canReview && !canAccept) return false;
   const activeEvent = latestActiveEvent(events);
-  const loop = asRecord(progress.loop);
   const decisions = (runDetail?.decision_requests ?? []) as AnyRecord[];
-  const mainAction = asRecord(runDetail?.main_action);
-  const nextActionValue = firstText(
-    String(mainAction.next_command ?? ""),
-    String(progress.next_command ?? ""),
-  );
   const pendingPermission = Boolean(
     activeEvent?.type === "permission_request" &&
     activeEvent.status === "waiting_user" &&
     activeEvent.job_id,
   );
+  // Mid-run interrupts surface regardless of the gates below.
+  if (decisions.length || pendingPermission) return true;
+  // Gate 1: a running job owns the surface — no next-step bar.
+  if (isRunning) return false;
+  // Gate 2: no session-scoped run evidence → never trust workspace-level flags.
+  if (!runDetail?.ok) return false;
+  // Gate 3: accepted is terminal.
+  if (sessionWorkflowState(runDetail) === "accepted") return false;
+
+  const workflow = asRecord(overview?.workflow);
+  const canReview = Boolean(workflow.can_review);
+  const canAccept = Boolean(workflow.can_accept);
+  const progress = runtimeProgress(runDetail);
+  if (!Object.keys(progress).length && !canReview && !canAccept) return false;
+  const loop = asRecord(progress.loop);
+  const mainAction = asRecord(runDetail?.main_action);
+  const nextActionValue = firstText(
+    String(mainAction.next_command ?? ""),
+    String(progress.next_command ?? ""),
+  );
   if (
-    !decisions.length &&
-    !pendingPermission &&
     !nextActionValue &&
     !noteworthyExitReason(loop.exit_reason) &&
     !canReview &&
@@ -215,6 +249,7 @@ export function RuntimeSnapshot({
   runDetail,
   workspaceChangeCount = 0,
   events,
+  isRunning = false,
   onRuntimeAction,
   onOpenReview,
   onResolveDecision,
@@ -224,6 +259,7 @@ export function RuntimeSnapshot({
   runDetail: RunDetailPayload | null;
   workspaceChangeCount?: number;
   events: StudioEvent[];
+  isRunning?: boolean;
   onRuntimeAction: (nextAction: string) => Promise<void>;
   onOpenReview: () => Promise<void>;
   onResolveDecision: (runId: string, decisionId: string, optionId: string) => Promise<void>;
@@ -234,11 +270,15 @@ export function RuntimeSnapshot({
   // resolved inline via the permission/decision cards, not a pre-accept approval wall. So the diff
   // button below just opens the read-only diff (optional); it never disables Mark done.
   const [busy, setBusy] = useState(false);
-  if (!runtimeSnapshotActionable(overview, runDetail, events)) return null;
+  if (!runtimeSnapshotActionable(overview, runDetail, events, isRunning)) return null;
 
+  // Mirror the actionable() honesty gates for the affordance branches: while running (a decision or
+  // permission card is why we're rendered) or without session-scoped run evidence, the workspace-level
+  // review/accept flags must not paint completion chrome (see gates 1–3 on runtimeSnapshotActionable).
+  const trustWorkflowFlags = !isRunning && Boolean(runDetail?.ok);
   const workflow = asRecord(overview?.workflow);
-  const canReview = Boolean(workflow.can_review);
-  const canAccept = Boolean(workflow.can_accept);
+  const canReview = trustWorkflowFlags && Boolean(workflow.can_review);
+  const canAccept = trustWorkflowFlags && Boolean(workflow.can_accept);
   const progress = runtimeProgress(runDetail);
   const activeEvent = latestActiveEvent(events);
   const loop = asRecord(progress.loop);
@@ -261,7 +301,8 @@ export function RuntimeSnapshot({
   const nextLabel = nextActionValue
     ? firstText(actionLabel(nextActionValue), String(mainAction.label ?? ""))
     : "";
-  const acceptReady = canAccept || /^(?:asteria\s+)?accept\b/i.test(nextActionValue);
+  const acceptReady =
+    (canAccept || /^(?:asteria\s+)?accept\b/i.test(nextActionValue)) && !isRunning;
   const nextStep =
     runtimeNextStepSummary({
       decisions,

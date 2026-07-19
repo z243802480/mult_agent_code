@@ -226,6 +226,7 @@ export function Thread({
     overview ?? null,
     runDetail ?? null,
     events,
+    isRunning,
   );
 
   // Track whether the viewport is pinned to the live edge, so we (a) never yank a user who scrolled
@@ -440,6 +441,7 @@ export function Thread({
         runDetail={runDetail ?? null}
         workspaceChangeCount={workspaceChangeCount}
         events={events}
+        isRunning={isRunning}
         onRuntimeAction={onRuntimeAction}
         onOpenReview={onOpenReview}
         onResolveDecision={onResolveDecision}

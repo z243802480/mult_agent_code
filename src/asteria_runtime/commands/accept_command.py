@@ -355,12 +355,29 @@ class AcceptCommand:
                 "blockers": blockers,
             },
         )
+        # The conclusion event is the LAST thing the user sees on the main thread after accepting —
+        # it must speak the user's language, not engine bookkeeping. run["summary"] and next_actions
+        # stay English on purpose (CLI/AcceptResult/final-report are operator surfaces and tests pin
+        # them); only this user_progress payload is localized. Dogfood 2026-07-19 caught the English
+        # "Use the final report as the durable handoff artifact." replacing the model's Chinese
+        # completion narration as the final ASTERIA bubble.
+        if accepted:
+            conclusion_summary = "已验收——评审通过，改动全部落定。"
+            conclusion_lines = ["任务已验收完成，最终报告已写入，可作为交付记录。"]
+            if slice_completion_eval:
+                conclusion_lines.append(
+                    str(slice_completion_eval.get("summary") or "").strip()
+                    or "本 slice 完成判定已记录。"
+                )
+        else:
+            conclusion_summary = "验收受阻——仍有评审或候选改动问题待处理。"
+            conclusion_lines = ["请先处理上面的阻塞项，再重新标记完成。"]
         progress.conclusion(
             run_id=run_id,
             phase="result" if accepted else "blocked",
             title="验收完成" if accepted else "验收受阻",
-            summary=run["summary"],
-            content_delta="\n".join(next_actions),
+            summary=conclusion_summary,
+            content_delta="\n".join(line for line in conclusion_lines if line),
             artifact_refs=[str(final_report_path), str(final_report_summary_path)],
         )
 
