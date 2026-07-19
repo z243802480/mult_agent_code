@@ -16,6 +16,103 @@ export function createGitHelpers({ getWorkspace, runCommand }) {
     return runCommand(["git", ...args], getWorkspace(), envOverrides);
   }
 
+  // ── Non-git workspaces: shadow-repository fallback (F9, dogfood 2026-07-19) ──────────────
+  // The Changes pane used to be a dead end for a workspace that was never `git init`-ed ("run
+  // git init first" — while the banner above simultaneously said "review the diff"). Mainstream
+  // agents show the agent's changes without requiring the user's directory to be a repo, so:
+  // a shadow repository whose GIT_DIR lives under `.asteria/studio-shadow.git` (runtime state)
+  // with `--work-tree` pointed at the workspace. The user's directory gains NO `.git` — we do
+  // not init repos in the user's tree uninvited. The comparison baseline is a shadow commit
+  // taken at each fresh writing run's start (server hook), so "changes" = what the latest run
+  // changed — exactly what the review pane is for. Real repos never enter this path.
+  //
+  // Safety: the shadow snapshot must never capture secrets — `info/exclude` carries the
+  // protected-path list (AGENTS §10) plus `.asteria/` itself (the shadow repo lives there;
+  // snapshotting it into itself would recurse).
+  const SHADOW_EXCLUDES = [
+    ".asteria/",
+    ".env",
+    ".env.*",
+    "secrets/",
+    "*.pem",
+    "*.key",
+    "id_rsa*",
+    "id_ed25519*",
+  ];
+  // Commit identity pinned so shadow commits work on machines with no global git identity.
+  const SHADOW_IDENTITY = {
+    GIT_AUTHOR_NAME: "Asteria Studio",
+    GIT_AUTHOR_EMAIL: "studio@asteria.local",
+    GIT_COMMITTER_NAME: "Asteria Studio",
+    GIT_COMMITTER_EMAIL: "studio@asteria.local",
+  };
+
+  function hasRealRepo() {
+    return existsSync(path.join(getWorkspace(), ".git"));
+  }
+
+  function shadowGitDir() {
+    return path.join(getWorkspace(), ".asteria", "studio-shadow.git");
+  }
+
+  function runShadowGit(args, envOverrides = {}) {
+    const workspace = getWorkspace();
+    return runCommand(
+      ["git", "--git-dir", shadowGitDir(), "--work-tree", workspace, ...args],
+      workspace,
+      { ...SHADOW_IDENTITY, ...envOverrides },
+    );
+  }
+
+  /**
+   * Ensure the shadow repo exists and advance its baseline to the CURRENT workspace state.
+   * Called by the server at each fresh writing run's start; also lazily on first pane open
+   * (then the pane honestly shows "no changes yet" until something runs). Best-effort by
+   * contract — a failure falls back to the pane's unavailable message, never blocks a run.
+   */
+  async function ensureShadowBaseline(label = "baseline") {
+    if (hasRealRepo()) return { ok: true, skipped: "real repo" };
+    const gitDir = shadowGitDir();
+    if (!existsSync(gitDir)) {
+      await fs.mkdir(gitDir, { recursive: true });
+      const inited = await runCommand(["git", "init", "--bare", gitDir], getWorkspace());
+      if (inited.code !== 0)
+        return { ok: false, reason: redactText(inited.stderr || "git init failed") };
+      // A bare git-dir refuses worktree operations; flip the flag since we always pass
+      // --work-tree explicitly.
+      await runShadowGit(["config", "core.bare", "false"]);
+      // Byte-exact snapshots: autocrlf would rewrite line endings on checkout (Windows), leaving
+      // phantom "modified" entries after a revert restores a file. The shadow repo is ours, not a
+      // collaboration surface — no eol munging.
+      await runShadowGit(["config", "core.autocrlf", "false"]);
+      await fs.mkdir(path.join(gitDir, "info"), { recursive: true }).catch(() => {});
+      await fs.writeFile(
+        path.join(gitDir, "info", "exclude"),
+        `${SHADOW_EXCLUDES.join("\n")}\n`,
+        "utf8",
+      );
+    }
+    const added = await runShadowGit(["add", "-A", "--", "."]);
+    if (added.code !== 0)
+      return { ok: false, reason: redactText(added.stderr || "git add failed") };
+    const committed = await runShadowGit([
+      "commit",
+      "--allow-empty",
+      "-q",
+      "-m",
+      `asteria shadow baseline (${label})`,
+    ]);
+    if (committed.code !== 0)
+      return { ok: false, reason: redactText(committed.stderr || "git commit failed") };
+    return { ok: true };
+  }
+
+  /** Lazily ensure the shadow repo exists WITHOUT advancing an existing baseline. */
+  async function ensureShadowReady() {
+    if (existsSync(shadowGitDir())) return { ok: true };
+    return ensureShadowBaseline("first-open");
+  }
+
   function gitChangeLabel(indexStatus, worktreeStatus) {
     const code = `${indexStatus}${worktreeStatus}`;
     if (code.includes("?")) return "untracked";
@@ -55,7 +152,41 @@ export function createGitHelpers({ getWorkspace, runCommand }) {
   async function readWorkspaceGitStatus() {
     const workspace = getWorkspace();
     if (!existsSync(path.join(workspace, ".git"))) {
-      return { ok: true, available: false, workspace, reason: "not a git repository" };
+      // Shadow fallback: diff against the last pre-run baseline instead of a dead end.
+      const ready = await ensureShadowReady();
+      if (!ready.ok) {
+        return {
+          ok: true,
+          available: false,
+          workspace,
+          reason: ready.reason || "shadow init failed",
+        };
+      }
+      const statusResult = await runShadowGit(["status", "--porcelain", "-u"]);
+      if (statusResult.code !== 0) {
+        return {
+          ok: true,
+          available: false,
+          workspace,
+          reason: redactText(statusResult.stderr || "git status failed"),
+        };
+      }
+      const changes = parseGitPorcelain(statusResult.stdout);
+      const summary = changes.reduce((acc, item) => {
+        acc[item.status] = (acc[item.status] || 0) + 1;
+        return acc;
+      }, {});
+      return {
+        ok: true,
+        available: true,
+        workspace,
+        mode: "shadow",
+        branch: "",
+        clean: changes.length === 0,
+        change_count: changes.length,
+        summary,
+        changes,
+      };
     }
     const branchResult = await runGit(["branch", "--show-current"]);
     if (branchResult.code !== 0) {
@@ -100,7 +231,30 @@ export function createGitHelpers({ getWorkspace, runCommand }) {
     if (!normalized) return { ok: false, error: "path is required" };
     if (!isSafeWorkspacePath(normalized)) return { ok: false, error: "path is not allowed" };
     if (!existsSync(path.join(workspace, ".git"))) {
-      return { ok: false, error: "not a git repository" };
+      // Shadow fallback: worktree vs. the pre-run baseline. No staged/unstaged split — the
+      // shadow index is ours, not a user staging area.
+      const ready = await ensureShadowReady();
+      if (!ready.ok) return { ok: false, error: ready.reason || "shadow init failed" };
+      // Agent-CREATED files are untracked in the shadow — record intent-to-add so git renders
+      // the full new-file diff instead of nothing.
+      const tracked = await runShadowGit(["ls-files", "--error-unmatch", "--", normalized]);
+      if (tracked.code !== 0) await runShadowGit(["add", "--intent-to-add", "--", normalized]);
+      const result = await runShadowGit(["diff", "--no-color", "HEAD", "--", normalized]);
+      if (result.code !== 0)
+        return { ok: false, error: redactText(result.stderr || "git diff failed") };
+      const shadowDiff = redactText(String(result.stdout || ""));
+      return {
+        ok: true,
+        path: normalized,
+        stage,
+        mode: "shadow",
+        diff: shadowDiff.slice(0, 120_000) || "(no diff — file may be binary or unchanged)",
+        staged: "",
+        unstaged: shadowDiff,
+        has_staged: false,
+        has_unstaged: Boolean(shadowDiff.trim()),
+        truncated: shadowDiff.length > 120_000,
+      };
     }
     const stagedResult = await runGit(["diff", "--cached", "--no-color", "--", normalized]);
     const unstagedResult = await runGit(["diff", "--no-color", "--", normalized]);
@@ -144,8 +298,24 @@ export function createGitHelpers({ getWorkspace, runCommand }) {
       .trim();
     if (!normalized) return { ok: false, error: "path is required" };
     if (!isSafeWorkspacePath(normalized)) return { ok: false, error: "path is not allowed" };
-    if (!existsSync(path.join(workspace, ".git")))
-      return { ok: false, error: "not a git repository" };
+    if (!existsSync(path.join(workspace, ".git"))) {
+      // Shadow: "keep this file" = fold it into the baseline (add + commit), so it drops out
+      // of the Changes list — the closest analog of staging when there is no user repo.
+      const ready = await ensureShadowReady();
+      if (!ready.ok) return { ok: false, error: ready.reason || "shadow init failed" };
+      const added = await runShadowGit(["add", "--", normalized]);
+      if (added.code !== 0)
+        return { ok: false, error: redactText(added.stderr || "git add failed") };
+      const committed = await runShadowGit([
+        "commit",
+        "-q",
+        "-m",
+        `asteria shadow accept (${normalized})`,
+      ]);
+      if (committed.code !== 0)
+        return { ok: false, error: redactText(committed.stderr || "git commit failed") };
+      return { ok: true, path: normalized, action: "staged", mode: "shadow" };
+    }
     const result = await runGit(["add", "--", normalized]);
     if (result.code !== 0)
       return { ok: false, error: redactText(result.stderr || "git add failed") };
@@ -159,13 +329,23 @@ export function createGitHelpers({ getWorkspace, runCommand }) {
       .trim();
     if (!normalized) return { ok: false, error: "path is required" };
     if (!isSafeWorkspacePath(normalized)) return { ok: false, error: "path is not allowed" };
-    if (!existsSync(path.join(workspace, ".git")))
-      return { ok: false, error: "not a git repository" };
+    // Shadow: identical revert semantics against the pre-run baseline (checkout restores the
+    // baseline content; an agent-created file is untracked there too and gets removed).
+    const shadowMode = !existsSync(path.join(workspace, ".git"));
+    if (shadowMode) {
+      const ready = await ensureShadowReady();
+      if (!ready.ok) return { ok: false, error: ready.reason || "shadow init failed" };
+    }
+    const run = shadowMode ? runShadowGit : runGit;
+    // Shadow: a prior diff call may have recorded intent-to-add for this file, which makes
+    // `ls-files --error-unmatch` succeed and would route a created file into the checkout
+    // branch (which errors on ita entries). Reset the index entry to match the baseline first.
+    if (shadowMode) await run(["reset", "-q", "--", normalized]);
     // Untracked files (the COMMON case: a file the agent just CREATED) cannot be reverted with
     // `git checkout` — it errors "pathspec did not match". `git status -u` still lists them, so the
     // thread shows a Revert button for them. For an untracked file, "revert" means remove the
     // newly-created file from disk; tracked files revert to their last committed content.
-    const tracked = await runGit(["ls-files", "--error-unmatch", "--", normalized]);
+    const tracked = await run(["ls-files", "--error-unmatch", "--", normalized]);
     if (tracked.code !== 0) {
       const absolute = path.join(workspace, normalized);
       try {
@@ -175,7 +355,7 @@ export function createGitHelpers({ getWorkspace, runCommand }) {
       }
       return { ok: true, path: normalized, action: "removed" };
     }
-    const result = await runGit(["checkout", "--", normalized]);
+    const result = await run(["checkout", "--", normalized]);
     if (result.code !== 0)
       return { ok: false, error: redactText(result.stderr || "git checkout failed") };
     return { ok: true, path: normalized, action: "discarded" };
@@ -326,5 +506,6 @@ export function createGitHelpers({ getWorkspace, runCommand }) {
     createWorkspaceSnapshot,
     workspaceSnapshotDiff,
     restoreWorkspaceSnapshot,
+    ensureShadowBaseline,
   };
 }

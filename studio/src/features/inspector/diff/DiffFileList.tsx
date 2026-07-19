@@ -47,13 +47,20 @@ export function DiffFileList({
   }
 
   return (
-    <ScopeChangeList
-      gitStatus={gitStatus}
-      activeScope={activeScope}
-      selectedPath={selectedPath}
-      onSelectChange={onSelectChange}
-      findingCounts={findingCounts}
-    />
+    <>
+      {gitStatus.mode === "shadow" && (
+        <p className="muted" role="note">
+          非 Git 工作区——显示的是相对最近一次运行开始时的改动。
+        </p>
+      )}
+      <ScopeChangeList
+        gitStatus={gitStatus}
+        activeScope={activeScope}
+        selectedPath={selectedPath}
+        onSelectChange={onSelectChange}
+        findingCounts={findingCounts}
+      />
+    </>
   );
 }
 

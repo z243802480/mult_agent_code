@@ -33,7 +33,7 @@ import { parseSessionText, writeSessionJson } from "./lib/session-store.mjs";
 import { renderSessionReplayHtml } from "./lib/session-replay.mjs";
 import { eventsAfter, parseSince } from "./lib/event-cursor.mjs";
 import { createJobRegistry } from "./lib/jobs.mjs";
-import { blockedEvent, blockingJob } from "./lib/run-conflict.mjs";
+import { blockedEvent, blockingJob, mutatesWorkspace } from "./lib/run-conflict.mjs";
 import { createRunDetailReader } from "./lib/run-detail-reader.mjs";
 import { createChatAnswer } from "./lib/chat-answer.mjs";
 import { createChatRoutes } from "./lib/chat-routes.mjs";
@@ -71,6 +71,7 @@ const {
   createWorkspaceSnapshot,
   workspaceSnapshotDiff,
   restoreWorkspaceSnapshot,
+  ensureShadowBaseline,
 } = createGitHelpers({ getWorkspace: () => workspace, runCommand });
 // PREVIEW-3: opt-in reverse proxy to a running dev server (Vite/Next/CRA/etc.) so SPA/framework apps
 // — which need a bundler, not static files — can be previewed. OPT-IN only (an explicit target),
@@ -1159,6 +1160,20 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options 
     follow_up_mode: options.followUpMode || null,
   };
   liveJobs.set(jobId, job);
+
+  // F9 (dogfood 2026-07-19): for a NON-git workspace, advance the shadow-diff baseline at each
+  // fresh writing run's start so the Changes pane can show "what THIS run changed". Fire-and-forget
+  // on purpose — this function must stay synchronous through the cross-run guard above, and the
+  // baseline is a best-effort UX aid, never a gate. Race window (run writes before the snapshot
+  // finishes) is covered by the run's planning phase: the doer's first file write is seconds away,
+  // the snapshot of a small non-git workspace is sub-second; a real repo returns immediately.
+  // Freshness is the CALLER's explicit claim (`options.freshRun`), NOT inferred from
+  // `!commandOverride` — every caller passes a command (see the warm-worker lesson below, 1.2.103:
+  // that inference was never once true). Continuations (continue/resume/follow-up/decide) make no
+  // claim, so the run's original baseline survives and the pane stays cumulative across them.
+  if (options.freshRun && mutatesWorkspace(mode)) {
+    void ensureShadowBaseline(`pre-run ${mode}`).catch(() => {});
+  }
 
   void appendEvent(sessionId, {
     type: "tool_start",

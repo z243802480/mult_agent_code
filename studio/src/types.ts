@@ -178,6 +178,9 @@ export type GitStatusPayload = {
   summary?: Record<string, number>;
   changes?: GitChangeEntry[];
   reason?: string;
+  /** "shadow" when the workspace is not a git repo and changes are diffed against the
+   *  studio-managed pre-run baseline (.asteria/studio-shadow.git). Absent for real repos. */
+  mode?: "shadow";
 };
 
 export type GitDiffPayload = {

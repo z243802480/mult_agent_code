@@ -293,7 +293,12 @@ export function createChatRoutes({
     // `started` must report what actually happened: the cross-run guard can refuse to start this
     // one (another run is already writing the shared workspace). It has already put the reason on
     // the thread, so there is nothing to add here beyond not claiming we started.
-    const outcome = startRuntimeJob(activeSessionId, mode, goal, command, { warmParams });
+    // freshRun: this is the composer's new-goal entry — the shadow-diff baseline (non-git
+    // workspaces) advances here so the Changes pane shows what THIS run changes.
+    const outcome = startRuntimeJob(activeSessionId, mode, goal, command, {
+      warmParams,
+      freshRun: true,
+    });
     return {
       ok: true,
       session: { ...session, session_id: activeSessionId },
@@ -872,8 +877,11 @@ export function createChatRoutes({
         display_level: "main",
         resolved_job_id: jobId,
       });
+      // freshRun: the approved pending job is the same new-goal entry, deferred by the
+      // permission card — same baseline semantics as the direct path.
       const outcome = startRuntimeJob(sessionId, pending.mode, pending.goal, pending.command, {
         warmParams: pending.warmParams,
+        freshRun: true,
       });
       return { ok: true, started: outcome.started };
     }
