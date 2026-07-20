@@ -11,6 +11,7 @@ from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.run_config import load_run_config
 from asteria_runtime.core.orchestration_spawn_policy import catalog_selection_guidance
 from asteria_runtime.core.session_continuation import assess_session_continuation
+from asteria_runtime.core.workspace_writer_lock import writer_process_alive
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -37,6 +38,10 @@ class WorkspaceOrchestrationState:
     active_goal_memory_present: bool = False
     can_review: bool = False
     can_accept: bool = False
+    # Whether a process is still holding the workspace's writer lock. Defaults True so a state
+    # built by hand (tests, callers that never probed) keeps the pre-existing conservative
+    # behaviour: a run whose record says "running" is believed.
+    writer_process_alive: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -170,6 +175,7 @@ def load_workspace_orchestration_state(root: Path, *, validator: SchemaValidator
         dynamic_workflows_gray=dynamic_gray,
         session_continue_eligible=continuation is not None,
         active_goal_memory_present=bool(memory),
+        writer_process_alive=writer_process_alive(root),
         can_review=can_review,
         can_accept=can_accept,
     )
@@ -223,12 +229,23 @@ def _base_capabilities(state: WorkspaceOrchestrationState) -> list[Orchestration
     # cold_goal_execute / session_continue_execute available (both start a fresh run) and removes
     # resume_run (there is nothing to resume — the loop already finished). Genuinely running / blocked
     # / paused runs (not awaiting review) still count as in_progress and remain resumable.
+    #
+    # The same swallowing happens for a second reason, found by the Round 2 dogfood (R2-12): a run
+    # record can say "running" while its process is long gone. RunStateFinalizer's "more work
+    # remains" branch writes status="running" with no ended_at — true while the autonomous loop is
+    # still going, and never revised if the loop stops in a way the run cannot record (user Stop
+    # tree-kills it, crash, reboot). The workspace then looks busy forever and every later goal gets
+    # routed to resume_run, which replays the stale run and answers as if the NEW goal were done.
+    # So a run only counts as in progress if somebody is still holding the writer lock — the OS drops
+    # that lock when the process dies, which is evidence rather than a timeout guess. This only
+    # relaxes ROUTING; two writers are still kept apart by workspace_writer_lock itself.
     awaiting_human_review = bool(state.can_review or state.can_accept)
     in_progress = bool(
         state.current_run_id
         and state.current_phase not in CONTINUABLE_PHASES
         and (state.run_status or "") in IN_PROGRESS_STATUSES
         and not awaiting_human_review
+        and state.writer_process_alive
     )
     cold_workspace = not state.current_run_id or (
         not in_progress and not state.session_continue_eligible

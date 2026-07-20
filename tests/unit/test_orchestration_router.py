@@ -106,6 +106,24 @@ def test_ready_for_review_run_opens_new_cold_goal_not_resume(tmp_path: Path) -> 
     assert live_catalog.get("cold_goal_execute").available is False
     assert live_catalog.get("resume_run").available is True
 
+    # R2-12: the same swallowing, reached the other way — the record still says "running" but the
+    # process that wrote it is gone (user Stop tree-killed it; RunStateFinalizer's "more work
+    # remains" branch never gets to revise the record). Without liveness this workspace looks busy
+    # forever and every later goal is replayed against the dead run.
+    zombie = WorkspaceOrchestrationState(
+        initialized=True,
+        current_run_id="run-zombie",
+        run_status="running",
+        current_phase="EXECUTE",
+        workflow_state="executing",
+        session_continue_eligible=False,
+        can_review=False,
+        writer_process_alive=False,
+    )
+    zombie_catalog = build_runtime_orchestration_catalog(tmp_path, validator=validator, state=zombie)
+    assert zombie_catalog.get("cold_goal_execute").available is True
+    assert zombie_catalog.get("resume_run").available is False
+
 
 class FakeOrchestrationRouterClient:
     def chat(self, request: ChatRequest) -> ChatResponse:

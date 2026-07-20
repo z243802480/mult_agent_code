@@ -126,3 +126,34 @@ def test_lock_file_lives_under_asteria(tmp_path: Path) -> None:
         assert holder["pid"] == os.getpid()
     # holder metadata is cleaned up on release; the lock file itself may remain
     assert not (tmp_path / ".asteria" / "locks" / "writer.holder.json").exists()
+
+
+def test_writer_process_alive_reports_no_holder_for_a_dead_run(tmp_path: Path) -> None:
+    # The probe is what tells a stale "status: running" record from a live run. Nothing holds the
+    # lock here, so the answer must be "gone" — even though the lock file itself exists.
+    from asteria_runtime.core.workspace_writer_lock import (
+        workspace_writer_lock,
+        writer_process_alive,
+    )
+
+    assert writer_process_alive(tmp_path) is False  # no lock file yet
+
+    with workspace_writer_lock(tmp_path, command="execute", goal="x"):
+        assert writer_process_alive(tmp_path) is True
+
+    # Lock released (and the file is left behind) — the holder is gone and the probe must say so.
+    assert writer_process_alive(tmp_path) is False
+
+
+def test_writer_process_alive_probe_does_not_keep_others_out(tmp_path: Path) -> None:
+    from asteria_runtime.core.workspace_writer_lock import (
+        workspace_writer_lock,
+        writer_process_alive,
+    )
+
+    with workspace_writer_lock(tmp_path, command="execute", goal="x"):
+        pass
+    writer_process_alive(tmp_path)
+    # A probe that forgot to release would make this raise WorkspaceBusyError.
+    with workspace_writer_lock(tmp_path, command="execute", goal="y"):
+        pass

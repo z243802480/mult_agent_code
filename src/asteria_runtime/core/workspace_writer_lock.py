@@ -129,6 +129,44 @@ def _busy_message(holder_path: Path) -> str:
     )
 
 
+def writer_process_alive(root: Path) -> bool:
+    """Whether some process is currently holding this workspace's writer lock.
+
+    Read-only probe: takes the lock non-blockingly and drops it again immediately, so it never
+    keeps anyone out. Answers the one question a persisted run record cannot — is the process
+    that wrote "status: running" still there?
+
+    This matters because run.json is only revised by the run itself. RunStateFinalizer's
+    "more work remains" branch writes status="running" with no ended_at, which is true while the
+    autonomous loop keeps going and becomes a permanent lie the moment the loop stops for any
+    reason the run cannot record (user Stop tree-kills it, the process dies, the machine reboots).
+    A stale "running" then makes the whole workspace look busy forever — which swallowed every
+    later goal (Round 2 dogfood R2-12).
+
+    The OS releases this lock when the holding process dies, so "nobody holds it" is real evidence
+    of death rather than a timeout guess. Used only to relax ROUTING; it is never the thing that
+    keeps two writers apart — workspace_writer_lock itself does that, and still does.
+    """
+    lock_path, _ = _lock_paths(Path(root))
+    key = str(lock_path)
+    with _REGISTRY_GUARD:
+        if key in _REGISTRY:
+            return True  # this process holds it
+    if not lock_path.exists():
+        return False
+    try:
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
+    except OSError:
+        return True  # cannot tell — assume alive, the conservative direction for routing
+    try:
+        if not _try_lock(fd):
+            return True
+        _unlock(fd)
+        return False
+    finally:
+        os.close(fd)
+
+
 @contextmanager
 def workspace_writer_lock(root: Path, *, command: str, goal: str | None = None) -> Iterator[None]:
     """Hold the workspace's single-writer lock for the duration of the block.
