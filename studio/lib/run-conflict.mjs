@@ -56,6 +56,36 @@ export function blockingJob(jobs, mode) {
   return null;
 }
 
+/**
+ * Modes that re-enter existing work instead of carrying the message the user just typed.
+ *
+ * Listed rather than inferred: every other mode either runs the goal (run/plan) or answers it
+ * (chat). These three replay something older, so a message routed here is never executed.
+ */
+const GOAL_DROPPING_MODES = new Set(["resume", "accept", "review"]);
+
+/**
+ * Whether the user must be told that their message was not the thing that just started.
+ *
+ * The sibling of blockingJob(): there the turn does not start and we say so. Here a turn DOES
+ * start — someone else's. The router picks resume/accept/review when every executor path is
+ * blocked, drops the typed goal, and the older work's output lands in the thread looking like the
+ * answer to what was just asked. That is how "add an export subcommand" came back as "我已在
+ * taskman.py 中添加了 export 子命令…验证已通过（4/4 checks passed）" with nothing written anywhere
+ * (Round 2 dogfood R2-12) — the router even explained itself, at display_level "inspector".
+ *
+ * Only for routes the user did not pick: choosing 继续/resume yourself is not a surprise.
+ */
+export function droppedGoalNotice(mode, requestedMode) {
+  if (!GOAL_DROPPING_MODES.has(String(mode || "").toLowerCase())) return null;
+  if (String(requestedMode || "auto").toLowerCase() !== "auto") return null;
+  return {
+    title: "这条目标没有单独开始",
+    summary:
+      "这个工作区还有一个在跑的任务，所以你刚发的这条没有单独起一个新任务——下面的进展和结论属于那个任务，不是你刚发的这条。等它跑完（或先把它停掉）再发一次，就会单独执行。",
+  };
+}
+
 /** Longest blocker goal echoed back; past this it stops identifying a task and starts being a wall. */
 const GOAL_ECHO_LIMIT = 60;
 

@@ -1,7 +1,13 @@
 // Cross-run guard (S87). Pure functions, so the routing table is testable without a server.
 // Binds no port.
 import assert from "node:assert/strict";
-import { READ_ONLY_MODES, blockedNotice, blockingJob, mutatesWorkspace } from "../lib/run-conflict.mjs";
+import {
+  READ_ONLY_MODES,
+  blockedNotice,
+  blockingJob,
+  droppedGoalNotice,
+  mutatesWorkspace,
+} from "../lib/run-conflict.mjs";
 
 let passed = 0;
 function check(name, fn) {
@@ -100,6 +106,32 @@ check("the notice says the files were not touched, and does not claim a breakage
 check("the notice tells the user what to do next", () => {
   const notice = blockedNotice(running("run", { goal: "x" }));
   assert.ok(notice.body.includes("等它跑完") && notice.body.includes("停掉"));
+});
+
+// R2-12: a turn that DID start, but as someone else's. The router falls back to resume/accept/
+// review when no executor path is free, drops the typed goal, and the older work's output reads as
+// the answer to what was just asked. The user has to be told whose output they are looking at.
+check("an auto-routed resume discloses that the typed goal did not start", () => {
+  const notice = droppedGoalNotice("resume", "auto");
+  assert.ok(notice);
+  assert.ok(notice.title.includes("没有单独开始"));
+  assert.ok(notice.summary.includes("属于那个任务"));
+  assert.ok(notice.summary.includes("再发一次"));
+});
+check("accept and review drop the goal the same way", () => {
+  assert.ok(droppedGoalNotice("accept", "auto"));
+  assert.ok(droppedGoalNotice("review", "auto"));
+});
+// Choosing the mode yourself is not a surprise - a notice there would be noise, and noise is how a
+// real disclosure stops being read.
+check("no notice when the user picked that mode themselves", () => {
+  assert.equal(droppedGoalNotice("resume", "resume"), null);
+  assert.equal(droppedGoalNotice("review", "review"), null);
+});
+check("modes that carry the goal never fire the notice", () => {
+  for (const mode of ["run", "plan", "chat"]) {
+    assert.equal(droppedGoalNotice(mode, "auto"), null);
+  }
 });
 
 console.log(`\n${passed} checks passed`);

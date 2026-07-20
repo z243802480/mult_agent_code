@@ -28,7 +28,7 @@ import {
   withModelStrategy,
   withPermissionLevel,
 } from "./run-flags.mjs";
-import { blockedEvent, blockingJob } from "./run-conflict.mjs";
+import { blockedEvent, blockingJob, droppedGoalNotice } from "./run-conflict.mjs";
 import { redact, redactText } from "./text-utils.mjs";
 import { readJsonlTail } from "./run-io.mjs";
 import { sanitizeAttachmentPaths } from "./attachments.mjs";
@@ -218,6 +218,36 @@ export function createChatRoutes({
       display_level: "inspector",
       intent_audit: audit,
     });
+
+    // The router may have routed this message into work that already exists, dropping the goal the
+    // user just typed. That has to be said on the MAIN thread — the router's own explanation is
+    // filed at display_level "inspector", where nobody reads it, which is how a brand-new goal came
+    // back reported as done (R2-12). See droppedGoalNotice for the full account.
+    //
+    // Emitted AFTER the user_message so the thread reads in order (the notice answers the message
+    // above it); emitting it earlier put the disclosure before the goal it was about, which read as
+    // if it had come out of nowhere — caught in a live run, not in the unit checks.
+    //
+    // Sent as prose (transcript_kind "assistant_message" → narrative kind "narration"), NOT as an
+    // intent_route event: intent_route maps to kind "thinking", and ConversationTurn drops every
+    // thinking step from the process list, so a disclosure filed there is invisible — which is the
+    // exact failure being fixed. blockedEvent rides the "error" channel for the same reason; that
+    // channel is wrong here because nothing failed and a turn really did start, just not the user's.
+    const dropped = droppedGoalNotice(mode, requestedMode);
+    if (dropped) {
+      await appendEvent(activeSessionId, {
+        type: "assistant_delta",
+        status: "completed",
+        title: dropped.title,
+        summary: dropped.summary,
+        content_delta: dropped.summary,
+        transcript_kind: "assistant_message",
+        phase: "route",
+        display_level: "main",
+        intent_route: route,
+        intent_audit: audit,
+      });
+    }
 
     // Ask the cross-run guard BEFORE announcing anything. progressEventForMode below says "正在开始"
     // optimistically — it fires ahead of the permission gate and the run alike — so a turn refused
