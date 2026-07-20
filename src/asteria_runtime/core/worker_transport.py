@@ -58,13 +58,25 @@ def tool_definitions_for(
             "type": "function",
             "function": {
                 "name": "write_file",
-                "description": "Write or overwrite a workspace file.",
+                "description": (
+                    "Write a workspace file. Use this to EDIT an existing file too: pass the full "
+                    "new content and it replaces the old content."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "path": {"type": "string"},
-                        "content": {"type": "string"},
-                        "overwrite": {"type": "boolean"},
+                        "content": {
+                            "type": "string",
+                            "description": "The complete new file content, not a patch or a fragment.",
+                        },
+                        "overwrite": {
+                            "type": "boolean",
+                            "description": (
+                                "Defaults to true. Set false only when you want the write to fail "
+                                "if the file already exists."
+                            ),
+                        },
                     },
                     "required": ["path", "content"],
                 },

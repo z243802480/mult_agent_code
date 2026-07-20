@@ -217,3 +217,20 @@ def test_native_tool_specs_from_surface_empty_when_none() -> None:
     assert native_tool_specs_from_surface({}) == []
     # surface with only local registry tools -> no native specs (no-op proof)
     assert native_tool_specs_from_surface({"tools": [{"name": "write_file"}]}) == []
+
+
+def test_write_file_spec_tells_the_model_it_is_the_edit_tool() -> None:
+    # Round 2 dogfood: the schema advertised a bare `overwrite: boolean` with no default and no hint
+    # that write_file is how you edit an existing file. The doer wrote (path, content), hit the
+    # create-only refusal, and replanned instead of retrying.
+    from asteria_runtime.core.worker_transport import tool_definitions_for
+
+    spec = next(
+        item
+        for item in tool_definitions_for(["write_file"])
+        if item["function"]["name"] == "write_file"
+    )
+    description = spec["function"]["description"]
+    assert "EDIT an existing file" in description
+    overwrite = spec["function"]["parameters"]["properties"]["overwrite"]
+    assert "Defaults to true" in overwrite["description"]

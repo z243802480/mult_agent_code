@@ -166,7 +166,7 @@ class ToolExecutionGateway:
                     ),
                     task_id=task["task_id"],
                     agent_id="CoderAgent",
-                    **self._tool_args(args),
+                    **self._tool_args(tool_name, args),
                 )
                 if self._accepts_diagnostic_failure(task, tool_name, result):
                     result.ok = True
@@ -478,9 +478,19 @@ class ToolExecutionGateway:
         text = f"{summary}\n{stderr}"
         return any(signal in text for signal in ["SyntaxError", "IndentationError"])
 
-    def _tool_args(self, args: dict) -> dict:
+    def _tool_args(self, tool_name: str, args: dict) -> dict:
         reserved = {"context", "task_id", "agent_id"}
-        return {key: value for key, value in args.items() if key not in reserved}
+        cleaned = {key: value for key, value in args.items() if key not in reserved}
+        # write_file 的模型面向默认改为覆盖（对标主流：Claude Code 的 Write 直接覆盖已存在文件）。
+        # WriteFileTool.run 的 Python 默认仍是 overwrite=False，保护内部「只创建」的调用方；这里只
+        # 改模型这条路。理由是 dogfood 实证：模型要改一个已存在的文件时会自然地调 write_file(path,
+        # content)，被 "File exists and overwrite is false" 硬拒 → 空转 → 反复重规划 → 0 任务完成。
+        # 而这个拒绝并没有真的保护什么：每次写入都过 FileBackupStore 备份，reviewed_auto 还整体隔离
+        # 在 candidate 工作区、要人 accept 才落到用户文件。工具自己的描述也早就写着 "Write or
+        # overwrite a workspace file" —— 契约在骗模型，这里让行为回到契约说的样子。
+        if tool_name == "write_file" and "overwrite" not in cleaned:
+            cleaned["overwrite"] = True
+        return cleaned
 
     def _progress_logger(self, context: RuntimeContext) -> UserProgressLogger | None:
         if context.run_dir is None:

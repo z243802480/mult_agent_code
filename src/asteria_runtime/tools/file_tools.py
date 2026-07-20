@@ -102,7 +102,12 @@ class WriteFileTool:
         if existed_before and not overwrite:
             return ToolResult(
                 ok=False,
-                summary=f"File exists and overwrite is false: {path}",
+                # 给模型可操作的出路，而不是一句死结论：dogfood 里模型撞上这条后不知道能重试，
+                # 转而走了重规划，整轮 0 任务完成。
+                summary=(
+                    f"File exists and overwrite is false: {path}. "
+                    f"To edit this file, call write_file again with overwrite=true."
+                ),
                 error="file_exists",
             )
         backup = FileBackupStore(context).backup_paths([resolved], "write_file")

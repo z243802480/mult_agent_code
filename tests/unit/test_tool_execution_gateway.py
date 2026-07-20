@@ -382,3 +382,89 @@ def test_tool_gateway_skill_observation_survives_next_round(tmp_path: Path) -> N
     reloaded = load_harness_observations(tmp_path)
     assert reloaded, "skill observation must reload across the round boundary"
     assert any("skill__" in str(item) for item in reloaded)
+
+
+class RecordingRegistry(FakeRegistry):
+    """Captures the kwargs the gateway actually forwards to the tool."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict]] = []
+
+    def call(self, tool_name: str, _context: RuntimeContext, **kwargs: object) -> object:
+        self.calls.append((tool_name, dict(kwargs)))
+        return super().call(tool_name, _context, **kwargs)
+
+
+def _recording_gateway(tmp_path: Path) -> tuple[ToolExecutionGateway, RuntimeContext, RecordingRegistry]:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    registry = RecordingRegistry()
+    context = RuntimeContext(
+        root=tmp_path,
+        run_id="run-1",
+        policy={"protected_paths": []},
+        validator=validator,
+        run_dir_override=tmp_path,
+    )
+    gateway = ToolExecutionGateway(registry, ToolPermissionPolicy(tmp_path, validator))
+    return gateway, context, registry
+
+
+def test_model_write_file_defaults_to_overwrite(tmp_path: Path) -> None:
+    # Round 2 dogfood: the doer called write_file(path, content) to EDIT an existing file, got
+    # "File exists and overwrite is false", never retried, and the whole run replanned itself to
+    # zero completed tasks. Editing an existing file is the single most common thing a coding agent
+    # does — mainstream (Claude Code's Write) just overwrites. Safety is unchanged: every write is
+    # backed up, and reviewed_auto still isolates writes to a candidate workspace behind accept.
+    gateway, context, registry = _recording_gateway(tmp_path)
+
+    gateway.run_tool_calls(
+        [{"tool_name": "write_file", "args": {"path": "taskman.py", "content": "print(1)"}}],
+        {
+            "task_id": "task-0001",
+            "allowed_tools": ["write_file"],
+            "parallel_safety": "serial",
+            "write_scope": ["taskman.py"],
+        },
+        context,
+    )
+
+    assert registry.calls, "the write must reach the registry"
+    _, kwargs = registry.calls[-1]
+    assert kwargs["overwrite"] is True
+
+
+def test_model_write_file_can_still_ask_for_create_only(tmp_path: Path) -> None:
+    # The default is a default, not a lock: an explicit overwrite=false is still honoured.
+    gateway, context, registry = _recording_gateway(tmp_path)
+
+    gateway.run_tool_calls(
+        [
+            {
+                "tool_name": "write_file",
+                "args": {"path": "new.py", "content": "x", "overwrite": False},
+            }
+        ],
+        {
+            "task_id": "task-0001",
+            "allowed_tools": ["write_file"],
+            "parallel_safety": "serial",
+            "write_scope": ["new.py"],
+        },
+        context,
+    )
+
+    _, kwargs = registry.calls[-1]
+    assert kwargs["overwrite"] is False
+
+
+def test_other_tools_do_not_get_an_overwrite_arg(tmp_path: Path) -> None:
+    gateway, context, registry = _recording_gateway(tmp_path)
+
+    gateway.run_tool_calls(
+        [{"tool_name": "read_file", "args": {"path": "taskman.py"}}],
+        {"task_id": "task-0001", "allowed_tools": ["read_file"]},
+        context,
+    )
+
+    _, kwargs = registry.calls[-1]
+    assert "overwrite" not in kwargs
