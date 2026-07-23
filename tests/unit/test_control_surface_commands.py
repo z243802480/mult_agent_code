@@ -1386,7 +1386,7 @@ def test_gate_status_closes_failed_validation_scenario_with_newer_targeted_rerun
                     {"scenario": "validation_small_cli"},
                     {"scenario": "validation_subagent_delegation"},
                     {"scenario": "validation_refactor"},
-                    {"scenario": "runtime_request_resume"},
+                    {"scenario": "runtime_independent_verification"},
                 ],
                 "scenarios": [
                     {"scenario": "validation_file_artifact", "ok": True},
@@ -1396,7 +1396,7 @@ def test_gate_status_closes_failed_validation_scenario_with_newer_targeted_rerun
                     {"scenario": "validation_small_cli", "ok": True},
                     {"scenario": "validation_subagent_delegation", "ok": True},
                     {"scenario": "validation_refactor", "ok": True},
-                    {"scenario": "runtime_request_resume", "ok": True},
+                    {"scenario": "runtime_independent_verification", "ok": True},
                 ],
                 "aggregate": {
                     "total": 8,
@@ -1519,10 +1519,10 @@ def test_gate_status_does_not_treat_validation_subset_as_full_suite(
             {
                 "ok": True,
                 "suite": "validation",
-                "requested_scenarios": ["validation_refactor", "runtime_request_resume"],
+                "requested_scenarios": ["validation_refactor", "runtime_independent_verification"],
                 "scenario_metadata": [
                     {"scenario": "validation_refactor"},
-                    {"scenario": "runtime_request_resume"},
+                    {"scenario": "runtime_independent_verification"},
                 ],
                 "validation_ready": True,
                 "aggregate": {

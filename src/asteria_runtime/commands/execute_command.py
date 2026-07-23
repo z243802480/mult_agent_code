@@ -1500,15 +1500,26 @@ class ExecuteCommand:
                 if _is_verification_observation(obs, allow_readback=allow_readback)
             ]
         )
-        # NB: we deliberately do NOT pass allow_verified_noop=True here. It was tempting for repair
+        # NB: allow_verified_noop defaults OFF here for the general case. It was tempting for repair
         # tasks (a real fix whose changed-files detection false-negatived), but real-stack validation
         # (ring_val_f) showed it opens a false-completion hole: a task can "close" by running ANY
         # passing command (not the acceptance test) with zero changed files. Blocking a no-op is the
         # safe, mainstream-aligned choice — completion requires a real changed artifact AND the real
         # verification passing. The changed-files detection gap is fixed at the source, not papered
         # over by trusting an arbitrary passing verification.
+        #
+        # The one narrow exception is `verified_noop_allowed` (set by replan_command._task_from_failure
+        # ONLY when the source task's sole violation was "required verification was not provided"):
+        # the artifact was written and never shown wrong, just never checked. A repair that reruns the
+        # SAME validation commands and gets them all green has finished, even with zero new writes —
+        # this does not reopen the ring_val_f gaming hole because it never fires for a task that failed
+        # verification or never wrote anything.
         contract = check_completion_contract(
-            task, changed_files, verification_results, unscoped_changed_files=unscoped_disk
+            task,
+            changed_files,
+            verification_results,
+            allow_verified_noop=bool(task.get("verified_noop_allowed")),
+            unscoped_changed_files=unscoped_disk,
         )
         tool_calls = len(observations)
         verification_calls = contract.verification_total

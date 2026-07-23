@@ -426,6 +426,14 @@ class ReplanCommand:
             "allow_expected_failure": False,
             "commands": [],
         }
+        # Narrow verified-noop carve-out: the source task's ONLY violation was skipping its own
+        # required verification — the artifact it wrote was never actually checked, not shown to be
+        # wrong. A repair that runs the SAME validation commands and gets them all green has done its
+        # job even if it touches no files (there was nothing left to fix). This does NOT reopen the
+        # general "any passing command counts" gaming hole (execute_command.py's own comment on why
+        # allow_verified_noop defaults off): it only fires when the prior failure was exclusively
+        # "never verified", never for "verification failed" / "wrong artifact" / "nothing written".
+        task["verified_noop_allowed"] = violations == ["required verification was not provided"]
         return task
 
     def _title(self, source_task: dict, evidence: dict, violations: list[str]) -> str:

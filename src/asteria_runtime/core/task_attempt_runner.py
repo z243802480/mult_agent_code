@@ -186,10 +186,16 @@ class TaskAttemptRunner:
                 "verification_passed": verification_passed,
             },
         )
+        # Mirrors execute_command.py's ModelDrivenTurn path: verified_noop_allowed is set by
+        # replan_command._task_from_failure ONLY when the source task's sole violation was
+        # "required verification was not provided" — the artifact existed and was never shown
+        # wrong, just never checked. See execute_command.py's completion-contract comment for why
+        # this stays narrow (does not reopen the ring_val_f "any passing command" gaming hole).
         contract_check = check_completion_contract(
             task,
             changed_files(tool_results),
             verification_results,
+            allow_verified_noop=bool(task.get("verified_noop_allowed")),
         )
         self._record_progress(
             context,

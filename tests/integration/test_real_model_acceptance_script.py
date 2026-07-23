@@ -50,8 +50,14 @@ def test_real_model_acceptance_core_includes_safe_file_renamer() -> None:
         "validation_small_cli",
         "validation_subagent_delegation",
         "validation_refactor",
-        "runtime_request_resume",
+        "runtime_independent_verification",
     ]
+
+
+def test_real_model_acceptance_suites_only_reference_known_scenarios() -> None:
+    for suite_name, names in SUITES.items():
+        for name in names:
+            assert name in SCENARIOS, f"{suite_name!r} suite references unknown scenario {name!r}"
     assert SCENARIOS["validation_doc_update"].tier == "validation"
     assert SCENARIOS["validation_doc_update"].expected_file == "docs/README.md"
     assert SCENARIOS["validation_small_cli"].tier == "validation"

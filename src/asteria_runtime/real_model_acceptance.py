@@ -402,7 +402,12 @@ SUITES = {
         "validation_small_cli",
         "validation_subagent_delegation",
         "validation_refactor",
-        "runtime_request_resume",
+        # One representative runtime_os capability check, mirroring this suite's shape since its
+        # "gray"/"readiness" days — NOT the full runtime_os matrix (that's core/nightly's job via
+        # *runtime_os_scenario_names()). Was "runtime_request_resume" until RA7b retired it with
+        # the FSM per-tool approval mechanism it exercised (see runtime_os_catalog.py); swapped for
+        # a still-live capability matching this suite's theme (independent verification).
+        "runtime_independent_verification",
     ],
     "advanced": [
         "failing_tests_repair",

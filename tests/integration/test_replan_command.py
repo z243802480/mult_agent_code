@@ -191,3 +191,98 @@ def test_repair_task_inherits_source_scopes_so_brief_gate_passes(tmp_path: Path)
 
     gate = WorkerExecutionRecorder(run_dir).delegation_gate(repaired)
     assert gate["status"] == "pass", gate["reason"]
+
+
+class FakeCorrectButUnverifiedExecuteClient:
+    """Writes a CORRECT artifact but never runs the declared validation command.
+
+    Reproduces the real-stack finding (validation_small_cli, 2026-07-22): the doer sometimes
+    declares itself done right after writing, without ever running its own verification command.
+    The completion contract correctly blocks this (its only violation is the missing check, not a
+    wrong artifact) — but the repair that follows must be allowed to close by re-verifying alone.
+    """
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return spine_response(
+            request,
+            narration="创建模块（未验证）。",
+            tool_calls=[
+                {
+                    "tool_name": "write_file",
+                    "args": {
+                        "path": "complete_module.py",
+                        "content": "def answer():\n    return 42\n",
+                        "overwrite": True,
+                    },
+                },
+            ],
+            model_name="fake-execute-unverified",
+        )
+
+
+class FakeVerifyOnlyExecuteClient:
+    """Re-runs ONLY the validation command — no write — as a correct repair should when the prior
+    attempt's artifact was already right and only unverified."""
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return spine_response(
+            request,
+            narration="重新验证已有实现。",
+            tool_calls=[
+                {
+                    "tool_name": "run_command",
+                    "args": {
+                        "command": (
+                            'python -c "from complete_module import answer; assert answer() == 42"'
+                        )
+                    },
+                },
+            ],
+            model_name="fake-execute-verify-only",
+        )
+
+
+def test_verified_noop_repair_closes_when_source_only_lacked_verification(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
+    ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeCorrectButUnverifiedExecuteClient()
+    ).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    assert task_plan["tasks"][0]["status"] == "blocked"
+    evidence = [
+        json.loads(line)
+        for line in (run_dir / "task_execution_evidence.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert evidence[0]["contract_check"]["violations"] == ["required verification was not provided"]
+
+    result = ReplanCommand(tmp_path, run_id=plan.run_id).run()
+    assert result.created_tasks == 1
+    repair_task = json.loads(task_plan_path.read_text(encoding="utf-8"))["tasks"][1]
+    # The source task's ONLY violation was "never verified" — the write was already correct — so
+    # this repair may close by re-verifying alone, without touching the file again.
+    assert repair_task["verified_noop_allowed"] is True
+
+    ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeVerifyOnlyExecuteClient()).run()
+    repaired_status = json.loads(task_plan_path.read_text(encoding="utf-8"))["tasks"][1]["status"]
+    assert repaired_status == "done"
+
+
+def test_verified_noop_not_allowed_when_source_verification_actually_failed(
+    tmp_path: Path,
+) -> None:
+    # Guardrail: verified_noop_allowed must stay False whenever the source task's violations
+    # include anything beyond "never verified" (e.g. a genuinely wrong artifact) — reopening it
+    # for "verification did not pass" would recreate the ring_val_f gaming hole this stays narrow
+    # to avoid.
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
+    ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()).run()
+
+    ReplanCommand(tmp_path, run_id=plan.run_id).run()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    repair_task = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))["tasks"][1]
+    assert repair_task["verified_noop_allowed"] is False

@@ -105,6 +105,7 @@ def create_recap_client(
     run_dir: Path | None,
     validator: SchemaValidator,
     tier: str = "medium",
+    budget: BudgetController | None = None,
 ) -> ModelClient | None:
     """Best-effort routed client for a conversational closing recap, or ``None`` when offline.
 
@@ -113,11 +114,16 @@ def create_recap_client(
     falls back to the robotic status-line conclusion. This mints a client for the recap WITHOUT
     perturbing the execution path — but returns ``None`` on a fake/offline tier so an air-gapped
     run keeps its clean structured conclusion rather than a canned fake recap. Never raises.
+
+    ``budget`` should be a controller hydrated from the run's own cost_report.json (see
+    ``RunCommand._closing_recap_text``): without it the recap call is logged to
+    ``model_calls.jsonl`` (the client's ``ModelCallLogger`` always fires) but never counted
+    against the run's budget, which desyncs ``cost_report.json`` from the raw call log.
     """
     if real_route_for_tier(tier) is None:
         return None
     try:
-        return create_model_client(run_dir, validator)
+        return create_model_client(run_dir, validator, budget=budget)
     except Exception:  # noqa: BLE001 — recap is best-effort; never fail the run.
         return None
 

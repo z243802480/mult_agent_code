@@ -1133,23 +1133,35 @@ class RunCommand:
                 )
             except Exception:  # noqa: BLE001 — recap is best-effort.
                 goal_text = ""
-        return author_run_recap(
-            # The CLI/Studio path injects no model clients (execution builds its own run-scoped
-            # client), so both attributes are None here and the recap always no-opped — every real
-            # run fell back to the robotic status line. Mint a best-effort recap client from the
-            # same factory when none was injected; it returns None on a fake/offline tier so
-            # air-gapped runs keep the structured fallback. Execution path is untouched.
-            model_client=(
-                self.model_client
-                or self.execute_model_client
-                or create_recap_client(run_dir, self.validator)
-            ),
+        # The CLI/Studio path injects no model clients (execution builds its own run-scoped
+        # client), so both attributes are None here and the recap always no-opped — every real
+        # run fell back to the robotic status line. Mint a best-effort recap client from the
+        # same factory when none was injected; it returns None on a fake/offline tier so
+        # air-gapped runs keep the structured fallback. Execution path is untouched.
+        recap_budget: BudgetController | None = None
+        model_client = self.model_client or self.execute_model_client
+        if model_client is None:
+            # Hydrate from the run's own persisted usage so the recap call's cost lands in the
+            # SAME accounting the run already has, rather than a throwaway BudgetController whose
+            # increment is discarded — that discard is what let model_calls.jsonl (the client's
+            # ModelCallLogger always fires) drift ahead of cost_report.json's model_calls tally.
+            recap_budget = BudgetController.from_report(
+                self._policy(), self._cost_report(run_id), run_id=run_id
+            )
+            model_client = create_recap_client(run_dir, self.validator, budget=recap_budget)
+        text = author_run_recap(
+            model_client=model_client,
             goal=goal_text,
             run_status=run_status,
             steps=[(step.name, step.status, step.summary) for step in steps],
             file_changes=self._file_change_summary(run_dir),
             validation=self._validation_conclusion(run_dir),
         )
+        if recap_budget is not None and recap_budget.usage.model_calls > 0:
+            self.store.write(
+                run_dir / "cost_report.json", recap_budget.cost_report(), "cost_report"
+            )
+        return text
 
     def _model_selection_summary(self, model_selection: dict) -> str:
         selected = model_selection.get("selected_tier") or "unknown"

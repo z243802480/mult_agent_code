@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.models.factory import create_recap_client, real_route_for_tier
 from asteria_runtime.models.fake import FakeModelClient
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -66,3 +67,18 @@ def test_tier_with_real_default_but_fake_medium_still_offline(monkeypatch: pytes
     monkeypatch.setenv("AGENT_MODEL_MEDIUM_PROVIDER", "fake")
     assert real_route_for_tier("medium") is None
     assert create_recap_client(None, _validator(), tier="medium") is None
+
+
+def test_budget_is_threaded_into_the_minted_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression: create_recap_client used to drop the caller's budget entirely, so every recap
+    # call was logged to model_calls.jsonl (the client's ModelCallLogger always fires) but never
+    # counted against cost_report.json's model_calls tally, desyncing the two on every completed
+    # run. The client must carry the SAME BudgetController the caller passed in.
+    monkeypatch.setenv("AGENT_MODEL_PROVIDER", "fake")
+    monkeypatch.setenv("AGENT_MODEL_MEDIUM_PROVIDER", "ollama")
+    monkeypatch.setenv("AGENT_MODEL_MEDIUM_NAME", "qwen2.5-coder:7b")
+    budget = BudgetController(policy={}, run_id="run-test")
+    client = create_recap_client(None, _validator(), tier="medium", budget=budget)
+    assert client is not None
+    medium_client = client.tier_clients["medium"]  # type: ignore[attr-defined]
+    assert medium_client.budget is budget
