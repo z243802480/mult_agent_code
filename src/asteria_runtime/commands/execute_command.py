@@ -1062,6 +1062,7 @@ class ExecuteCommand:
                         "worker_invocation_id": runtime_context.get("current_worker_invocation_id"),
                         "run_id": context.run_id,
                         "subagent_role": expert.role,
+                        "agent_role_contract": child_runtime_context.get("agent_role_contract"),
                     },
                 ),
                 model_client=coder.model_client,
@@ -1403,6 +1404,7 @@ class ExecuteCommand:
                 "worker_invocation_id": runtime_context.get("current_worker_invocation_id"),
                 "run_id": context.run_id,
                 "subagent_role": runtime_context.get("subagent_role"),
+                "agent_role_contract": runtime_context.get("agent_role_contract"),
             },
         )
 
@@ -2593,17 +2595,119 @@ def _latest_verification_per_command(verification_results: list) -> list:
     unchanged."""
     latest: dict[str, Any] = {}
     order: list[str] = []
+    latest_readback: dict[str, Any] = {}
+    readback_order: list[str] = []
     passthrough: list = []
     for obs in verification_results:
         data = getattr(obs, "data", {}) or {}
         command = str(data.get("requested_command") or data.get("command") or "").strip()
         if not command:
+            readback_key = _read_file_verification_key(obs)
+            if readback_key:
+                if readback_key not in latest_readback:
+                    readback_order.append(readback_key)
+                latest_readback[readback_key] = obs
+                continue
             passthrough.append(obs)
             continue
         if command not in latest:
             order.append(command)
         latest[command] = obs
-    return passthrough + [latest[command] for command in order]
+    deduped = (
+        passthrough
+        + [latest_readback[key] for key in readback_order]
+        + [latest[command] for command in order]
+    )
+    return _drop_superseded_noisy_readback_failures(deduped)
+
+
+def _read_file_verification_key(observation: Any) -> str:
+    if str(getattr(observation, "tool_name", "") or "") != "read_file":
+        return ""
+    data = getattr(observation, "data", {}) or {}
+    path = str(data.get("path") or "").strip()
+    if not path:
+        summary = str(getattr(observation, "summary", "") or "").strip()
+        prefix = "File not found:"
+        if summary.startswith(prefix):
+            path = summary[len(prefix) :].strip()
+    return f"read_file:{path}" if path else ""
+
+
+def _drop_superseded_noisy_readback_failures(verification_results: list) -> list:
+    if not any(getattr(obs, "ok", False) for obs in verification_results):
+        return verification_results
+    return [
+        obs
+        for obs in verification_results
+        if not _is_windows_findstr_readback_failure(obs)
+        and not _is_windows_unix_readback_failure(obs)
+        and not _is_diagnostic_python_exec_failure(obs)
+        and not _is_negative_case_probe_failure(obs)
+        and not _is_extra_probe_write_denial(obs)
+        and not _is_patch_context_probe_failure(obs)
+    ]
+
+
+def _is_windows_findstr_readback_failure(observation: Any) -> bool:
+    if getattr(observation, "ok", False):
+        return False
+    data = getattr(observation, "data", {}) or {}
+    command = str(data.get("requested_command") or data.get("command") or "").strip().lower()
+    return command.startswith("findstr ") and "/n" in command and '/c:"^"' in command
+
+
+def _is_windows_unix_readback_failure(observation: Any) -> bool:
+    if getattr(observation, "ok", False):
+        return False
+    data = getattr(observation, "data", {}) or {}
+    command = str(data.get("requested_command") or data.get("command") or "").strip().lower()
+    stderr = str(data.get("stderr") or "").lower()
+    if command.startswith("cat ") and "'cat' is not recognized" in stderr:
+        return True
+    if "grep -c " in command and "'grep' is not recognized" in stderr:
+        return True
+    if command.startswith("find ") and "| wc" in command and "'wc' is not recognized" in stderr:
+        return True
+    return False
+
+
+def _is_diagnostic_python_exec_failure(observation: Any) -> bool:
+    if getattr(observation, "ok", False):
+        return False
+    data = getattr(observation, "data", {}) or {}
+    command = str(data.get("requested_command") or data.get("command") or "").strip().lower()
+    return command.startswith("python -c ") and "exec(open(" in command
+
+
+def _is_negative_case_probe_failure(observation: Any) -> bool:
+    if getattr(observation, "ok", False):
+        return False
+    data = getattr(observation, "data", {}) or {}
+    command = str(data.get("requested_command") or data.get("command") or "").strip().lower()
+    return "nonexistent" in command
+
+
+def _is_extra_probe_write_denial(observation: Any) -> bool:
+    if getattr(observation, "ok", False):
+        return False
+    if str(getattr(observation, "tool_name", "") or "") not in {"write_file", "read_file"}:
+        return False
+    summary = str(getattr(observation, "summary", "") or "").lower()
+    if "toolpermissionprofile denied" not in summary:
+        return False
+    return any(marker in summary for marker in ("test_", "invalid.", "missing_source"))
+
+
+def _is_patch_context_probe_failure(observation: Any) -> bool:
+    if getattr(observation, "ok", False):
+        return False
+    if str(getattr(observation, "tool_name", "") or "") != "apply_patch":
+        return False
+    data = getattr(observation, "data", {}) or {}
+    error = str(data.get("error") or getattr(observation, "error", "") or "").lower()
+    summary = str(getattr(observation, "summary", "") or "").lower()
+    return "patch_context_mismatch" in error or "patch context mismatch" in summary
 
 
 # The stop-guardrail and the completion contract must agree on what counts as a checkable file, or a

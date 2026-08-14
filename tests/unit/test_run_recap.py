@@ -78,6 +78,26 @@ def test_recap_returns_model_prose_and_passes_context():
     assert "2/2" in user_msg
 
 
+def test_recap_request_uses_role_contract_and_deadline():
+    client = _StubModelClient("I finished the run and the checks passed.")
+
+    text = author_run_recap(
+        model_client=client,
+        goal="ship a fix",
+        run_status="completed",
+        steps=[],
+        file_changes=[],
+        validation=_validation(),
+    )
+
+    assert text == "I finished the run and the checks passed."
+    metadata = client.last_request.metadata
+    assert metadata["agent_id"] == "RunRecap"
+    assert metadata["agent_role_contract"]["role"] == "RunRecap"
+    assert metadata["agent_role_contract"]["purpose"] == "run_closing_recap"
+    assert metadata["deadline_ms"] == 45_000
+
+
 def test_recap_strips_markdown_scaffolding_and_clamps():
     client = _StubModelClient(
         "## Result\n- I finished the task.\nVerification: all checks passed."

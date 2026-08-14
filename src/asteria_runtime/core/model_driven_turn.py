@@ -208,15 +208,11 @@ def run_model_driven_turn(
             worker_transport=transport,
             response_format="json" if transport == "json" else None,
             tools=(tool_defs or None) if transport == "tool_use" else None,
-            metadata={
-                "task_id": task.get("task_id"),
-                "iteration": iteration,
-                "loop": "model_driven_turn",
-                # Who is spending this call (runtime_profile_id / subagent_role / worker id). The
-                # model-call log reads its fields off this metadata, so without it every spine call
-                # lands unattributed and the worker tree's cost rolls up to zero (B7).
-                **(call_attribution or {}),
-            },
+            metadata=_request_metadata(
+                task=task,
+                iteration=iteration,
+                call_attribution=call_attribution,
+            ),
         )
         response = model_client.chat(request)
         narration, calls = _read_turn(response, transport)
@@ -317,6 +313,29 @@ def run_model_driven_turn(
         events=events,
         observations=all_observations,
     )
+
+
+def _request_metadata(
+    *,
+    task: dict,
+    iteration: int,
+    call_attribution: dict[str, Any] | None,
+) -> dict[str, Any]:
+    metadata = {
+        "task_id": task.get("task_id"),
+        "iteration": iteration,
+        "loop": "model_driven_turn",
+        # Who is spending this call (runtime_profile_id / subagent_role / worker id). The
+        # model-call log reads its fields off this metadata, so without it every spine call lands
+        # unattributed and the worker tree's cost rolls up to zero (B7).
+        **(call_attribution or {}),
+    }
+    role_contract = metadata.get("agent_role_contract")
+    if isinstance(role_contract, dict) and metadata.get("deadline_ms") is None:
+        provider_call_seconds = role_contract.get("provider_call_seconds")
+        if isinstance(provider_call_seconds, (int, float)) and provider_call_seconds > 0:
+            metadata["deadline_ms"] = int(provider_call_seconds * 1000)
+    return metadata
 
 
 def _execute(

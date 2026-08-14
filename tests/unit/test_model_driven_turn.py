@@ -246,6 +246,35 @@ def test_json_transport_executes_tools_and_completes() -> None:
     assert first.response_format == "json" and first.tools is None
 
 
+def test_model_driven_turn_metadata_carries_role_contract_and_deadline() -> None:
+    contract = {
+        "role": "CoderAgent",
+        "purpose": "coding",
+        "provider_call_seconds": 12,
+    }
+    model = FakeModelClient([_json_resp("done", [], done=True)])
+    tools = FakeToolRunner([])
+
+    result = _run(
+        model,
+        tools,
+        transport="json",
+        task={"task_id": "task-0001", "allowed_tools": []},
+        call_attribution={
+            "runtime_profile_id": "runtime-profile-worker-0001",
+            "worker_invocation_id": "worker-0001",
+            "run_id": "run-1",
+            "agent_role_contract": contract,
+        },
+    )
+
+    assert result.status == "completed"
+    metadata = model.requests[0].metadata
+    assert metadata["agent_role_contract"] is contract
+    assert metadata["deadline_ms"] == 12_000
+    assert metadata["runtime_profile_id"] == "runtime-profile-worker-0001"
+
+
 def test_json_transport_failure_fed_back_without_repair_branch() -> None:
     model = FakeModelClient(
         [

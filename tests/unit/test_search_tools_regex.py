@@ -7,7 +7,7 @@ from pathlib import Path
 
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.storage.schema_validator import SchemaValidator
-from asteria_runtime.tools.search_tools import SearchTextTool
+from asteria_runtime.tools.search_tools import FindFilesTool, SearchTextTool
 
 
 def _context(tmp_path: Path) -> RuntimeContext:
@@ -57,3 +57,13 @@ def test_search_text_invalid_regex_fails_closed(tmp_path: Path) -> None:
     result = SearchTextTool().run(_context(tmp_path), pattern="(", path="f.txt", regex=True)
     assert result.ok is False
     assert result.error == "invalid_regex"
+
+
+def test_find_files_defaults_glob_when_model_only_supplies_path(tmp_path: Path) -> None:
+    (tmp_path / "input").mkdir()
+    _write(tmp_path, "input/a.md", "# A\n")
+
+    result = FindFilesTool().run(_context(tmp_path), path="input")
+
+    assert result.ok is True
+    assert {"path": "input/a.md", "type": "file"} in result.data["paths"]

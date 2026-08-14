@@ -65,6 +65,8 @@ class SmokeResult:
     def summary(self) -> dict[str, Any]:
         ended_at = self.ended_at if self.ended_at is not None else time.monotonic()
         recovered = bool(self.diagnostics.get("accepted_transient_run_failure"))
+        failed = bool(self.diagnostics.get("failure_type"))
+        outcome = "failed" if failed else "recovered" if recovered else "passed"
         return {
             "workspace": str(self.workspace),
             "run_id": self.run_id,
@@ -75,7 +77,7 @@ class SmokeResult:
             # Honesty marker (P0-3): a run salvaged from a transient provider failure still has its
             # artifacts really validated, but it is recorded as "recovered" — never a plain "passed" —
             # so a degraded run is not indistinguishable from a clean one.
-            "outcome": "recovered" if recovered else "passed",
+            "outcome": outcome,
             "recovered": recovered,
             "diagnostics": self.diagnostics,
             "commands": [record.to_dict() for record in self.commands],
@@ -317,6 +319,8 @@ def run_from_args(args: argparse.Namespace) -> None:
         if result:
             result.ended_at = time.monotonic()
         if result:
+            result.diagnostics.setdefault("failure_type", type(exc).__name__)
+            result.diagnostics.setdefault("failure_summary", redact(str(exc)))
             write_transcript(result)
             if args.summary_json:
                 write_json(args.summary_json, result.summary())
@@ -485,6 +489,12 @@ def prepare_single_result(
     workspace, cleanup = prepare_workspace(args.root)
     if case:
         apply_setup_files(workspace, case.setup_files)
+    expected_file = workspace / args.expected_file
+    stale_expected_file_removed = remove_stale_expected_artifact(
+        workspace=workspace,
+        expected_file=expected_file,
+        expected_text=args.expected_text,
+    )
     timeout_budget = DeadlineBudget.for_smoke(
         args.command_timeout_seconds,
         model_max_retries=args.model_max_retries,
@@ -493,10 +503,13 @@ def prepare_single_result(
         SmokeResult(
             workspace=workspace,
             run_id=None,
-            expected_file=workspace / args.expected_file,
+            expected_file=expected_file,
             final_report=None,
             transcript=workspace / "real_model_smoke_transcript.json",
-            diagnostics={"timeout_budget": timeout_budget.as_dict()},
+            diagnostics={
+                "timeout_budget": timeout_budget.as_dict(),
+                "stale_expected_file_removed": stale_expected_file_removed,
+            },
         ),
         cleanup,
     )
@@ -588,6 +601,32 @@ def apply_setup_files(workspace: Path, setup_files: dict[str, str]) -> None:
             raise SmokeFailure(f"Setup file escapes workspace: {relative_path}")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
+
+
+def remove_stale_expected_artifact(
+    *,
+    workspace: Path,
+    expected_file: Path,
+    expected_text: str,
+) -> bool:
+    """Remove a previous smoke artifact only when it is exactly this smoke's output."""
+
+    workspace_root = workspace.resolve()
+    target = expected_file.resolve()
+    try:
+        target.relative_to(workspace_root)
+    except ValueError as exc:
+        raise SmokeFailure(f"Expected file escapes workspace: {expected_file}") from exc
+    if not target.is_file():
+        return False
+    try:
+        content = target.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return False
+    if content.strip() != str(expected_text or "").strip():
+        return False
+    target.unlink()
+    return True
 
 
 def matrix_case_summary(
@@ -761,39 +800,17 @@ def matrix_agent_loop_summary(
             "summary_path": str(path),
             "failure_summary": redact(str(exc)),
         }
-    budget = summary.get("budget") if isinstance(summary.get("budget"), dict) else {}
-    context_pressure = (
-        summary.get("context_pressure")
-        if isinstance(summary.get("context_pressure"), dict)
-        else {}
-    )
-    recovery_chain = (
-        summary.get("recovery_chain") if isinstance(summary.get("recovery_chain"), dict) else {}
-    )
+    budget = _dict_field(summary, "budget")
+    context_pressure = _dict_field(summary, "context_pressure")
+    recovery_chain = _dict_field(summary, "recovery_chain")
     if source == "run_loop_summary":
-        runtime_progress = (
-            summary.get("runtime_progress")
-            if isinstance(summary.get("runtime_progress"), dict)
-            else {}
-        )
-        loop = runtime_progress.get("loop") if isinstance(runtime_progress.get("loop"), dict) else {}
-        tool_use = (
-            runtime_progress.get("tool_use")
-            if isinstance(runtime_progress.get("tool_use"), dict)
-            else {}
-        )
-        latest_decision = (
-            loop.get("latest_decision")
-            if isinstance(loop.get("latest_decision"), dict)
-            else {}
-        )
-        budget = loop.get("budget") if isinstance(loop.get("budget"), dict) else {}
-        context_pressure = (
-            loop.get("context_pressure")
-            if isinstance(loop.get("context_pressure"), dict)
-            else {}
-        )
-        recovery = loop.get("recovery") if isinstance(loop.get("recovery"), dict) else {}
+        runtime_progress = _dict_field(summary, "runtime_progress")
+        loop = _dict_field(runtime_progress, "loop")
+        tool_use = _dict_field(runtime_progress, "tool_use")
+        latest_decision = _dict_field(loop, "latest_decision")
+        budget = _dict_field(loop, "budget")
+        context_pressure = _dict_field(loop, "context_pressure")
+        recovery = _dict_field(loop, "recovery")
         return {
             "status": "run_loop_recorded",
             "summary_path": str(path),
@@ -832,6 +849,11 @@ def matrix_agent_loop_summary(
         "recovery_required": recovery_chain.get("required"),
         "recovery_satisfied": recovery_chain.get("satisfied"),
     }
+
+
+def _dict_field(data: dict[str, Any], key: str) -> dict[str, Any]:
+    value = data.get(key)
+    return value if isinstance(value, dict) else {}
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -1111,16 +1133,17 @@ def validate_artifacts(
     if unfinished:
         raise SmokeFailure("Run has unfinished task(s): " + ", ".join(unfinished))
     model_call_count = count_jsonl(run_dir / "model_calls.jsonl")
-    tool_call_count = count_jsonl(run_dir / "tool_calls.jsonl")
+    tool_evidence_counts = count_tool_evidence_counts(run_dir)
     if int(cost_report.get("model_calls", 0)) != model_call_count:
         raise SmokeFailure(
             "cost_report.json model_calls does not match model_calls.jsonl: "
             f"{cost_report.get('model_calls')} != {model_call_count}"
         )
-    if int(cost_report.get("tool_calls", 0)) != tool_call_count:
+    cost_tool_calls = int(cost_report.get("tool_calls", 0))
+    if cost_tool_calls not in tool_evidence_counts:
         raise SmokeFailure(
-            "cost_report.json tool_calls does not match tool_calls.jsonl: "
-            f"{cost_report.get('tool_calls')} != {tool_call_count}"
+            "cost_report.json tool_calls does not match any tool evidence count: "
+            f"{cost_report.get('tool_calls')} not in {sorted(tool_evidence_counts)}"
         )
     if int(cost_report.get("model_calls", 0)) <= 0:
         raise SmokeFailure("cost_report.json did not record model calls.")
@@ -1168,6 +1191,14 @@ def build_diagnostics(
 
 def count_jsonl(path: Path) -> int:
     return len([line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()])
+
+
+def count_tool_evidence_counts(run_dir: Path) -> set[int]:
+    counts = {count_jsonl(run_dir / "tool_calls.jsonl")}
+    observations = read_jsonl(run_dir / "tool_observations.jsonl")
+    if observations:
+        counts.add(len(observations))
+    return counts
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:

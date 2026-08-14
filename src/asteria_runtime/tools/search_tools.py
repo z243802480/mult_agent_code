@@ -88,11 +88,12 @@ class FindFilesTool:
     def __init__(self, max_results: int = 500) -> None:
         self.max_results = max_results
 
-    def run(self, context: RuntimeContext, glob: str, path: str = ".") -> ToolResult:
+    def run(self, context: RuntimeContext, glob: str | None = None, path: str = ".") -> ToolResult:
         guard = PathGuard(context.root, context.policy["protected_paths"])
         root = guard.resolve_for_read(path)
         if not root.exists() or not root.is_dir():
             return ToolResult(ok=False, summary=f"Directory not found: {path}", error="directory_not_found")
+        glob = glob or "*"
         results: list[dict[str, str]] = []
         for candidate in root.rglob(glob):
             if len(results) >= self.max_results:

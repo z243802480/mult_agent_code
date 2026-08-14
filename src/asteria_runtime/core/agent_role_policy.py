@@ -43,6 +43,7 @@ _ROLE_PURPOSES = {
     "chatagent": "chat",
     "modelcheckagent": "model_check",
     "modelcheckcommand": "model_check",
+    "runrecap": "run_closing_recap",
 }
 
 
@@ -172,6 +173,20 @@ _ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
             "return route health evidence without consuming long-task budget",
         ],
         "escalation_policy": "use the requested route tier for the probe; keep deadline short and fail fast",
+    },
+    "run_closing_recap": {
+        "role": "RunRecap",
+        "tier": "medium",
+        "deadline_profile": "interactive",
+        "provider_call_seconds": 45,
+        "stream_idle_timeout_seconds": 15,
+        "max_model_calls": 1,
+        "responsibilities": [
+            "summarize the completed run from recorded evidence",
+            "match the user's language",
+            "avoid inventing unsupported results",
+        ],
+        "escalation_policy": "use responsive medium route; fall back to structured runtime summary on failure",
     },
 }
 

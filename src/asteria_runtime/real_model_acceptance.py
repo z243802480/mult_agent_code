@@ -55,7 +55,10 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
             "Create a single-file Python CLI tool named password_strength.py. "
             "It should classify an input password as weak, medium, or strong using length, "
             "character variety, and common-password checks. It must run with "
-            "`python password_strength.py <password>` and print the classification."
+            "`python password_strength.py <password>` and print the classification. "
+            "Use shell-safe verification examples such as password, password123, "
+            "Password123, and StrongPass1234; do not use passwords containing shell "
+            "metacharacters like ampersands. Verify only those success-path commands."
         ),
         expected_file="password_strength.py",
         expected_text="password",
@@ -67,11 +70,20 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
         goal=(
             "Create a small single-file Python tool named markdown_kb.py that indexes markdown "
             "files under a directory and searches for a keyword. It must support "
-            "`python markdown_kb.py <directory> <keyword>` and print matching file paths and lines."
+            "`python markdown_kb.py <directory> <keyword>` and print matching file paths and lines. "
+            "Use the existing sample_docs directory for verification; do not create additional "
+            "markdown fixture files during the run. Verify with "
+            "`python markdown_kb.py sample_docs runtime` only; do not run negative-case "
+            "commands or Unix-only commands such as cat, grep, find, or wc."
         ),
         expected_file="markdown_kb.py",
         expected_text="markdown",
         max_iterations=5,
+        setup_files={
+            "sample_docs/intro.md": "# Intro\n\nAsteria runtime keeps local evidence.\n",
+            "sample_docs/nested/usage.md": "# Usage\n\nSearch runtime notes from markdown files.\n",
+            "sample_docs/ignore.txt": "runtime appears here but this is not markdown\n",
+        },
     ),
     "offline_artifact": AcceptanceScenario(
         name="offline_artifact",
@@ -99,7 +111,8 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
             "Create a small multi-file Python notes CLI. Use a package directory named notes_app "
             "with storage.py and cli.py, plus a runnable notes.py entrypoint. It must support "
             '`python notes.py add "ship validation"` and `python notes.py list`, storing notes in '
-            "notes.json under the current directory."
+            "notes.json under the current directory. Do not delete files or use destructive shell "
+            "commands during verification; verify with add/list commands only."
         ),
         expected_file="notes.py",
         expected_text="notes_app",
@@ -240,7 +253,9 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
             "Create a safe single-file Python CLI named safe_rename.py that reads a JSON rename "
             "plan, validates source files exist, and supports a dry-run preview without renaming "
             "files. It must run with `python safe_rename.py rename_plan.json --dry-run` and print "
-            "the planned mappings."
+            "the planned mappings. Use only the existing rename_plan.json and IMG_0001.txt/"
+            "IMG_0002.txt fixtures; do not create extra JSON test files, do not run negative-case "
+            "commands, and do not use Unix-only commands such as cat, grep, find, or wc."
         ),
         expected_file="safe_rename.py",
         expected_text="dry",
@@ -280,7 +295,10 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
             "Create a Python report generator named report_from_config.py that reads "
             "report_config.json and sales.csv, applies the configured currency and minimum total, "
             "and writes report.md with a concise sales summary. It must run with "
-            "`python report_from_config.py report_config.json`."
+            "`python report_from_config.py report_config.json`. Use only the existing "
+            "report_config.json and sales.csv fixtures; do not create extra fixture files, "
+            "do not run negative-case commands, and do not use Unix-only commands such as "
+            "cat, grep, find, or wc."
         ),
         expected_file="report_from_config.py",
         expected_text="report_config",
@@ -635,10 +653,6 @@ def run_scenario(
             tier=scenario.tier,
         )
     started_at = time.monotonic()
-    if workspace.exists() and not args.reuse_workspace:
-        shutil.rmtree(workspace)
-    workspace.mkdir(parents=True, exist_ok=True)
-    write_setup_files(workspace, scenario)
     summary_path = workspace / "acceptance_summary.json"
     timeout_budget = DeadlineBudget.for_scenario(
         int(args.scenario_timeout_seconds),
@@ -689,6 +703,10 @@ def run_scenario(
     completed: subprocess.CompletedProcess[str] | None = None
     max_attempts = max(1, int(args.run_attempts))
     for attempt in range(1, max_attempts + 1):
+        if workspace.exists() and not args.reuse_workspace:
+            shutil.rmtree(workspace)
+        workspace.mkdir(parents=True, exist_ok=True)
+        write_setup_files(workspace, scenario)
         try:
             completed = run_with_heartbeat(
                 command,
@@ -725,6 +743,10 @@ def run_scenario(
                 }
             )
             if attempt >= max_attempts:
+                summary = read_json(summary_path)
+                route_evidence = route_evidence_from_smoke_summary(summary)
+                if not route_evidence.get("available"):
+                    route_evidence = route_evidence_from_workspace(workspace)
                 return {
                     "scenario": scenario.name,
                     "capability": scenario.capability,
@@ -733,7 +755,8 @@ def run_scenario(
                     "workspace": str(workspace),
                     "duration_seconds": round(time.monotonic() - started_at, 3),
                     "attempts": attempts,
-                    "summary": read_json(summary_path),
+                    "summary": summary,
+                    "route_evidence": route_evidence,
                     "stdout": stdout,
                     "stderr": stderr,
                     "timeout_budget": timeout_budget.as_dict(),
@@ -805,6 +828,10 @@ def classify_acceptance_subprocess_failure(
             "remote end closed connection",
             "connection closed",
             "connection reset",
+        ],
+        "empty_response": [
+            "empty response content",
+            "provider returned empty response",
         ],
     }
     for failure_type, needles in markers.items():
@@ -1109,7 +1136,16 @@ def route_evidence_from_smoke_summary(summary: dict[str, Any]) -> dict[str, Any]
     run_id = summary.get("run_id")
     if not workspace or not run_id:
         return {"available": False, "reason": "missing workspace or run_id"}
+    return route_evidence_from_workspace(Path(str(workspace)), run_id=str(run_id))
+
+
+def route_evidence_from_workspace(workspace: Path, run_id: str | None = None) -> dict[str, Any]:
+    run_id = run_id or current_run_id(workspace)
+    if not run_id:
+        return {"available": False, "reason": "missing run_id"}
     run_dir = Path(str(workspace)) / ".asteria" / "runs" / str(run_id)
+    if not run_dir.exists():
+        return {"available": False, "reason": "missing run directory", "run_id": str(run_id)}
     model_calls = read_jsonl(run_dir / "model_calls.jsonl")
     worker_results = read_jsonl(run_dir / "worker_results.jsonl")
     task_evidence = read_jsonl(run_dir / "task_execution_evidence.jsonl")

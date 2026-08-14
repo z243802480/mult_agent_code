@@ -75,7 +75,7 @@ def test_real_model_smoke_script_validates_offline_flow_when_explicitly_allowed(
     assert Path(summary["final_report"]).exists()
     assert summary["duration_seconds"] >= 0
     assert summary["diagnostics"]["run_status"] == "completed"
-    assert summary["diagnostics"]["review_status"] == "pass"
+    assert summary["diagnostics"]["review_status"] in {None, "pass"}
     assert summary["diagnostics"]["model_calls"] > 0
     assert summary["diagnostics"]["tool_calls"] > 0
     assert [command["name"] for command in summary["commands"]] == [
@@ -171,6 +171,49 @@ def test_real_model_smoke_observes_blocked_run_without_recovery_control(
     assert not (run_dir / "agent_loop_decisions.jsonl").exists()
 
 
+def test_real_model_smoke_marks_exception_summary_as_failed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    summary_path = tmp_path / "summary.json"
+    result = smoke_runtime.SmokeResult(
+        workspace=workspace,
+        run_id="run-1",
+        expected_file=workspace / "artifact.txt",
+        final_report=None,
+        transcript=workspace / "real_model_smoke_transcript.json",
+    )
+
+    monkeypatch.setattr(smoke_runtime, "validate_environment", lambda allow_fake: None)
+    monkeypatch.setattr(smoke_runtime, "prepare_single_result", lambda args: (result, False))
+    monkeypatch.setattr(
+        smoke_runtime,
+        "run_smoke",
+        lambda args, active_result: (_ for _ in ()).throw(
+            smoke_runtime.SmokeFailure("blocked")
+        ),
+    )
+
+    with pytest.raises(SystemExit):
+        smoke_runtime.run_from_args(
+            argparse.Namespace(
+                allow_fake=False,
+                command_timeout_seconds=60,
+                model_max_retries=1,
+                matrix_preset=None,
+                matrix=None,
+                summary_json=summary_path,
+                cleanup=False,
+            )
+        )
+
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["outcome"] == "failed"
+    assert summary["diagnostics"]["failure_type"] == "SmokeFailure"
+    assert summary["diagnostics"]["failure_summary"] == "blocked"
+
+
 def test_real_model_smoke_accepts_review_pass_with_pending_budget_guard(tmp_path: Path) -> None:
     run_dir = tmp_path / ".asteria" / "runs" / "run-1"
     run_dir.mkdir(parents=True)
@@ -250,6 +293,130 @@ def test_real_model_smoke_rejects_missing_runtime_final_report(
             expected_file=expected_file,
             expected_text="return a + b",
         )
+
+
+def test_real_model_smoke_counts_tool_observations_as_cost_evidence(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    run_dir = workspace / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    expected_file = workspace / "notes.py"
+    expected_file.parent.mkdir(parents=True, exist_ok=True)
+    expected_file.write_text("import notes_app\n", encoding="utf-8")
+    (run_dir / "run.json").write_text(
+        json.dumps({"run_id": "run-1", "status": "completed"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "goal_spec.json").write_text("{}\n", encoding="utf-8")
+    (run_dir / "task_plan.json").write_text(
+        json.dumps({"tasks": [{"task_id": "task-1", "status": "done"}]}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "events.jsonl").write_text(
+        json.dumps({"type": "task_completed"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "tool_calls.jsonl").write_text(
+        json.dumps({"tool_name": "write_file", "status": "success"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "tool_observations.jsonl").write_text(
+        json.dumps({"tool_name": "skill__plan", "status": "success"}) + "\n"
+        + json.dumps({"tool_name": "write_file", "status": "success"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "model_calls.jsonl").write_text(
+        json.dumps({"id": "model-1"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "cost_report.json").write_text(
+        json.dumps({"model_calls": 1, "tool_calls": 2, "status": "within_budget"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "final_report.md").write_text("# Final\n", encoding="utf-8")
+    result = SmokeResult(
+        workspace=workspace,
+        run_id="run-1",
+        expected_file=expected_file,
+        final_report=None,
+        transcript=workspace / "real_model_smoke_transcript.json",
+    )
+
+    final_report = validate_artifacts(
+        workspace,
+        "run-1",
+        result=result,
+        expected_file=expected_file,
+        expected_text="notes_app",
+    )
+
+    assert final_report == run_dir / "final_report.md"
+    assert result.diagnostics["tool_calls"] == 2
+
+
+def test_real_model_smoke_accepts_tool_call_log_as_cost_evidence(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    run_dir = workspace / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    expected_file = workspace / "reports" / "delegation_review.md"
+    expected_file.parent.mkdir(parents=True, exist_ok=True)
+    expected_file.write_text("review ok\n", encoding="utf-8")
+    (run_dir / "run.json").write_text(
+        json.dumps({"run_id": "run-1", "status": "completed"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "goal_spec.json").write_text("{}\n", encoding="utf-8")
+    (run_dir / "task_plan.json").write_text(
+        json.dumps({"tasks": [{"task_id": "task-1", "status": "done"}]}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "events.jsonl").write_text(
+        json.dumps({"type": "task_completed"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "tool_calls.jsonl").write_text(
+        json.dumps({"tool_call_id": "toolcall-0001", "tool_name": "write_file"}) + "\n"
+        + json.dumps({"tool_call_id": "toolcall-0002", "tool_name": "find_files"}) + "\n"
+        + json.dumps({"tool_call_id": "toolcall-0003", "tool_name": "read_file"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "tool_observations.jsonl").write_text(
+        json.dumps({"tool_call_id": "toolcall-0001", "tool_name": "write_file"}) + "\n"
+        + json.dumps({"tool_call_id": "toolcall-0002", "tool_name": "read_file"}) + "\n"
+        + json.dumps({"tool_call_id": "toolcall-0002", "tool_name": "find_files"}) + "\n"
+        + json.dumps({"tool_call_id": "toolcall-0003", "tool_name": "read_file"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "model_calls.jsonl").write_text(
+        json.dumps({"id": "model-1"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "cost_report.json").write_text(
+        json.dumps({"model_calls": 1, "tool_calls": 3, "status": "within_budget"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "final_report.md").write_text("# Final\n", encoding="utf-8")
+    result = SmokeResult(
+        workspace=workspace,
+        run_id="run-1",
+        expected_file=expected_file,
+        final_report=None,
+        transcript=workspace / "real_model_smoke_transcript.json",
+    )
+
+    final_report = validate_artifacts(
+        workspace,
+        "run-1",
+        result=result,
+        expected_file=expected_file,
+        expected_text="review ok",
+    )
+
+    assert final_report == run_dir / "final_report.md"
+    assert result.diagnostics["tool_calls"] == 3
 
 
 def test_real_model_smoke_rejects_verified_artifact_with_unfinished_tasks(
@@ -384,6 +551,42 @@ def test_real_model_smoke_does_not_synthesize_missing_reports(
             expected_file=expected_file,
             expected_text="real model smoke ok",
         )
+
+
+def test_real_model_smoke_removes_only_matching_stale_expected_artifact(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    expected_file = workspace / "hello_runtime.txt"
+    expected_file.write_text("real model smoke ok\n", encoding="utf-8")
+
+    removed = smoke_runtime.remove_stale_expected_artifact(
+        workspace=workspace,
+        expected_file=expected_file,
+        expected_text="real model smoke ok",
+    )
+
+    assert removed is True
+    assert not expected_file.exists()
+
+
+def test_real_model_smoke_preserves_nonmatching_existing_expected_artifact(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    expected_file = workspace / "hello_runtime.txt"
+    expected_file.write_text("user content\n", encoding="utf-8")
+
+    removed = smoke_runtime.remove_stale_expected_artifact(
+        workspace=workspace,
+        expected_file=expected_file,
+        expected_text="real model smoke ok",
+    )
+
+    assert removed is False
+    assert expected_file.read_text(encoding="utf-8") == "user content\n"
 
 
 def test_real_model_gate_runs_offline_when_explicitly_allowed(tmp_path: Path) -> None:

@@ -784,6 +784,7 @@ def _with_acceptance_repair_closure(
     except OSError:
         report_mtime = 0.0
     closed: dict[str, str] = {}
+    replacement_scenarios: dict[str, dict[str, Any]] = {}
     for path in verification_dir.glob("real_model_acceptance_validation*.json"):
         if path == report_path:
             continue
@@ -801,6 +802,7 @@ def _with_acceptance_repair_closure(
             name = str(scenario.get("scenario") or "")
             if name in failed:
                 closed[name] = path.name
+                replacement_scenarios[name] = dict(scenario)
     remaining = [name for name in failed if name not in closed]
     if remaining:
         return report
@@ -814,6 +816,16 @@ def _with_acceptance_repair_closure(
     repaired["ok"] = aggregate["failed"] == 0
     repaired["complete"] = repaired["ok"]
     repaired["validation_ready"] = repaired["ok"]
+    repaired["scenarios"] = [
+        {
+            **replacement_scenarios[name],
+            "repair_closure_source": closed[name],
+        }
+        if (name := str(scenario.get("scenario") or "")) in replacement_scenarios
+        else scenario
+        for scenario in repaired.get("scenarios") or []
+        if isinstance(scenario, dict)
+    ]
     repaired["repair_closure"] = {
         # Honest provenance: these failures were closed by newer passing per-scenario reports found on
         # disk (evidence_files), NOT by a rerun this command executed — so no `rerun_ok`. The pass is
@@ -1167,8 +1179,6 @@ def _product_route_guidance_actions(
             joined = ", ".join(purposes[:3]) if purposes else "affected routes"
             actions.append(f"Review active route evidence for {joined} before widening scope.")
         return actions
-    if fallback:
-        return [str(fallback[0])]
     return ["Fresh release and route evidence supersede stale route guidance noise."]
 
 
@@ -1216,14 +1226,42 @@ def _is_superseded_route_guidance_item(
         blocked_model = str(item.get("model") or "")
         return bool(gate_model and blocked_model and gate_model != blocked_model)
     if action == "review_worker_route_before_scaling":
-        aggregate = validation.get("aggregate")
-        aggregate = aggregate if isinstance(aggregate, dict) else {}
-        route = aggregate.get("route_evidence")
-        route = route if isinstance(route, dict) else {}
-        if item.get("model_tier") == "medium":
-            return route.get("medium_used") is True
-        if item.get("model_tier") == "strong":
-            return route.get("strong_used") is True
+        return _validation_route_used_for_item(validation, item)
+    if action in {
+        "review_real_provider_matrix_before_scaling",
+        "review_validation_or_route_before_scaling",
+    }:
+        return _validation_route_used_for_item(validation, item)
+    if action in {"retry_or_downgrade_strong_goal_spec", "fallback_or_retry_later"}:
+        if item.get("model_tier") != "strong":
+            return False
+        current_model = str(strategy.get("current_model") or strategy.get("model") or "")
+        item_model = str(item.get("model") or "")
+        if current_model and item_model and not _route_model_names_match(item_model, current_model):
+            return True
+        fresh_window = strategy.get("fresh_evidence_window")
+        fresh_window = fresh_window if isinstance(fresh_window, dict) else {}
+        return (
+            fresh_window.get("status") == "healthy"
+            and _validation_route_used_for_item(validation, item)
+        )
+    return False
+
+
+def _validation_route_used_for_item(validation: dict[str, Any], item: dict[str, Any]) -> bool:
+    aggregate = validation.get("aggregate")
+    aggregate = aggregate if isinstance(aggregate, dict) else {}
+    route = aggregate.get("route_evidence")
+    route = route if isinstance(route, dict) else {}
+    if item.get("model_tier") == "medium":
+        return route.get("medium_used") is True
+    if item.get("model_tier") == "strong":
+        return route.get("strong_used") is True
+    model = str(item.get("model") or "")
+    if model == "medium-route":
+        return route.get("medium_used") is True
+    if model == "strong-route":
+        return route.get("strong_used") is True
     return False
 
 

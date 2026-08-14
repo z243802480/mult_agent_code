@@ -138,6 +138,36 @@ def test_memory_index_keeps_newest_entries_within_limit(tmp_path: Path) -> None:
     assert [row["memory_id"] for row in memory] == ["note-0004", "note-0005"]
 
 
+def test_memory_index_reserves_newest_entry_per_source_file(tmp_path: Path) -> None:
+    memory_dir = tmp_path / ".asteria" / "memory"
+    memory_dir.mkdir(parents=True)
+    claude_rows = [
+        _memory_row(
+            f"claude-{index:04d}",
+            f"Claude lesson {index}",
+            f"2026-07-0{index}T00:00:00+08:00",
+        )
+        for index in range(1, 6)
+    ]
+    codex_rows = [
+        _memory_row("codex-0001", "Codex project operating lesson.", "2026-06-01T00:00:00+08:00")
+    ]
+    (memory_dir / "claude_import.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in claude_rows), encoding="utf-8"
+    )
+    (memory_dir / "codex_import.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in codex_rows), encoding="utf-8"
+    )
+
+    memory = ContextLoader(tmp_path, validator(), memory_limit=3).load()["memory"]
+
+    assert [row["memory_id"] for row in memory] == ["codex-0001", "claude-0004", "claude-0005"]
+    assert {row["source_file"] for row in memory} == {
+        "claude_import.jsonl",
+        "codex_import.jsonl",
+    }
+
+
 def test_context_loader_feeds_back_active_goal_memory(tmp_path: Path) -> None:
     # The runtime writes ActiveGoalMemory after each run but historically never fed it back to the
     # executing model, so a resumed run started blind and re-did work / re-wrote files. The loader

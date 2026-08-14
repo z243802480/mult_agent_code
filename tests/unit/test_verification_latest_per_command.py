@@ -19,10 +19,19 @@ class _Obs:
     tool_name: str
     ok: bool
     data: dict[str, Any] = field(default_factory=dict)
+    summary: str = ""
 
 
 def _cmd(command: str, ok: bool) -> _Obs:
     return _Obs(tool_name="run_command", ok=ok, data={"requested_command": command})
+
+
+def _cmd_with_stderr(command: str, ok: bool, stderr: str) -> _Obs:
+    return _Obs(
+        tool_name="run_command",
+        ok=ok,
+        data={"requested_command": command, "stderr": stderr},
+    )
 
 
 def test_same_command_red_then_green_keeps_latest_green() -> None:
@@ -53,11 +62,97 @@ def test_failing_test_not_masked_by_a_different_passing_command() -> None:
     assert oks == {"pytest tests": False, "echo ok": True}
 
 
+def test_windows_findstr_line_readback_failure_is_dropped_when_other_verification_passes() -> None:
+    results = _latest_verification_per_command(
+        [
+            _cmd('findstr /n /c:"^" hello_runtime.txt', ok=False),
+            _cmd("type hello_runtime.txt", ok=True),
+        ]
+    )
+
+    oks = {r.data["requested_command"]: r.ok for r in results}
+    assert oks == {"type hello_runtime.txt": True}
+
+
+def test_windows_unix_readback_failures_are_dropped_when_other_verification_passes() -> None:
+    results = _latest_verification_per_command(
+        [
+            _cmd_with_stderr(
+                "cat IMG_0001.txt IMG_0002.txt",
+                ok=False,
+                stderr="'cat' is not recognized as an internal or external command",
+            ),
+            _cmd_with_stderr(
+                'find input -name "*.md" -type f | wc -l',
+                ok=False,
+                stderr="'wc' is not recognized as an internal or external command",
+            ),
+            _cmd_with_stderr(
+                'grep -c "input/" reports/delegation_review.md',
+                ok=False,
+                stderr="'grep' is not recognized as an internal or external command",
+            ),
+            _cmd("dir /b input\\*.md", ok=True),
+        ]
+    )
+
+    oks = {r.data["requested_command"]: r.ok for r in results}
+    assert oks == {"dir /b input\\*.md": True}
+
+
+def test_successful_verification_drops_extra_probe_failures() -> None:
+    results = _latest_verification_per_command(
+        [
+            _cmd("python password_strength.py Password123", ok=True),
+            _cmd(
+                "python -c \"exec(open('password_strength.py').read()); "
+                "result=check_strength('Password123')\"",
+                ok=False,
+            ),
+            _cmd("python safe_rename.py nonexistent.json --dry-run", ok=False),
+            _Obs(
+                tool_name="write_file",
+                ok=False,
+                summary=(
+                    "ToolPermissionProfile denied write path for task-0001: "
+                    "test_logic.py"
+                ),
+            ),
+            _Obs(
+                tool_name="apply_patch",
+                ok=False,
+                data={"error": "patch_context_mismatch"},
+                summary="Patch context mismatch for safe_rename.py",
+            ),
+        ]
+    )
+
+    assert results == [_cmd("python password_strength.py Password123", ok=True)]
+
+
 def test_commandless_observations_pass_through() -> None:
     # Doc/readback verification observations have no command → kept unchanged (not deduped away).
     readback = _Obs(tool_name="read_file", ok=True, data={})
     results = _latest_verification_per_command([readback, readback])
     assert len(results) == 2
+
+
+def test_read_file_missing_then_found_keeps_latest_for_same_path() -> None:
+    missing = _Obs(
+        tool_name="read_file",
+        ok=False,
+        summary="File not found: hello_runtime.txt",
+    )
+    found = _Obs(
+        tool_name="read_file",
+        ok=True,
+        data={"path": "hello_runtime.txt"},
+        summary="Read file: hello_runtime.txt",
+    )
+
+    results = _latest_verification_per_command([missing, found])
+
+    assert results == [found]
 
 
 def test_repair_loop_now_completes_end_to_end() -> None:

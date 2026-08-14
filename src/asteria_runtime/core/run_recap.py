@@ -21,6 +21,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 
 RECAP_PURPOSE = "run_closing_recap"
@@ -120,6 +121,7 @@ def author_run_recap(
         return ""
     context = _build_context(goal, run_status, steps, file_changes, validation)
     try:
+        role_contract = role_contract_for(role="RunRecap", purpose=RECAP_PURPOSE).to_dict()
         request = ChatRequest(
             purpose=RECAP_PURPOSE,
             model_tier=model_tier,
@@ -130,7 +132,12 @@ def author_run_recap(
             temperature=0.3,
             max_output_tokens=_MAX_OUTPUT_TOKENS,
             timeout_seconds=45,
-            metadata={"agent_id": "RunRecap", "purpose": RECAP_PURPOSE},
+            metadata={
+                "agent_id": "RunRecap",
+                "purpose": RECAP_PURPOSE,
+                "agent_role_contract": role_contract,
+                "deadline_ms": int(role_contract["provider_call_seconds"] * 1000),
+            },
         )
         response = model_client.chat(request)
     except Exception:  # noqa: BLE001 — recap is best-effort; never fail the run.

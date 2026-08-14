@@ -101,7 +101,11 @@ class CapabilityFeedbackAdvisor:
         if action in {"", "keep_route", "collect_more_data"}:
             return {}
         severity = 2
-        if action in {"pause_route_until_config_fixed", "review_worker_route_before_scaling"}:
+        if action == "pause_route_until_config_fixed" or (
+            action == "review_worker_route_before_scaling"
+            and int(profile.get("total_calls") or 0) > 0
+            and float(profile.get("success_rate") or 0.0) < 0.5
+        ):
             severity = 3
         if action == "improve_planner_scope_before_scaling":
             message = "prefer narrower read/write scope before scaling similar tasks"

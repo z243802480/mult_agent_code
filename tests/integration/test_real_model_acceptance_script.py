@@ -67,9 +67,34 @@ def test_real_model_acceptance_suites_only_reference_known_scenarios() -> None:
     assert "shapes.py" in SCENARIOS["validation_refactor"].setup_files
     assert SCENARIOS["validation_file_artifact"].tier == "validation"
     assert SCENARIOS["validation_multi_file_scope"].capability == "validation_multi_file_scope"
+    multi_file_goal = SCENARIOS["validation_multi_file_scope"].goal.lower()
+    assert "do not delete files" in multi_file_goal
+    assert "destructive shell" in multi_file_goal
     assert SCENARIOS["validation_debug_repair"].setup_files
     assert "docs_code_sync" in SUITES["advanced"]
     assert SCENARIOS["multi_file_todo_cli"].capability == "multi_file_change"
+    password_goal = SCENARIOS["password_cli"].goal.lower()
+    assert "ampersands" in password_goal
+    assert "success-path" in password_goal
+    assert "&" not in password_goal
+    markdown = SCENARIOS["markdown_kb"]
+    assert markdown.setup_files
+    assert "sample_docs/intro.md" in markdown.setup_files
+    assert "sample_docs/nested/usage.md" in markdown.setup_files
+    assert "sample_docs" in markdown.goal
+    assert "do not run negative-case" in markdown.goal.lower()
+    assert "unix-only" in markdown.goal.lower()
+    safe_renamer = SCENARIOS["safe_file_renamer"]
+    assert safe_renamer.setup_files
+    assert "rename_plan.json" in safe_renamer.setup_files
+    safe_goal = safe_renamer.goal.lower()
+    assert "do not create extra json test files" in safe_goal
+    assert "do not run negative-case" in safe_goal
+    assert "unix-only" in safe_goal
+    report_goal = SCENARIOS["config_driven_report"].goal.lower()
+    assert "do not create extra fixture files" in report_goal
+    assert "do not run negative-case" in report_goal
+    assert "unix-only" in report_goal
 
 
 def test_real_model_acceptance_runs_offline_suite_when_explicitly_allowed(
@@ -294,6 +319,83 @@ def test_real_model_acceptance_writes_incremental_summary_on_partial_run(
     ]
 
 
+def test_real_model_acceptance_cleans_workspace_before_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = Namespace(
+        suite="validation",
+        scenario=["validation_file_artifact"],
+        root=tmp_path / "acceptance",
+        summary_json=None,
+        history_jsonl=None,
+        python=sys.executable,
+        allow_fake=False,
+        run_attempts=2,
+        model_max_retries=1,
+        scenario_timeout_seconds=600,
+        cleanup=False,
+        reuse_workspace=False,
+    )
+    calls = 0
+
+    def fake_run_with_heartbeat(
+        command: list[str],
+        *,
+        cwd: Path,
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        del command, kwargs
+        nonlocal calls
+        calls += 1
+        artifact = cwd / "validation_runtime.txt"
+        summary_path = cwd / "acceptance_summary.json"
+        if calls == 1:
+            artifact.write_text("stale artifact from failed attempt\n", encoding="utf-8")
+            summary_path.write_text(
+                json.dumps(
+                    {
+                        "workspace": str(cwd),
+                        "run_id": "run-1",
+                        "outcome": "failed",
+                        "diagnostics": {"failure_type": "SmokeFailure"},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess([], 1, "", "temporarily unavailable")
+
+        assert not artifact.exists()
+        artifact.write_text("validation route artifact ok\n", encoding="utf-8")
+        summary_path.write_text(
+            json.dumps(
+                {
+                    "workspace": str(cwd),
+                    "run_id": "run-2",
+                    "outcome": "passed",
+                    "diagnostics": {"model_calls": 1, "tool_calls": 1},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess([], 0, "ok", "")
+
+    monkeypatch.setattr(acceptance, "run_with_heartbeat", fake_run_with_heartbeat)
+
+    result = acceptance.run_scenario(
+        args,
+        args.root,
+        acceptance.SCENARIOS["validation_file_artifact"],
+    )
+
+    assert calls == 2
+    assert result["ok"] is True
+    assert result["summary"]["run_id"] == "run-2"
+    assert result["attempts"][0]["retryable"] is True
+
+
 def test_acceptance_timeout_records_spine_native_evidence(tmp_path: Path) -> None:
     # RA7b: a scenario timeout is captured as a spine-native user_progress validation event
     # (the FSM agent_loop_decision writer was retired with the round loop), carrying the
@@ -363,6 +465,20 @@ def test_real_model_acceptance_classifies_remote_close_as_retryable() -> None:
     assert failure_type == "network"
 
 
+def test_real_model_acceptance_classifies_empty_response_as_retryable() -> None:
+    completed = subprocess.CompletedProcess(
+        ["asteria"],
+        1,
+        stdout="",
+        stderr="Real model smoke failed: provider returned empty response content",
+    )
+
+    retryable, failure_type = classify_acceptance_subprocess_failure(completed)
+
+    assert retryable is True
+    assert failure_type == "empty_response"
+
+
 def test_real_model_acceptance_timeout_budget_flows_to_provider_env() -> None:
     budget = TimeoutBudget(600)
     env = {"AGENT_MODEL_STRONG_TIMEOUT_SECONDS": "180"}
@@ -396,6 +512,100 @@ def test_real_model_acceptance_timeout_budget_flows_to_provider_env() -> None:
     assert env["AGENT_MODEL_CHEAP_TIMEOUT_SECONDS"] == "45"
     assert env["AGENT_MODEL_MAX_RETRIES"] == "1"
     assert env["AGENT_MODEL_SMOKE_RECOVERY_TIMEOUT_SECONDS"] == "200"
+
+
+def test_timed_out_scenario_returns_route_evidence_from_partial_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scenario = acceptance.AcceptanceScenario(
+        name="validation_multi_file_scope",
+        capability="validation_multi_file_scope",
+        tier="validation",
+        goal="Create a small multi-file artifact.",
+        expected_file="notes.py",
+        expected_text="notes",
+        max_iterations=3,
+    )
+
+    def fake_run_with_heartbeat(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        workspace = Path(str(kwargs["cwd"]))
+        run_id = "run-timeout-0001"
+        run_dir = workspace / ".asteria" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        (workspace / ".asteria" / "current_session.json").write_text(
+            json.dumps({"session_id": run_id}),
+            encoding="utf-8",
+        )
+        (run_dir / "model_calls.jsonl").write_text(
+            json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "model_call_id": "call-0001",
+                    "run_id": run_id,
+                    "model_name": "glm-4.7",
+                    "model_provider": "zai",
+                    "model_tier": "strong",
+                    "purpose": "goal_spec",
+                    "status": "success",
+                    "created_at": "2026-08-03T10:00:00+08:00",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        raise subprocess.TimeoutExpired(
+            cmd=["asteria"],
+            timeout=30,
+            output="",
+            stderr="[asteria-heartbeat] last_event=model_route_selected route=strong",
+        )
+
+    monkeypatch.setattr(acceptance, "run_with_heartbeat", fake_run_with_heartbeat)
+
+    result = acceptance.run_scenario(
+        Namespace(
+            python=sys.executable,
+            allow_fake=False,
+            run_attempts=1,
+            model_max_retries=1,
+            scenario_timeout_seconds=30,
+            reuse_workspace=False,
+        ),
+        tmp_path,
+        scenario,
+    )
+
+    assert result["ok"] is False
+    assert result["route_evidence"]["available"] is True
+    assert result["route_evidence"]["run_id"] == "run-timeout-0001"
+    assert result["route_evidence"]["strong_used"] is True
+    assert result["route_evidence"]["medium_used"] is False
+
+
+def test_aggregate_route_evidence_includes_failed_scenarios() -> None:
+    aggregate = aggregate_results(
+        [
+            {
+                "scenario": "gray_multi_file_scope",
+                "capability": "gray_multi_file_scope",
+                "tier": "gray",
+                "ok": False,
+                "route_evidence": {
+                    "available": True,
+                    "strong_used": True,
+                    "medium_used": False,
+                    "providers_by_tier": {"strong": ["zai"]},
+                },
+                "summary": {"diagnostics": {}},
+            }
+        ]
+    )
+
+    route = aggregate["route_evidence"]
+    assert route["scenarios_with_route_evidence"] == ["gray_multi_file_scope"]
+    assert route["scenarios_missing_medium"] == ["gray_multi_file_scope"]
+    assert route["providers_by_tier"]["strong"] == ["zai"]
 
 
 def test_validation_ready_requires_passing_results_and_strong_medium_route_evidence() -> None:

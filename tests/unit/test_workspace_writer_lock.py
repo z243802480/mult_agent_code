@@ -50,7 +50,11 @@ def test_released_when_body_raises(tmp_path: Path) -> None:
 
 
 def test_second_process_is_refused_and_told_who_holds_it(tmp_path: Path) -> None:
-    child = subprocess.Popen([sys.executable, "-c", _HOLD_SCRIPT, str(tmp_path)])
+    env = {**os.environ, "PYTHONPATH": str(Path.cwd() / "src")}
+    child = subprocess.Popen(
+        [sys.executable, "-c", _HOLD_SCRIPT, str(tmp_path)],
+        env=env,
+    )
     try:
         ready = tmp_path / "child_ready.txt"
         deadline = time.monotonic() + 20

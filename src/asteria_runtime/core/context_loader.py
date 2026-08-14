@@ -160,10 +160,11 @@ class ContextLoader:
                 continue
             seen_content.add(key)
             newest_first.append((entry, source_file))
-            if len(newest_first) >= self.memory_limit:
-                break
+        selected = self._select_memory_entries(newest_first)
         index: list[dict] = []
-        for entry, source_file in reversed(newest_first):
+        for entry, source_file in sorted(
+            selected, key=lambda item: str(item[0].get("created_at", ""))
+        ):
             content = str(entry.get("content", ""))
             index.append(
                 {
@@ -178,6 +179,46 @@ class ContextLoader:
                 }
             )
         return index
+
+    def _select_memory_entries(self, newest_first: list[tuple[dict, str]]) -> list[tuple[dict, str]]:
+        """Keep the memory index bounded without letting one source file crowd out all others.
+
+        Imported Claude/Codex memories, model notes, and harness failures live in separate JSONL
+        files. Pure recency can fill the 40-row budget with one importer and make another source
+        invisible even after a successful import. Reserve the newest row per source file first,
+        then spend the remaining budget on global recency.
+        """
+        if len(newest_first) <= self.memory_limit:
+            return newest_first
+        selected: list[tuple[dict, str]] = []
+        selected_keys: set[tuple[str, str, str]] = set()
+        seen_sources: set[str] = set()
+        for item in newest_first:
+            entry, source_file = item
+            if source_file in seen_sources:
+                continue
+            selected.append(item)
+            selected_keys.add(self._memory_item_key(entry, source_file))
+            seen_sources.add(source_file)
+            if len(selected) >= self.memory_limit:
+                return selected
+        for item in newest_first:
+            entry, source_file = item
+            key = self._memory_item_key(entry, source_file)
+            if key in selected_keys:
+                continue
+            selected.append(item)
+            selected_keys.add(key)
+            if len(selected) >= self.memory_limit:
+                break
+        return selected
+
+    def _memory_item_key(self, entry: dict, source_file: str) -> tuple[str, str, str]:
+        return (
+            source_file,
+            str(entry.get("memory_id", "")),
+            str(entry.get("created_at", "")),
+        )
 
     def _latest_snapshot(self, agent_dir: Path, run_id: str | None) -> dict:
         snapshots_dir = agent_dir / "context" / "snapshots"

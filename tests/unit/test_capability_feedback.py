@@ -86,6 +86,102 @@ def test_capability_feedback_advisor_returns_actionable_planner_hints(tmp_path: 
     assert "smaller scoped tasks" in guidance["recommended_actions"][1]
 
 
+def test_worker_only_route_guidance_is_review_not_release_block(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    agent_dir = tmp_path / ".asteria"
+    JsonStore(validator).write(
+        agent_dir / "model" / "capability_profile.json",
+        {
+            "schema_version": "0.1.0",
+            "root": str(tmp_path),
+            "profile_count": 1,
+            "profiles": [
+                {
+                    "provider": "runtime",
+                    "model": "medium-route",
+                    "purpose": "coding",
+                    "model_tier": "medium",
+                    "total_calls": 0,
+                    "success_calls": 0,
+                    "failure_calls": 0,
+                    "success_rate": 0.0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_workers": 4,
+                    "successful_workers": 2,
+                    "failed_workers": 2,
+                    "worker_success_rate": 0.5,
+                    "validation_total": 4,
+                    "validation_passed": 4,
+                    "validation_pass_rate": 1.0,
+                    "runtime_request_total": 0,
+                    "runtime_request_rate": 0.0,
+                    "runtime_request_types": {},
+                    "merge_gate_blocks": 0,
+                    "failure_types": {},
+                    "recent_failures": [],
+                    "recommended_action": "review_worker_route_before_scaling",
+                }
+            ],
+        },
+        "model_capability_profile",
+    )
+
+    guidance = CapabilityFeedbackAdvisor(validator).route_guidance(agent_dir)
+
+    assert guidance["status"] == "review"
+    assert guidance["review"][0]["recommended_action"] == "review_worker_route_before_scaling"
+    assert guidance["review"][0]["severity"] == 2
+
+
+def test_failed_model_calls_still_block_worker_route_guidance(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    agent_dir = tmp_path / ".asteria"
+    JsonStore(validator).write(
+        agent_dir / "model" / "capability_profile.json",
+        {
+            "schema_version": "0.1.0",
+            "root": str(tmp_path),
+            "profile_count": 1,
+            "profiles": [
+                {
+                    "provider": "runtime",
+                    "model": "medium-route",
+                    "purpose": "coding",
+                    "model_tier": "medium",
+                    "total_calls": 2,
+                    "success_calls": 0,
+                    "failure_calls": 2,
+                    "success_rate": 0.0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_workers": 2,
+                    "successful_workers": 0,
+                    "failed_workers": 2,
+                    "worker_success_rate": 0.0,
+                    "validation_total": 0,
+                    "validation_passed": 0,
+                    "validation_pass_rate": 0.0,
+                    "runtime_request_total": 0,
+                    "runtime_request_rate": 0.0,
+                    "runtime_request_types": {},
+                    "merge_gate_blocks": 0,
+                    "failure_types": {},
+                    "recent_failures": [],
+                    "recommended_action": "review_worker_route_before_scaling",
+                }
+            ],
+        },
+        "model_capability_profile",
+    )
+
+    guidance = CapabilityFeedbackAdvisor(validator).route_guidance(agent_dir)
+
+    assert guidance["status"] == "blocked"
+    assert guidance["blocking"][0]["recommended_action"] == "review_worker_route_before_scaling"
+    assert guidance["blocking"][0]["severity"] == 3
+
+
 def test_provider_route_strategy_blocks_unstable_strong_goal_spec(tmp_path: Path) -> None:
     validator = SchemaValidator(Path.cwd() / "schemas")
     agent_dir = tmp_path / ".asteria"

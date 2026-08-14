@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -85,12 +86,14 @@ def test_background_argv_module_is_a_real_entry_point(tmp_path: Path) -> None:
     # nothing, and exited 0 — background runs never executed their goal (S88).
     argv = build_background_goal_argv(tmp_path, "demo goal")
     module = argv[argv.index("-m") + 1]
+    env = {**os.environ, "PYTHONPATH": str(Path.cwd() / "src")}
     result = subprocess.run(
         [sys.executable, "-m", module, "--help"],
         capture_output=True,
         text=True,
         timeout=120,
         check=False,
+        env=env,
     )
     assert result.returncode == 0
     assert result.stdout.strip(), "module entry produced no output — silent no-op"

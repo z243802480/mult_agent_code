@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -10,6 +11,7 @@ from asteria_runtime.core.friction_contract import evaluate_friction
 
 def test_harness_repeatability_pulse_skips_b6_by_default() -> None:
     root = Path(".").resolve()
+    env = {**os.environ, "PYTHONPATH": str(root / "src")}
     completed = subprocess.run(
         [sys.executable, "scripts/harness_repeatability_pulse.py", "--root", str(root)],
         cwd=root,
@@ -17,6 +19,7 @@ def test_harness_repeatability_pulse_skips_b6_by_default() -> None:
         text=True,
         encoding="utf-8",
         check=False,
+        env=env,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     report = json.loads(completed.stdout)

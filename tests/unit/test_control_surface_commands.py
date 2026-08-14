@@ -1371,6 +1371,38 @@ def test_gate_status_closes_failed_validation_scenario_with_newer_targeted_rerun
     verification_dir.mkdir(parents=True)
     full = verification_dir / "real_model_acceptance_validation.json"
     targeted = verification_dir / "real_model_acceptance_validation_multi_file_scope.json"
+    old_workspace = tmp_path / "old_multi_file_scope"
+    old_run_dir = old_workspace / ".asteria" / "runs" / "run-old-multi-file-scope"
+    old_run_dir.mkdir(parents=True)
+    (old_run_dir / "tool_calls.jsonl").write_text(
+        json.dumps({"tool_name": "run_command", "status": "error"}) + "\n",
+        encoding="utf-8",
+    )
+    JsonStore(SchemaValidator(Path("schemas"))).write(
+        old_run_dir / "task_plan.json",
+        {
+            "schema_version": "0.1.0",
+            "tasks": [{"task_id": "task-0001", "title": "Old failed task", "status": "blocked"}],
+        },
+        "task_board",
+    )
+    repaired_workspace = tmp_path / "repaired_multi_file_scope"
+    repaired_run_dir = repaired_workspace / ".asteria" / "runs" / "run-repaired-multi-file-scope"
+    repaired_run_dir.mkdir(parents=True)
+    (repaired_run_dir / "tool_calls.jsonl").write_text(
+        json.dumps({"tool_name": "run_command", "status": "success"}) + "\n",
+        encoding="utf-8",
+    )
+    JsonStore(SchemaValidator(Path("schemas"))).write(
+        repaired_run_dir / "task_plan.json",
+        {
+            "schema_version": "0.1.0",
+            "tasks": [
+                {"task_id": "task-0001", "title": "Repaired task", "status": "done"}
+            ],
+        },
+        "task_board",
+    )
     full.write_text(
         json.dumps(
             {
@@ -1390,7 +1422,12 @@ def test_gate_status_closes_failed_validation_scenario_with_newer_targeted_rerun
                 ],
                 "scenarios": [
                     {"scenario": "validation_file_artifact", "ok": True},
-                    {"scenario": "validation_multi_file_scope", "ok": False},
+                    {
+                        "scenario": "validation_multi_file_scope",
+                        "ok": False,
+                        "workspace": str(old_workspace),
+                        "summary": {"run_id": "run-old-multi-file-scope"},
+                    },
                     {"scenario": "validation_debug_repair", "ok": True},
                     {"scenario": "validation_doc_update", "ok": True},
                     {"scenario": "validation_small_cli", "ok": True},
@@ -1414,7 +1451,14 @@ def test_gate_status_closes_failed_validation_scenario_with_newer_targeted_rerun
                 "ok": True,
                 "suite": "smoke",
                 "requested_scenarios": ["validation_multi_file_scope"],
-                "scenarios": [{"scenario": "validation_multi_file_scope", "ok": True}],
+                "scenarios": [
+                    {
+                        "scenario": "validation_multi_file_scope",
+                        "ok": True,
+                        "workspace": str(repaired_workspace),
+                        "summary": {"run_id": "run-repaired-multi-file-scope"},
+                    }
+                ],
                 "aggregate": {
                     "total": 1,
                     "passed": 1,
@@ -1442,6 +1486,14 @@ def test_gate_status_closes_failed_validation_scenario_with_newer_targeted_rerun
     # it must annotate the real provenance and must NOT claim `rerun_ok` (a measured-rerun signal).
     assert closure["closure_source"] == "newer_passing_reports"
     assert "rerun_ok" not in closure
+    assert payload["acceptance_correctness"]["status"] == "pass"
+    repaired_scenario = next(
+        item
+        for item in payload["validation_report"]["scenarios"]
+        if item["scenario"] == "validation_multi_file_scope"
+    )
+    assert repaired_scenario["workspace"] == str(repaired_workspace)
+    assert repaired_scenario["repair_closure_source"] == targeted.name
 
 
 def test_gate_status_prefers_passing_canonical_validation_summary(
@@ -1833,7 +1885,7 @@ def test_gate_status_demotes_stale_route_guidance_with_fresh_release_evidence(
     assert payload["release_ready"] is True
     assert payload["route_guidance"]["status"] == "healthy"
     assert payload["route_guidance"]["review"] == []
-    assert payload["route_guidance"]["release_evidence_override"]["demoted_blockers"] == 3
+    assert payload["route_guidance"]["release_evidence_override"]["demoted_blockers"] == 2
 
 
 def test_release_route_guidance_rewrites_actions_for_active_review_only() -> None:
@@ -1892,6 +1944,65 @@ def test_release_route_guidance_rewrites_actions_for_active_review_only() -> Non
     assert normalized["historical_review"][0]["release_evidence_status"] == "superseded"
     assert normalized["recommended_actions"] == [
         "Keep strong goal_spec on retry/downgrade guard; rerun one small validation sample before widening."
+    ]
+
+
+def test_release_route_guidance_supersedes_retry_review_with_healthy_fresh_window() -> None:
+    guidance = {
+        "status": "review",
+        "blocking": [],
+        "review": [
+            {
+                "purpose": "goal_spec",
+                "provider": "zai",
+                "model": "glm-4.7",
+                "model_tier": "strong",
+                "recommended_action": "retry_or_downgrade_strong_goal_spec",
+                "severity": 2,
+            },
+            {
+                "purpose": "task_execution",
+                "provider": "minimax",
+                "model": "MiniMax-M2.7",
+                "model_tier": "medium",
+                "recommended_action": "review_real_provider_matrix_before_scaling",
+                "severity": 2,
+            },
+        ],
+        "provider_route_strategy": {
+            "decision": "retry_or_downgrade",
+            "model": "glm-4.7",
+            "current_model": "glm-4.7",
+            "fresh_evidence_window": {"status": "healthy"},
+        },
+        "recommended_actions": [
+            "Keep strong goal_spec on retry/downgrade guard; rerun one small validation sample before widening."
+        ],
+    }
+    gate = {
+        "ok": True,
+        "routes": {"strong": {"provider": "glm", "model": "glm-4.7"}},
+        "model_call_summary": {"run_id": "run-fresh"},
+    }
+    validation = {
+        "ok": True,
+        "validation_ready": True,
+        "aggregate": {
+            "route_evidence": {
+                "strong_used": True,
+                "medium_used": True,
+            }
+        },
+    }
+    core = {"ok": True}
+
+    normalized = _release_evidence_route_guidance(guidance, gate, validation, core)
+
+    assert normalized["status"] == "healthy"
+    assert normalized["review"] == []
+    assert len(normalized["historical_review"]) == 2
+    assert normalized["recommended_actions"] == [
+        "Fresh release and route evidence supersede stale route guidance noise."
     ]
 
 

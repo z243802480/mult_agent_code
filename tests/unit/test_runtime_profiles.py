@@ -231,7 +231,7 @@ def test_runtime_profile_builder_upgrades_weak_capability_route(
 
     assert mount.runtime_context["model_profile_id"] == "model-profile-worker-0001"
     assert mount.runtime_context["runtime_profile_id"] == "runtime-profile-worker-0001"
-    assert mount.runtime_context["route_guidance"]["status"] == "blocked"
+    assert mount.runtime_context["route_guidance"]["status"] == "review"
     assert mount.runtime_context["route_guidance"]["purpose"] == "coding"
     assert mount.runtime_context["route_guidance"]["relevant"][0]["model_tier"] == "medium"
     run_dir = tmp_path / ".asteria" / "runs" / "run-0001"
@@ -260,7 +260,7 @@ def test_runtime_profile_builder_upgrades_weak_capability_route(
         "uses_stronger_than_default": True,
         "uses_cheaper_than_default": False,
     }
-    assert selection["capability_feedback"]["status"] == "blocked"
+    assert selection["capability_feedback"]["status"] == "review"
     assert selection["capability_feedback"]["decision"] == "escalated_to_strong"
     assert selection["capability_feedback"]["matched_route"]["recommended_action"] == (
         "review_worker_route_before_scaling"
