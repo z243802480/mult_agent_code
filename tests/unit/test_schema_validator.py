@@ -62,3 +62,30 @@ def test_control_surface_contract_schema_rejects_unknown_stability() -> None:
                 "stable_fields": ["schema_version"],
             },
         )
+
+
+def test_validator_enforces_declared_minimum_instead_of_ignoring_it() -> None:
+    # Reaudit debt #5①: run_loop_summary.schema.json declares iteration_count minimum 0, but the
+    # validator silently ignored bounds — a negative count validated green while the schema
+    # claimed a gate. The declared bound must actually gate.
+    validator = SchemaValidator(Path("schemas"))
+    schema = validator._load("run_loop_summary")
+    node = schema["properties"]["iteration_count"]
+    validator._validate_node(node, 3, "$.iteration_count")
+    with pytest.raises(SchemaValidationError, match="expected >= 0"):
+        validator._validate_node(node, -1, "$.iteration_count")
+
+
+def test_validator_enforces_maximum_when_declared() -> None:
+    validator = SchemaValidator(Path("schemas"))
+    node = {"type": "integer", "minimum": 0, "maximum": 100}
+    validator._validate_node(node, 100, "$.x")
+    with pytest.raises(SchemaValidationError, match="expected <= 100"):
+        validator._validate_node(node, 101, "$.x")
+
+
+def test_minimum_does_not_reject_booleans_or_strings() -> None:
+    # bool is an int in Python; bounds apply to numbers only.
+    validator = SchemaValidator(Path("schemas"))
+    node = {"type": ["boolean", "integer"], "minimum": 0}
+    validator._validate_node(node, True, "$.flag")

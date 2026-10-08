@@ -51,6 +51,18 @@ class SchemaValidator:
         if "enum" in schema and data not in schema["enum"]:
             raise SchemaValidationError(f"{path}: expected one of {schema['enum']}, got {data!r}")
 
+        # Numeric bounds the schemas actually declare (run_loop_summary.iteration_count,
+        # model_route_timeline.record_count: minimum 0). A declared bound that the validator
+        # silently ignored was the schema lying about its own gate — a negative count validated
+        # green. maximum/minimum both enforced; only bounds, not the general JSON Schema surface.
+        if isinstance(data, (int, float)) and not isinstance(data, bool):
+            minimum = schema.get("minimum")
+            if minimum is not None and data < minimum:
+                raise SchemaValidationError(f"{path}: expected >= {minimum}, got {data!r}")
+            maximum = schema.get("maximum")
+            if maximum is not None and data > maximum:
+                raise SchemaValidationError(f"{path}: expected <= {maximum}, got {data!r}")
+
         if isinstance(data, dict):
             for key in schema.get("required", []):
                 if key not in data:
