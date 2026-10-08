@@ -426,14 +426,43 @@ class ReplanCommand:
             "allow_expected_failure": False,
             "commands": [],
         }
-        # Narrow verified-noop carve-out: the source task's ONLY violation was skipping its own
-        # required verification — the artifact it wrote was never actually checked, not shown to be
-        # wrong. A repair that runs the SAME validation commands and gets them all green has done its
-        # job even if it touches no files (there was nothing left to fix). This does NOT reopen the
-        # general "any passing command counts" gaming hole (execute_command.py's own comment on why
-        # allow_verified_noop defaults off): it only fires when the prior failure was exclusively
-        # "never verified", never for "verification failed" / "wrong artifact" / "nothing written".
-        task["verified_noop_allowed"] = violations == ["required verification was not provided"]
+        # Narrow verified-noop carve-out (extends the verified-only window): the flag may fire only
+        # when NO violation shows the artifact was PROVEN wrong. Two families qualify:
+        #   - the source never verified it ("required verification was not provided") — unproven,
+        #     not disproven;
+        #   - the source's whole complaint was that files went untouched ("required changed artifact
+        #     was not produced" / "expected changed files were not modified: ...") — the R2-14 loop:
+        #     a prior sibling already fixed the file, so the honest repair is verify-and-confirm,
+        #     and demanding a fresh diff from every repair sent runs into endless replans that
+        #     escalate a pointless decision to the user.
+        # "verification did not pass" still disqualifies — that violation says the artifact WAS
+        # shown wrong, so the repair must actually fix it. Any unknown future violation also
+        # disqualifies (the all() below fails closed).
+        # The contract only honors the flag when the repair really runs verification and passes it
+        # with zero writes (task_contract.check_completion_contract), so this widens WHO may try to
+        # close by verification alone, not what counts as done. Residual exposure, shared with the
+        # original window: a repair whose acceptance has no machine check can pick a trivially
+        # green command — accepted because the alternative, proven in dogfood, was burning the
+        # whole replan budget to ask the user to decide a non-decision.
+        task["verified_noop_allowed"] = bool(violations) and all(
+            item == "required verification was not provided"
+            or item == "required changed artifact was not produced"
+            or item.startswith("expected changed files were not modified")
+            for item in violations
+        )
+        if task["verified_noop_allowed"]:
+            # Without this the doer repeats the source's exact behavior — sees a correct file,
+            # writes nothing, runs nothing — and the contract rejects it again for skipping
+            # verification: the flag alone would just relabel the loop, not close it. Tell the
+            # doer what the closing move IS.
+            task["description"] = (
+                task["description"]
+                + "\nVerify-first repair: nothing proved the artifact wrong — the only complaint "
+                "was that files went untouched or verification was skipped. First CHECK whether "
+                "the expected artifacts already satisfy the acceptance. If they do, do NOT write "
+                "just to have a diff: run the validation commands (e.g. the test suite), and if "
+                "they all pass, finish the task stating what the verification confirmed."
+            )
         return task
 
     def _title(self, source_task: dict, evidence: dict, violations: list[str]) -> str:

@@ -286,3 +286,62 @@ def test_verified_noop_not_allowed_when_source_verification_actually_failed(
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     repair_task = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))["tasks"][1]
     assert repair_task["verified_noop_allowed"] is False
+
+
+class FakeNoopExecuteClient:
+    """Ends the turn without writing or verifying anything.
+
+    Reproduces R2-14 exactly: the previous attempt already wrote the correct artifact, so the
+    repair's doer sees a correct file and claims done without touching or checking anything.
+    The evidence then carries ONLY unproven / untouched-file violations.
+    """
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return spine_response(
+            request,
+            tool_calls=[],
+            narration="检查后发现预期产物已满足，无需改动。",
+            model_name="fake-execute-noop",
+        )
+
+
+def test_verified_noop_repair_when_whole_complaint_is_untouched_files(tmp_path: Path) -> None:
+    # R2-14: sibling fixed the file, the repair saw a correct artifact and no-op'd, and the
+    # evidence held only "unverified / nothing written / expected files untouched". Under the
+    # old predicate that repair lineage could never close: every further repair was denied the
+    # verified-noop flag for not being EXACTLY "never verified", so the run replanned to the cap
+    # and escalated a non-decision to the user (real stack: 0 completed / 4 replans / paused).
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
+    task_plan_path = tmp_path / ".asteria" / "runs" / plan.run_id / "task_plan.json"
+
+    # Round 1: the doer writes the CORRECT artifact but skips verification -> blocked.
+    ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeCorrectButUnverifiedExecuteClient()
+    ).run()
+    # Round 2: the repair sees the artifact is already right and no-ops entirely -> the R2-14
+    # three-violation evidence.
+    ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeNoopExecuteClient()).run()
+    evidence = [
+        json.loads(line)
+        for line in (
+            tmp_path / ".asteria" / "runs" / plan.run_id / "task_execution_evidence.jsonl"
+        ).read_text(encoding="utf-8").splitlines()
+    ]
+    noop_violations = (evidence[-1].get("contract_check") or {}).get("violations") or []
+    assert "required changed artifact was not produced" in noop_violations
+    assert any(
+        item.startswith("expected changed files were not modified") for item in noop_violations
+    ), noop_violations
+
+    result = ReplanCommand(tmp_path, run_id=plan.run_id).run()
+    assert result.created_tasks == 1
+    tasks = json.loads(task_plan_path.read_text(encoding="utf-8"))["tasks"]
+    repair = tasks[-1]
+    # THE fix: this repair may close by verifying alone — nothing proved the artifact wrong.
+    assert repair["verified_noop_allowed"] is True
+    assert "Verify-first repair" in repair["description"]
+
+    # Round 3: the verify-first repair re-runs the validation command and closes with no write.
+    ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeVerifyOnlyExecuteClient()).run()
+    assert json.loads(task_plan_path.read_text(encoding="utf-8"))["tasks"][-1]["status"] == "done"
