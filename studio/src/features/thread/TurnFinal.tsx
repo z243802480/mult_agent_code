@@ -53,6 +53,12 @@ export function TurnFinal({
     }
   }
 
+  // A content-less NON-error final must render nothing AT ALL — the frame alone ("Asteria" label +
+  // copy button + blank body) reads as the model having said something the user failed to see. The
+  // comment above always promised this; the frame still leaked. Guard sits AFTER the hooks (rules
+  // of hooks). Error finals keep the frame: "收尾时出了点问题。" is real content.
+  if (!isError && !visibleText.trim()) return null;
+
   return (
     <div className={`turnFinal ${isError ? "failed" : ""}`}>
       <div className="turnFinalHeader">

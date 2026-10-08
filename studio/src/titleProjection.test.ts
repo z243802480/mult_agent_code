@@ -55,4 +55,17 @@ describe("isBookkeepingTitle — persistence noise off the main thread (F4)", ()
     expect(isBookkeepingTitle(null)).toBe(false);
     expect(isBookkeepingTitle(undefined)).toBe(false);
   });
+  it("suppresses the capability-envelope bookkeeping even though source titles it in Chinese (R2-1)", () => {
+    // prompt_envelope.py emits 能力环境已装载 with an ENGLISH summary ("Runtime persisted the
+    // prompt envelope…") straight onto the main thread. Pure "saved my own file" bookkeeping —
+    // same family as "Cost report written", just titled in Chinese at source.
+    expect(isBookkeepingTitle("能力环境已装载")).toBe(true);
+  });
+
+  it("projects the goal-acceptance and thinking summaries that leaked English (R2-1)", () => {
+    expect(projectSummary("Runtime accepted the user goal and started a planning run.")).toBe(
+      "已接收目标，开始规划运行。",
+    );
+    expect(projectSummary("Asteria is preparing the next step.")).toBe("正在准备下一步。");
+  });
 });

@@ -80,6 +80,10 @@ const BOOKKEEPING_TITLES = new Set<string>([
   "File changes captured",
   "File changes recorded",
   "Validation results recorded",
+  // Same family, but the runtime emits THIS one with a Chinese title at source
+  // (prompt_envelope.py: "Runtime persisted the prompt envelope…" under 能力环境已装载) — still pure
+  // "saved my own file" bookkeeping, so suppress by that literal (R2-1).
+  "能力环境已装载",
 ]);
 
 export function isBookkeepingTitle(title: string | null | undefined): boolean {
@@ -124,6 +128,14 @@ const SUMMARY_PROJECTIONS: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [
     /^Runtime bound this plan to the selected workspace and output scope\.?$/,
     () => `已把本次计划绑定到当前工作区与输出范围。`,
+  ],
+  [
+    /^Runtime accepted the user goal and started a planning run\.?$/,
+    () => `已接收目标，开始规划运行。`,
+  ],
+  [
+    /^Asteria is preparing the next step\.?$/,
+    () => `正在准备下一步。`,
   ],
   [
     /^Permission mode is (.+?)\.?$/,

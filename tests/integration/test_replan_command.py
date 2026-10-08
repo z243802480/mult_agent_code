@@ -336,6 +336,16 @@ def test_verified_noop_repair_when_whole_complaint_is_untouched_files(tmp_path: 
 
     result = ReplanCommand(tmp_path, run_id=plan.run_id).run()
     assert result.created_tasks == 1
+    # R2-3: the conclusion card speaks user language — "决策点" is maintainer vocabulary.
+    conclusion = [
+        json.loads(line)
+        for line in (
+            tmp_path / ".asteria" / "runs" / plan.run_id / "user_progress.jsonl"
+        ).read_text(encoding="utf-8").splitlines()
+        if '"重规划完成"' in line
+    ][-1]
+    assert "决策点" not in conclusion["summary"]
+    assert "修复任务" in conclusion["summary"]
     tasks = json.loads(task_plan_path.read_text(encoding="utf-8"))["tasks"]
     repair = tasks[-1]
     # THE fix: this repair may close by verifying alone — nothing proved the artifact wrong.

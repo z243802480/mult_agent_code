@@ -180,15 +180,20 @@ class ReplanCommand:
         self._update_run_status(
             run_store, run_id, bool(created_task_ids), bool(created_decision_ids)
         )
+        # Plain language on the main thread (AGENTS §9 / R2-3): "决策点" is maintainer vocabulary,
+        # and the old instruction line read like machinery talking to itself. Say what the user
+        # gets and what (rarely) is asked of them.
+        conclusion_parts = []
+        if created_task_ids:
+            conclusion_parts.append(f"已安排 {len(created_task_ids)} 个修复任务继续执行")
+        if created_decision_ids:
+            conclusion_parts.append(f"有 {len(created_decision_ids)} 个问题需要你决定")
         progress.conclusion(
             run_id=run_id,
             phase="review",
             title="重规划完成",
-            summary=(
-                f"创建 {len(created_task_ids)} 个修复任务，"
-                f"创建 {len(created_decision_ids)} 个决策点。"
-            ),
-            content_delta=("有新修复任务时可以继续执行；有决策点时请先处理决策。"),
+            summary=("；".join(conclusion_parts) + "。") if conclusion_parts else "没有需要修复的任务。",
+            content_delta=("修复任务会自动继续执行；需要你决定的问题会单独列出来等你处理。"),
             artifact_refs=[str(run_dir / "task_plan.json")],
         )
         return ReplanResult(
