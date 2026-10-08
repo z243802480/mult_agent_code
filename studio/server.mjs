@@ -904,7 +904,27 @@ function stopSessionJobs(sessionId) {
       stopped += 1;
     } catch {}
   }
+  if (stopped > 0) finalizeStoppedRuns();
   return { ok: true, stopped };
+}
+
+// A user Stop tree-kills the worker, so the run record can never finalize itself — it would stay
+// "running" with no ended_at forever (the R2-12 zombie that made the whole workspace look busy and
+// once got a dead run's closing message shown as the answer to a NEW goal). The BFF must not write
+// run.json itself (AGENTS §9: Studio is a client of runtime evidence, not a second runtime);
+// `asteria cancel` is the runtime's own door — it waits out the kill→lock-release race and refuses
+// while the writer lock is still held (a genuinely alive run is never declared dead). Fired detached:
+// stop returns immediately; the record flips to "cancelled" a moment later.
+function finalizeStoppedRuns() {
+  try {
+    const child = spawn(python, ["-m", moduleName, "cancel", "--root", workspace], {
+      cwd: runtimeRoot,
+      windowsHide: true,
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+  } catch {}
 }
 
 // Autonomy follows the chosen permission tier: default tiers self-heal (auto repair/replan for the

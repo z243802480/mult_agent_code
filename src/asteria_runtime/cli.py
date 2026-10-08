@@ -907,6 +907,18 @@ def build_parser() -> argparse.ArgumentParser:
     pause_parser.add_argument("--root", default=".", help="Workspace root path")
     add_session_id_argument(pause_parser, "Session id; defaults to current session")
 
+    cancel_parser = subcommands.add_parser(
+        "cancel",
+        aliases=["/cancel"],
+        help=(
+            "Mark a run as cancelled after its worker process was stopped (repair a stale "
+            "'running' record — refuses while the writer lock is held)"
+        ),
+        epilog=SLASH_ALIAS_HELP,
+    )
+    cancel_parser.add_argument("--root", default=".", help="Workspace root path")
+    add_session_id_argument(cancel_parser, "Session id; defaults to current session")
+
     steer_parser = subcommands.add_parser(
         "steer",
         aliases=["/steer"],
@@ -2115,6 +2127,19 @@ def _run_cli() -> None:
         # 我们绝不半跑一批工具。如果它已经结束了,信号就只是躺在那儿,由 resume 清掉。
         print(f"Pause requested for {run_id}. It will stop at the next turn boundary.")
         print("Resume with `asteria resume` — completed work is kept.")
+        return
+
+    if command == "cancel":
+        from asteria_runtime.commands.cancel_command import CancelCommand
+
+        result = CancelCommand(Path(args.root), run_id=args.session_id).run()
+        print(result.detail or result.status)
+        if result.status == "alive":
+            # The run is genuinely still working — refusing is the honest outcome, not a failure
+            # to communicate. Surface it as a non-zero exit so callers notice.
+            raise SystemExit(2)
+        if result.status == "not_found":
+            raise SystemExit(1)
         return
 
     if command == "steer":
