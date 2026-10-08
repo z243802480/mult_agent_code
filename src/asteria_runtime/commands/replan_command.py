@@ -465,11 +465,37 @@ class ReplanCommand:
             )
         return task
 
+    # The repair-title templates, as (prefix, suffix) pairs. Chained replans feed a repair's own
+    # wrapped title back in as the next repair's source label, and 1.2.148's templates then grew
+    # matryoshkas — 修改「修改「为「X」补充验证」的预期产物」的预期产物 (R2-8). Peeling our own
+    # shells before re-wrapping keeps every repair title naming the ORIGINAL task. Shells must
+    # stay in sync with the three f-strings in _title.
+    _REPAIR_TITLE_SHELLS = (
+        ("修改「", "」的预期产物"),
+        ("为「", "」补充验证"),
+        ("修复「", "」"),
+    )
+
+    @classmethod
+    def _root_repair_label(cls, label: str) -> str:
+        for _ in range(8):  # depth guard; real replan chains are shallow
+            for prefix, suffix in cls._REPAIR_TITLE_SHELLS:
+                if (
+                    label.startswith(prefix)
+                    and label.endswith(suffix)
+                    and len(label) > len(prefix) + len(suffix)
+                ):
+                    label = label[len(prefix) : -len(suffix)].strip()
+                    break
+            else:
+                return label
+        return label
+
     def _title(self, source_task: dict, evidence: dict, violations: list[str]) -> str:
         # User-facing plan-panel title: Chinese, and NEVER the raw task-000x id (the surface layer
         # deliberately neutralizes those — titleProjection.ts). Distinguish repairs by the source
         # task's own title instead of its bookkeeping id.
-        label = str(source_task.get("title") or "上一轮任务").strip()
+        label = self._root_repair_label(str(source_task.get("title") or "上一轮任务").strip())
         if "required verification was not provided" in violations:
             return f"为「{label}」补充验证"
         if any(item.startswith("expected changed files were not modified") for item in violations):
