@@ -1,9 +1,17 @@
 import json
 from pathlib import Path
 
+from typing import Any
+
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.runtime_context import RuntimeContext
-from asteria_runtime.core.skill_adapter import SkillAdapter, SkillDiscovery, SkillRoot
+from asteria_runtime.core.skill_adapter import (
+    SkillAdapter,
+    SkillDefinition,
+    SkillDiscovery,
+    SkillRoot,
+    _parameter_contract,
+)
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -252,3 +260,93 @@ def test_skill_adapter_consumes_external_tool_budget(tmp_path: Path) -> None:
     assert context.budget
     report = context.budget.cost_report()
     assert report["tool_call_breakdown"] == {"external": 1}
+
+
+# --- declared parameter contracts are a gate, not a display (audit debt #7) -------------------
+
+class _EchoHandler:
+    def __init__(self) -> None:
+        self.definition = SkillDefinition(
+            name="documents",
+            path=Path("skills/documents/SKILL.md"),
+            description="Build a document",
+            parameter_contract={
+                "properties": {
+                    "title": {"type": "string"},
+                    "pages": {"type": "integer"},
+                },
+                "required": ["title"],
+            },
+        )
+
+    def invoke(self, request: dict[str, Any]) -> dict[str, Any]:
+        return {"ok": True, "summary": "built", "data": {"arguments": request["arguments"]}}
+
+
+def test_declared_contract_rejects_missing_required_argument(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    context = RuntimeContext(
+        root=tmp_path,
+        run_id="run-1",
+        policy={"protected_paths": []},
+        validator=validator,
+        run_dir_override=tmp_path,
+    )
+    result = SkillAdapter({"documents": _EchoHandler()}).invoke(
+        context=context,
+        task={"task_id": "task-1", "allowed_skills": ["documents"]},
+        skill_name="documents",
+        arguments={"pages": 3},
+    )
+    assert result.ok is False
+    assert result.status == "invalid_arguments"
+    assert "missing required argument 'title'" in (result.error or "")
+
+
+def test_declared_contract_rejects_wrong_type_but_accepts_valid(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    context = RuntimeContext(
+        root=tmp_path,
+        run_id="run-1",
+        policy={"protected_paths": []},
+        validator=validator,
+        run_dir_override=tmp_path,
+    )
+    adapter = SkillAdapter({"documents": _EchoHandler()})
+    bad = adapter.invoke(
+        context=context,
+        task={"task_id": "task-1", "allowed_skills": ["documents"]},
+        skill_name="documents",
+        arguments={"title": "Q3", "pages": "three"},
+    )
+    assert bad.ok is False and "must be of type integer" in (bad.error or "")
+
+    good = adapter.invoke(
+        context=context,
+        task={"task_id": "task-1", "allowed_skills": ["documents"]},
+        skill_name="documents",
+        arguments={"title": "Q3", "pages": 3},
+    )
+    assert good.ok is True
+
+
+def test_parameter_contract_parses_inline_json_and_falls_back_to_prose() -> None:
+    structured = _parameter_contract('parameters: {"properties": {"goal": {"type": "string"}}}')
+    assert structured == {"properties": {"goal": {"type": "string"}}}
+    prose = _parameter_contract("parameters: goal - what the user wants done")
+    assert prose == {"summary": "goal - what the user wants done"}
+    assert _parameter_contract("") == {}
+
+
+def test_bundled_skills_declare_no_contract_so_validation_stays_inert() -> None:
+    # Zero behavior change for the shipped set: no bundled SKILL.md declares parameters, so the
+    # gate must not fire for them. If a bundled skill ever grows a contract, this pins that the
+    # contract parses as machine-checkable JSON rather than silently degrading to prose.
+    from asteria_runtime.core.skill_adapter import SkillDiscovery
+
+    bundled = Path(__file__).resolve().parents[2] / "src" / "asteria_runtime" / "skills" / "bundled"
+    definitions = SkillDiscovery([bundled]).discover()
+    assert definitions, "bundled skills must still be discoverable"
+    for definition in definitions:
+        contract = definition.parameter_contract
+        assert not contract or isinstance(contract.get("properties"), dict), definition.name

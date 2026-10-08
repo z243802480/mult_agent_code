@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -306,6 +307,18 @@ class SkillAdapter:
                 context, task, invocation_id, skill_name, args, decision, result
             )
             return result
+        contract_violation = self._contract_violation(handler, args)
+        if contract_violation:
+            result = SkillInvocationResult(
+                ok=False,
+                summary=f"Skill arguments rejected: {skill_name}",
+                error=contract_violation,
+                status="invalid_arguments",
+            )
+            self._record_invocation(
+                context, task, invocation_id, skill_name, args, decision, result
+            )
+            return result
         try:
             payload = handler.invoke(
                 {
@@ -358,6 +371,44 @@ class SkillAdapter:
             error=payload.get("error") if isinstance(payload.get("error"), str) else None,
             status=str(payload.get("status") or ("success" if ok else "failure")),
         )
+
+    @staticmethod
+    def _contract_violation(handler: SkillHandler, args: dict[str, Any]) -> str:
+        """Machine-check a DECLARED parameter contract; empty/prose contracts validate nothing.
+
+        Required keys must be present and declared types must hold. Deliberately tiny — a two-level
+        check (required + type), not a JSON Schema engine. Zero behavior change for every skill
+        that declares no machine-checkable contract (all bundled skills today, and any handler
+        without a definition attached).
+        """
+        definition = getattr(handler, "definition", None)
+        contract = getattr(definition, "parameter_contract", None)
+        if not isinstance(contract, dict):
+            return ""
+        properties = contract.get("properties")
+        if not isinstance(properties, dict):
+            return ""
+        problems: list[str] = []
+        required = contract.get("required")
+        if isinstance(required, list):
+            for key in required:
+                if key not in args:
+                    problems.append(f"missing required argument '{key}'")
+        for key, spec in properties.items():
+            if key in args and isinstance(spec, dict):
+                expected = spec.get("type")
+                value = args[key]
+                type_ok = {
+                    "string": isinstance(value, str),
+                    "integer": isinstance(value, int) and not isinstance(value, bool),
+                    "number": isinstance(value, int | float) and not isinstance(value, bool),
+                    "boolean": isinstance(value, bool),
+                    "array": isinstance(value, list),
+                    "object": isinstance(value, dict),
+                }.get(expected)
+                if type_ok is False:
+                    problems.append(f"argument '{key}' must be of type {expected}")
+        return "; ".join(problems)
 
     def _record_invocation(
         self,
@@ -540,6 +591,17 @@ def _parameter_contract(text: str) -> dict[str, Any]:
     raw = _metadata_value(text, "parameters") or _metadata_value(text, "parameter_contract")
     if not raw:
         return {}
+    # A compact inline JSON Schema IS the machine-checkable contract — invoke() enforces it
+    # (required keys + declared types). Audit debt #7: the contract used to be display-only, so a
+    # declared gate was a lie. Prose stays prose: displayed to the model, never claimed as a gate.
+    stripped = raw.strip()
+    if stripped.startswith("{"):
+        try:
+            parsed = json.loads(stripped)
+        except ValueError:
+            parsed = None
+        if isinstance(parsed, dict):
+            return parsed
     return {"summary": raw}
 
 
