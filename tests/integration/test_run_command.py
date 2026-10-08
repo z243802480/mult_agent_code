@@ -1270,7 +1270,7 @@ def test_run_command_pauses_before_execute_when_task_plan_quality_fails(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    def fail_task_plan_quality(self, task_plan, goal_spec, run_id=None):
+    def fail_task_plan_quality(self, task_plan, goal_spec, run_id=None, **kwargs):
         return {
             "schema_version": "0.1.0",
             "run_id": run_id,
@@ -1340,7 +1340,7 @@ def test_run_command_treats_task_plan_quality_failure_as_repairable_warning_by_d
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    def fail_task_plan_quality(self, task_plan, goal_spec, run_id=None):
+    def fail_task_plan_quality(self, task_plan, goal_spec, run_id=None, **kwargs):
         return {
             "schema_version": "0.1.0",
             "run_id": run_id,
@@ -1390,7 +1390,7 @@ def test_resume_prioritizes_task_plan_revision_after_quality_gate(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    def fail_task_plan_quality(self, task_plan, goal_spec, run_id=None):
+    def fail_task_plan_quality(self, task_plan, goal_spec, run_id=None, **kwargs):
         return {
             "schema_version": "0.1.0",
             "run_id": run_id,
@@ -1477,7 +1477,7 @@ def test_resume_rechecks_quality_after_plan_revision_task(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    def fail_task_plan_quality(self, task_plan, goal_spec, run_id=None):
+    def fail_task_plan_quality(self, task_plan, goal_spec, run_id=None, **kwargs):
         return {
             "schema_version": "0.1.0",
             "run_id": run_id,
@@ -1564,7 +1564,7 @@ def test_resume_proceed_once_bypasses_current_task_plan_quality_failure(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    def fail_task_plan_quality(self, task_plan, goal_spec, run_id=None):
+    def fail_task_plan_quality(self, task_plan, goal_spec, run_id=None, **kwargs):
         return {
             "schema_version": "0.1.0",
             "run_id": run_id,

@@ -645,6 +645,9 @@ class PlanCommand:
             task_plan,
             goal_spec,
             run_id=run["run_id"],
+            # The lint judges the plan against its profile's intent: a session_agent unified task
+            # is a deliberate single slice, not a decomposition failure (reaudit #8 phase B).
+            execution_profile=profile_resolution.profile_id,
         )
         task_plan_eval_path = run_dir / "task_plan_eval.json"
         self.store.write(task_plan_eval_path, task_plan_eval, "task_plan_eval")

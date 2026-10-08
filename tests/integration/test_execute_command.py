@@ -1953,7 +1953,7 @@ def test_execute_command_pauses_direct_execute_when_task_plan_quality_fails(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    def fail_task_plan_quality(self, task_plan, goal_spec, run_id=None):
+    def fail_task_plan_quality(self, task_plan, goal_spec, run_id=None, **kwargs):
         return {
             "schema_version": "0.1.0",
             "run_id": run_id,

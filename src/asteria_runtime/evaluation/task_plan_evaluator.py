@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from asteria_runtime.core.execution_profile import SESSION_AGENT
 from asteria_runtime.utils.time import now_iso
 
 
@@ -32,12 +33,18 @@ class TaskPlanEvaluator:
         task_plan: dict[str, Any],
         goal_spec: dict[str, Any],
         run_id: str | None = None,
+        execution_profile: str = "harness",
     ) -> dict[str, Any]:
+        # Reaudit debt #8, phase B: the lint used to judge every plan against the multi-task ideal.
+        # A session_agent unified task is a DELIBERATE single slice — flagging it "under decomposed"
+        # / "oversized acceptance" scored the design intent down (the dogfood 0.98+"needs attention"
+        # contradiction). The profile is now part of the judgement; defaults keep legacy behaviour.
+        unified = execution_profile == SESSION_AGENT
         tasks = [task for task in task_plan.get("tasks", []) if isinstance(task, dict)]
         issues: list[TaskPlanIssue] = []
-        issues.extend(self._board_issues(tasks, goal_spec))
+        issues.extend(self._board_issues(tasks, goal_spec, unified=unified))
         for task in tasks:
-            issues.extend(self._task_issues(task))
+            issues.extend(self._task_issues(task, unified=unified))
 
         scores = self._scores(tasks, issues)
         overall_score = round(
@@ -65,7 +72,13 @@ class TaskPlanEvaluator:
             "task_count": len(tasks),
         }
 
-    def _board_issues(self, tasks: list[dict[str, Any]], goal_spec: dict[str, Any]) -> list[TaskPlanIssue]:
+    def _board_issues(
+        self,
+        tasks: list[dict[str, Any]],
+        goal_spec: dict[str, Any],
+        *,
+        unified: bool = False,
+    ) -> list[TaskPlanIssue]:
         issues: list[TaskPlanIssue] = []
         if not tasks:
             issues.append(
@@ -156,7 +169,11 @@ class TaskPlanEvaluator:
             for requirement in goal_spec.get("expanded_requirements", [])
             if isinstance(requirement, dict) and requirement.get("priority") == "must"
         ]
-        if len(tasks) < min(2, len(must_requirements)) and len(must_requirements) >= 3:
+        if (
+            not unified
+            and len(tasks) < min(2, len(must_requirements))
+            and len(must_requirements) >= 3
+        ):
             issues.append(
                 TaskPlanIssue(
                     None,
@@ -178,7 +195,7 @@ class TaskPlanEvaluator:
             )
         return issues
 
-    def _task_issues(self, task: dict[str, Any]) -> list[TaskPlanIssue]:
+    def _task_issues(self, task: dict[str, Any], *, unified: bool = False) -> list[TaskPlanIssue]:
         task_id = str(task.get("task_id") or "unknown")
         issues: list[TaskPlanIssue] = []
         description = str(task.get("description") or "").strip()
@@ -240,6 +257,8 @@ class TaskPlanEvaluator:
                     "Split the task by artifact or behavior so each slice can be verified.",
                 )
             )
+        # A unified session_agent task deliberately bundles the whole slice; a long acceptance list
+        # is the spec being thorough, not a decomposition smell.
         if acceptance and not any(self._is_observable(item) for item in acceptance):
             issues.append(
                 TaskPlanIssue(

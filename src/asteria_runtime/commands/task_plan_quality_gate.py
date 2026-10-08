@@ -11,7 +11,19 @@ from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.core.execution_profile import execution_profile_from_run_config
+from asteria_runtime.core.run_config import load_run_config
 from asteria_runtime.utils.time import now_iso
+
+
+def _plan_profile_id(root: Path, run_dir: Path, validator: SchemaValidator) -> str:
+    """The profile the plan was built under, so re-evaluation judges intent, not the multi-task
+    ideal (reaudit #8 phase B). Falls back to "harness" — the conservative multi-task lens."""
+    try:
+        profile = execution_profile_from_run_config(load_run_config(run_dir, validator))
+        return profile.profile_id
+    except Exception:  # noqa: BLE001 - a missing/corrupt run config must not break the gate
+        return "harness"
 
 
 @dataclass(frozen=True)
@@ -121,7 +133,12 @@ class TaskPlanQualityGate:
             return None
         self.store.write(task_plan_path, revised, "task_board")
         self.store.write(self.root / ".asteria" / "tasks" / "backlog.json", revised, "task_board")
-        revised_eval = TaskPlanEvaluator().evaluate(revised, goal_spec, run_id=run_id)
+        revised_eval = TaskPlanEvaluator().evaluate(
+            revised,
+            goal_spec,
+            run_id=run_id,
+            execution_profile=_plan_profile_id(self.root, run_dir, self.validator),
+        )
         self.store.write(eval_path, revised_eval, "task_plan_eval")
         return revised_eval
 
@@ -209,7 +226,12 @@ class TaskPlanQualityGate:
             return None
         goal_spec = self.store.read(goal_spec_path, "goal_spec")
         task_plan = self.store.read(task_plan_path, "task_board")
-        task_plan_eval = TaskPlanEvaluator().evaluate(task_plan, goal_spec, run_id=run_id)
+        task_plan_eval = TaskPlanEvaluator().evaluate(
+            task_plan,
+            goal_spec,
+            run_id=run_id,
+            execution_profile=_plan_profile_id(self.root, run_dir, self.validator),
+        )
         self.store.write(eval_path, task_plan_eval, "task_plan_eval")
         return task_plan_eval
 
