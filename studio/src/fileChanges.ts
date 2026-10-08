@@ -23,6 +23,22 @@ export function extractFileChangesFromEvents(events: StudioEvent[]): FileChangeR
   const seen = new Set<string>();
   const result: FileChangeRecord[] = [];
 
+  // R2-10: a PLANNED file change whose tool call FAILED never became a change. tool_start/tool_end
+  // events attach file_changes at CALL time (the intended write) — the failed writes of
+  // run-20260720-0001 still carried their planned paths, so the aggregate card claimed
+  // 「2 个文件 修改 taskman.py」 right beside tool rows reading 「写入 taskman.py 失败」. Pair the
+  // events by tool_call_id: once any event of a call reports failure, that call's attached paths
+  // are not changes and must not appear in any changes surface. Events without a tool call
+  // (real file_changed records, artifact refs) keep the old behavior.
+  const failedCalls = new Set<string>();
+  for (const event of events) {
+    const callId = String(event.tool_call_id ?? "");
+    if (!callId || failedCalls.has(callId)) continue;
+    const failed =
+      event.status === "failed" || ((event.data as AnyRecord | undefined)?.ok as unknown) === false;
+    if (failed) failedCalls.add(callId);
+  }
+
   const push = (raw: AnyRecord) => {
     const pathValue = fileChangePath(raw);
     if (!pathValue || seen.has(pathValue)) return;
@@ -44,6 +60,8 @@ export function extractFileChangesFromEvents(events: StudioEvent[]): FileChangeR
   };
 
   for (const event of events) {
+    const callId = String(event.tool_call_id ?? "");
+    if (callId && failedCalls.has(callId)) continue;
     for (const item of (event.file_changes ?? []) as AnyRecord[]) push(item);
     // Structured file_changed events already carry the real, full path. The old summary-text
     // scrape was dropped: its `js|json` alternation mis-captured `foo.json` as a phantom `foo.js`,
