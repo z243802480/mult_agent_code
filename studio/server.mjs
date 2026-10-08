@@ -1270,7 +1270,7 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options 
     void appendEvent(sessionId, {
       type: "error",
       status: "failed",
-      title: friendlyErrorTitle(rawError) || "Task failed to start",
+      title: friendlyErrorTitle(rawError) || "任务没能开始",
       summary: friendlyErrorSummary(rawError) || rawError,
       content_delta: friendly || redactText(rawError),
       command,

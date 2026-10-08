@@ -49,11 +49,11 @@ try {
   const errorEvent = events.find((event) => event.type === "error" && event.phase === "chat");
   const text = String(errorEvent?.content_delta || "");
   assert(
-    text.includes("Connection timed out"),
+    text.includes("连接超时"),
     "SSL handshake timeout should be translated into a friendly connection timeout message",
   );
   assert(
-    text.includes("HTTPS") && text.includes("Retry"),
+    text.includes("HTTPS") && text.includes("重试"),
     "friendly message should explain likely cause and next action",
   );
   assert(

@@ -1,6 +1,12 @@
 // User-facing error/runtime-text helpers for the Studio server, extracted verbatim from
 // server.mjs. Pure string transformers (input text → friendly markdown / category / summary);
 // the only dependency is `redactText` from ./text-utils.mjs.
+//
+// Chinese on the main thread (R2-15, same discipline as F4/R2-1): these cards render in the
+// conversation next to Chinese guidance from the runtime — an English shell around a Chinese
+// refusal read as two conflicting instructions. Detection stays on the English/technical error
+// text; only the rendered words are localized. `friendlyErrorCategory` still classifies for UI
+// badging and is untouched.
 import { redactText } from "./text-utils.mjs";
 
 export function friendlyErrorText(text) {
@@ -8,46 +14,46 @@ export function friendlyErrorText(text) {
   const lower = raw.toLowerCase();
   if (/ssl|_ssl|handshake|urlopen|tls/.test(lower) && /timed out|timeout/.test(lower)) {
     return [
-      "## Connection timed out",
-      "The model service did not finish the HTTPS security handshake in time. This is usually caused by network, proxy/VPN, firewall, or a temporarily slow provider, not by your prompt.",
+      "## 连接超时",
+      "模型服务没有在时限内完成 HTTPS 安全握手。通常是网络、代理/VPN、防火墙或服务商临时变慢，与你的提示内容无关。",
       "",
-      "## What you can do",
-      "- Retry once.",
-      "- If it keeps happening, check your proxy/VPN and network stability.",
-      "- Try again later, or switch to another available model route.",
+      "## 可以这样做",
+      "- 先重试一次。",
+      "- 反复出现时，检查代理/VPN 和网络稳定性。",
+      "- 也可以稍后再试，或换一条可用的模型路线。",
     ].join("\n");
   }
   if (/timed out|timeout|deadline/.test(lower)) {
     return [
-      "## Request timed out",
-      "This request waited too long. The network or model service may be temporarily unstable.",
+      "## 请求超时",
+      "这次请求等得太久。网络或模型服务可能临时不稳定。",
       "",
-      "## What you can do",
-      "- Retry once.",
-      "- Shorten the request or reduce the task scope.",
-      "- If it keeps failing, try again later or switch models.",
+      "## 可以这样做",
+      "- 先重试一次。",
+      "- 缩短请求或缩小任务范围。",
+      "- 反复失败时，稍后再试或换一个模型。",
     ].join("\n");
   }
   if (
     /\b(401|403|unauthorized|forbidden|invalid[_ ]?api[_ ]?key|authentication failed)\b/.test(lower)
   ) {
     return [
-      "## Authentication failed",
-      "The model provider rejected the credentials (401/403) — the API key is likely missing, wrong, or lacks access to this model.",
+      "## 鉴权失败",
+      "模型服务商拒绝了凭证（401/403）——API key 很可能缺失、填错，或没有这个模型的权限。",
       "",
-      "## What you can do",
-      "- Check the provider API key environment variable is set correctly.",
-      "- Run `asteria model-check` to verify the configured provider.",
+      "## 可以这样做",
+      "- 检查服务商 API key 环境变量是否设置正确。",
+      "- 运行 `asteria model-check` 核对配置的服务商。",
     ].join("\n");
   }
   if (/\b(429|rate limit|quota|insufficient_quota|too many requests)\b/.test(lower)) {
     return [
-      "## Rate limited or quota exhausted",
-      "The provider is throttling requests or the account quota is used up (429).",
+      "## 触发限流或额度用尽",
+      "服务商正在限流，或账户额度已用完（429）。",
       "",
-      "## What you can do",
-      "- Wait a moment and retry.",
-      "- Check billing/quota, or switch to another model route.",
+      "## 可以这样做",
+      "- 稍等片刻再重试。",
+      "- 检查账单/额度，或换一条模型路线。",
     ].join("\n");
   }
   if (
@@ -56,12 +62,12 @@ export function friendlyErrorText(text) {
     )
   ) {
     return [
-      "## Model not available",
-      "The requested model name was not found by the provider.",
+      "## 模型不可用",
+      "服务商找不到请求的模型名。",
       "",
-      "## What you can do",
-      "- Check the model name configured for this tier.",
-      "- Run `asteria model-check` to confirm the route.",
+      "## 可以这样做",
+      "- 检查该档位配置的模型名。",
+      "- 运行 `asteria model-check` 确认路线。",
     ].join("\n");
   }
   if (
@@ -70,12 +76,12 @@ export function friendlyErrorText(text) {
     )
   ) {
     return [
-      "## Cannot reach the model service",
-      "The service address could not be reached (connection refused / DNS). The base URL, port, proxy, or a local model server may be down.",
+      "## 连不上模型服务",
+      "服务地址无法访问（连接被拒 / DNS 解析失败）。base URL、端口、代理或本地模型服务可能没起来。",
       "",
-      "## What you can do",
-      "- Check the provider base URL and that any local model server is running.",
-      "- Check proxy/VPN settings, then retry.",
+      "## 可以这样做",
+      "- 检查服务商 base URL 和本地模型服务是否在运行。",
+      "- 检查代理/VPN 设置后重试。",
     ].join("\n");
   }
   // Unknown shape: never go blank (which read as a vague "could not be completed"). Surface the first
@@ -86,13 +92,13 @@ export function friendlyErrorText(text) {
     .find((line) => line && !/^(traceback|file ")/i.test(line) && !/^\s*at\s/i.test(line));
   if (!firstLine) return "";
   return [
-    "## The task hit an error",
+    "## 这一步出了错",
     redactText(firstLine).slice(0, 300),
     "",
-    "## What you can do",
-    "- Retry the step.",
-    "- Open the Inspector for the full diagnostics.",
-    "- If it repeats, reduce the scope or switch the model route.",
+    "## 可以这样做",
+    "- 重试这一步。",
+    "- 打开「证据」面板查看完整诊断。",
+    "- 反复出现时，缩小任务范围或换一条模型路线。",
   ].join("\n");
 }
 
@@ -134,7 +140,7 @@ export function friendlyErrorSummary(text) {
   if (!friendly) return "";
   return (
     friendly.split("\n").find((line) => line && !line.startsWith("##")) ||
-    "The request could not be completed."
+    "这次请求没有完成。"
   );
 }
 

@@ -832,7 +832,7 @@ export function createChatRoutes({
         await appendEvent(sessionId, {
           type: "error",
           status: "failed",
-          title: friendlyErrorTitle(rawError) || "Chat failed",
+          title: friendlyErrorTitle(rawError) || "对话没能完成",
           summary: friendlyErrorSummary(rawError) || String(error?.message || error),
           phase: "chat",
           display_level: displayLevel,
