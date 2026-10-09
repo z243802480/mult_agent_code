@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.security.path_guard import PathGuard
+from asteria_runtime.storage.durability import fsync_existing_file
 from asteria_runtime.storage.json_store import JsonStore
 
 SCHEMA_VERSION = "0.1.0"
@@ -35,6 +36,10 @@ class FileBackupStore:
                 backup_name = self._backup_file_name(rel)
                 backup_path = files_dir / backup_name
                 shutil.copy2(path, backup_path)
+                # A torn backup is worse than a lost event: the backup is the only copy of
+                # the user file from just before an overwrite. copy2 alone only reaches the
+                # page cache — flush it to durable storage before the manifest names it.
+                fsync_existing_file(backup_path)
                 records.append(
                     {
                         "path": rel,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from threading import RLock
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,12 @@ class JsonlStore:
         with _JSONL_APPEND_LOCK:
             with path.open("a", encoding="utf-8") as handle:
                 handle.write(record_line + "\n")
+                # Evidence durability (reaudit #5②, measured +1.9 ms/append on the target
+                # box): every append is an evidence record — events, user progress, tool
+                # observations, decisions. close() alone only reaches the page cache, so a
+                # power loss lost the tail; flush+fsync makes each record crash-safe.
+                handle.flush()
+                os.fsync(handle.fileno())
             # Tamper-evidence (S77 P1, opt-in): bind this record into the append-only hash chain at
             # the single write chokepoint — the exact bytes just written. Off by default = no-op.
             if audit_chain_enabled() and is_audit_file(path):
@@ -52,7 +59,13 @@ class JsonlStore:
         payload = "".join(line + "\n" for line in record_lines)
         with _JSONL_APPEND_LOCK:
             tmp_path = path.with_name(f"{path.name}.tmp")
-            tmp_path.write_text(payload, encoding="utf-8")
+            with tmp_path.open("w", encoding="utf-8") as handle:
+                handle.write(payload)
+                # Same durability contract as append (reaudit #5②): the rewrite is the
+                # file's state of record (status transitions, redaction) — fsync the
+                # replacement before the atomic rename points readers at it.
+                handle.flush()
+                os.fsync(handle.fileno())
             tmp_path.replace(path)
             # A legitimate atomic rewrite (status transition / redaction) re-seals the chain over the
             # new rows; a raw edit that skips rewrite_all is caught by verify (chain diverges).

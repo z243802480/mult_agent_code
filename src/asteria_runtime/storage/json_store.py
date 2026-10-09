@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from threading import RLock
 from typing import Any
@@ -45,5 +46,11 @@ class JsonStore:
         payload = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
         with _JSON_STORE_LOCK:
             tmp_path = path.with_name(f"{path.name}.tmp")
-            tmp_path.write_text(payload, encoding="utf-8")
+            with tmp_path.open("w", encoding="utf-8") as handle:
+                handle.write(payload)
+                # State-flip durability (reaudit #5②, measured +4.4 ms/write on the target
+                # box): run.json, current_session, task plans and reports all land here —
+                # a power loss after the rename must never expose an empty or torn file.
+                handle.flush()
+                os.fsync(handle.fileno())
             tmp_path.replace(path)
