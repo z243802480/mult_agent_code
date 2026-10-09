@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -70,37 +71,54 @@ def _chain_step(prev_chain: str, record_hash: str) -> str:
     return hashlib.sha256(f"{prev_chain}\n{record_hash}".encode("utf-8")).hexdigest()
 
 
-def _last_chain_hash(cpath: Path) -> str:
-    """Head of the chain (O(1) bounded tail read — chain entries are tiny)."""
+def _chain_head(cpath: Path) -> tuple[str, int]:
+    """Head hash and last seq in ONE bounded tail read — O(1) per append.
+
+    The old path re-read the whole chain file per append to count entries (O(N²) per run);
+    the tail line already carries ``seq``, so the count comes free with the head hash.
+    Falls back to a full count only when the tail line lacks a usable seq."""
     if not cpath.exists():
-        return _GENESIS
+        return _GENESIS, 0
     size = cpath.stat().st_size
     if size == 0:
-        return _GENESIS
+        return _GENESIS, 0
     with cpath.open("rb") as handle:
         handle.seek(max(0, size - 2048))
         tail = handle.read().decode("utf-8", errors="replace")
     lines = [line for line in tail.splitlines() if line.strip()]
     if not lines:
-        return _GENESIS
+        return _GENESIS, 0
     try:
-        return str(json.loads(lines[-1])["chain_sha256"])
+        entry = json.loads(lines[-1])
+        head = str(entry["chain_sha256"])
     except (json.JSONDecodeError, KeyError, TypeError):
-        return _GENESIS
+        return _GENESIS, 0
+    seq = entry.get("seq")
+    count = seq if isinstance(seq, int) and seq > 0 else _chain_len(cpath)
+    return head, count
+
+
+def _last_chain_hash(cpath: Path) -> str:
+    return _chain_head(cpath)[0]
 
 
 def append_chain_entry(path: Path, record_line: str) -> None:
     """Append one chain entry binding ``record_line`` (the exact JSONL text, no newline) to the head."""
     cpath = chain_path(path)
-    prev = _last_chain_hash(cpath)
+    prev, last_seq = _chain_head(cpath)
     rhash = _record_hash(record_line)
     entry = {
-        "seq": _chain_len(cpath) + 1,
+        "seq": last_seq + 1,
         "record_sha256": rhash,
         "chain_sha256": _chain_step(prev, rhash),
     }
     with cpath.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        # Durability parity with the chained log (reaudit #5②): if the record survives a
+        # power loss but this sidecar entry does not, verify reports a length mismatch —
+        # a FALSE tamper alarm. The sidecar must be exactly as durable as the log.
+        handle.flush()
+        os.fsync(handle.fileno())
 
 
 def rechain_file(path: Path, record_lines: list[str]) -> None:
@@ -114,7 +132,10 @@ def rechain_file(path: Path, record_lines: list[str]) -> None:
         prev = _chain_step(prev, rhash)
         out.append(json.dumps({"seq": index, "record_sha256": rhash, "chain_sha256": prev}, ensure_ascii=False))
     tmp = cpath.with_name(cpath.name + ".tmp")
-    tmp.write_text("".join(line + "\n" for line in out), encoding="utf-8")
+    with tmp.open("w", encoding="utf-8") as handle:
+        handle.write("".join(line + "\n" for line in out))
+        handle.flush()
+        os.fsync(handle.fileno())
     tmp.replace(cpath)
 
 

@@ -94,3 +94,63 @@ def test_verify_run_aggregates_all_chained_files(tmp_path: Path) -> None:
     dpath.write_text('{"seq": 1, "note": "x"}\n{"seq": 2, "note": "HACKED"}\n', encoding="utf-8")
     tampered = audit_chain.verify_run(tmp_path)
     assert tampered["ok"] is False
+
+
+def test_chain_append_reads_only_the_tail_not_the_whole_file(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # O(1) per append: the seq rides the tail entry, so maintaining a long chain must not
+    # re-read the whole sidecar per record (the old _chain_len did — O(N²) per run).
+    audit_chain.configure_audit_chain(True)
+    path = tmp_path / "events.jsonl"
+    _append(JsonlStore(), path, 30)
+    read_text_calls = 0
+    real_read_text = Path.read_text
+
+    def counting_read_text(self, *args, **kwargs):
+        nonlocal read_text_calls
+        read_text_calls += 1
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", counting_read_text)
+    _append(JsonlStore(), path, 1)
+    assert read_text_calls == 0  # bounded tail read uses open("rb"), never read_text
+
+
+def test_chain_sidecar_is_fsynced_like_the_log(tmp_path: Path, monkeypatch) -> None:
+    import os
+
+    audit_chain.configure_audit_chain(True)
+    calls: list[int] = []
+    real_fsync = os.fsync
+
+    def counting_fsync(fd: int) -> None:
+        calls.append(fd)
+        real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", counting_fsync)
+    path = tmp_path / "events.jsonl"
+    _append(JsonlStore(), path, 3)
+    assert len(calls) == 6  # 3 log appends + 3 sidecar appends, each fsynced
+
+
+def test_rechain_fsyncs_and_stays_verifiable(tmp_path: Path, monkeypatch) -> None:
+    import os
+
+    audit_chain.configure_audit_chain(True)
+    calls: list[int] = []
+    real_fsync = os.fsync
+
+    def counting_fsync(fd: int) -> None:
+        calls.append(fd)
+        real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", counting_fsync)
+    path = tmp_path / "events.jsonl"
+    _append(JsonlStore(), path, 3)
+    calls.clear()
+
+    JsonlStore().rewrite_all(path, [{"seq": 1, "note": "rewritten"}])
+
+    assert calls, "re-sealed chain must be fsynced before its atomic rename"
+    assert audit_chain.verify_file(path)["ok"] is True
