@@ -16,8 +16,51 @@ jobs:
   verify:
     uses: ./.github/workflows/verify.yml
 
+  # Reaudit debt #2: the offline Verify gate deselects every real_provider test (pyproject addopts
+  # -m "not real_provider"), and the REAL stack proof lives in the ring-recovery nightly — which
+  # the release never looked at. This job closes the loop: a red nightly blocks the release, a
+  # skipped/never-run nightly (no provider secrets) ships with the gap stated in big letters, and
+  # a green nightly is stamped with its time and link. Honesty at the gate, not "someone should
+  # watch the nightly".
+  real-stack-proof:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    steps:
+      - name: Report latest real-stack (ring-recovery) nightly result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          echo "## Real-stack proof (ring-recovery nightly)" >> "$GITHUB_STEP_SUMMARY"
+          run_json="$(gh run list --workflow=ring-recovery-nightly.yml --branch "$DEFAULT_BRANCH" --limit 1 --json conclusion,createdAt,url || true)"
+          if [ -z "$run_json" ] || [ "$run_json" = "[]" ]; then
+            echo "> ⚠️ **REAL-STACK PROOF: NEVER RUN** — the ring-recovery nightly has no runs on \`${DEFAULT_BRANCH}\` (provider secrets likely not configured). This release is verified by the deterministic suite only; no real glm/minimax stack proof exists." >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::Real-stack nightly has never run — release proceeds without real-stack proof."
+            exit 0
+          fi
+          conclusion="$(printf '%s' "$run_json" | python3 -c "import json,sys; print(json.loads(sys.stdin.read())[0]['conclusion'])")"
+          created="$(printf '%s' "$run_json" | python3 -c "import json,sys; print(json.loads(sys.stdin.read())[0]['createdAt'])")"
+          url="$(printf '%s' "$run_json" | python3 -c "import json,sys; print(json.loads(sys.stdin.read())[0]['url'])")"
+          case "$conclusion" in
+            success)
+              echo "> ✅ Latest real-stack nightly **passed** at \`${created}\` — [run](${url})." >> "$GITHUB_STEP_SUMMARY"
+              echo "> Nightly runs prove the default-branch runtime end to end (glm/minimax plan→repair→replan→auto-accept), not this exact tag." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            failure)
+              echo "> ❌ **Latest real-stack nightly FAILED** at \`${created}\` — [run](${url})." >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::Real-stack ring-recovery nightly is red — refusing to ship. Re-run the nightly green (or fix the regression) first."
+              exit 1
+              ;;
+            *)
+              echo "> ⚠️ Latest real-stack nightly concluded **\`${conclusion}\`** at \`${created}\` — [run](${url}). Real-stack proof is NOT green." >> "$GITHUB_STEP_SUMMARY"
+              echo "::notice::Real-stack nightly last concluded '${conclusion}' — release proceeds; treat real-stack proof as missing."
+              ;;
+          esac
+
   build-release:
-    needs: verify
+    needs: [verify, real-stack-proof]
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
