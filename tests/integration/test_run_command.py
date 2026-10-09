@@ -1259,8 +1259,11 @@ def test_run_command_does_not_invoke_review_when_model_client_is_shared(
         for line in (run_dir / "model_calls.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     # 立真身每任务两轮(干活+收尾),故 task_execution 出现两次(FSM 单次)。
+    # ADR-0033 后规划两次模型调用:L1 goal_spec + L2 task_planning(此处该 client 对
+    # task_planning 的应答不可用⇒回模板,但调用本身真实发生并被记账)。
     assert [call["purpose"] for call in model_calls] == [
         "goal_spec",
+        "task_planning",
         "task_execution",
         "task_execution",
     ]

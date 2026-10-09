@@ -268,7 +268,10 @@ def test_plan_command_retries_transient_goal_spec_timeout(tmp_path: Path) -> Non
     result = PlanCommand(tmp_path, "build a local-first helper", model_client=client).run()
 
     assert result.task_count == 1
-    assert [request.model_tier for request in client.requests] == ["medium", "medium"]
+    # first two requests are the goal_spec retry ladder; the trailing one is the L2
+    # task_planning call (ADR-0033), which lands on the fallback template here.
+    assert [request.model_tier for request in client.requests[:2]] == ["medium", "medium"]
+    assert client.requests[-1].purpose == "task_planning"
     run_dirs = sorted((tmp_path / ".asteria" / "runs").iterdir(), key=lambda item: item.name)
     events = [
         json.loads(line)
@@ -344,4 +347,98 @@ def _write_blocked_goal_spec_profile(root: Path) -> None:
             }
         ),
         encoding="utf-8",
+    )
+
+
+class TaskPlanningClient(FakePlanClient):
+    """Serves the GoalSpec JSON for goal_spec requests and a real task plan for
+    task_planning requests (ADR-0033 model path)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.task_plan_requests: list[ChatRequest] = []
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        if request.purpose == "task_planning":
+            self.task_plan_requests.append(request)
+            return ChatResponse(
+                content=json.dumps(
+                    {
+                        "tasks": [
+                            {
+                                "task_id": "t1",
+                                "title": "实现密码强度评分并验证",
+                                "description": "实现本地密码强度评分函数，并用单元测试验证弱中强三档。",
+                                "task_kind": "implementation",
+                                "priority": "must",
+                                "acceptance": [
+                                    "password.py 存在且 score() 返回整数评分",
+                                    "python -m pytest tests/ 通过",
+                                ],
+                                "expected_artifacts": ["password.py"],
+                                "expected_changed_files": ["password.py"],
+                                "depends_on": [],
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                finish_reason="stop",
+                usage=TokenUsage(10, 20, 30),
+                model_provider="fake",
+                model_name="fake-model",
+                raw_response={},
+            )
+        return super().chat(request)
+
+
+def test_plan_command_uses_model_task_plan_when_usable(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    client = TaskPlanningClient()
+
+    result = PlanCommand(tmp_path, "做一个密码测试工具", model_client=client).run()
+
+    task_plan = json.loads(result.task_plan_path.read_text(encoding="utf-8"))
+    assert len(client.task_plan_requests) == 1
+    assert client.task_plan_requests[0].metadata["agent_id"] == "PlannerAgent"
+    assert len(task_plan["tasks"]) == 1
+    # the MODEL's slice (title/description/acceptance) survives normalization verbatim
+    assert task_plan["tasks"][0]["title"] == "实现密码强度评分并验证"
+    assert task_plan["tasks"][0]["quality"]["passed"] is True
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
+    events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
+    assert "task_plan_model_fallback" not in events
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert any(
+        event["data"].get("plan_source") == "model"
+        for event in user_progress
+        if isinstance(event.get("data"), dict)
+    )
+
+
+def test_plan_command_falls_back_to_template_and_discloses(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+
+    result = PlanCommand(tmp_path, "做一个密码测试工具", model_client=FakePlanClient()).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
+    events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
+    assert "task_plan_model_fallback" in events
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert any(event["title"] == "任务计划回退模板生成" for event in user_progress)
+    # the deterministic template still produced a complete, valid plan
+    task_plan = json.loads(result.task_plan_path.read_text(encoding="utf-8"))
+    assert task_plan["tasks"][0]["status"] == "ready"
+    assert any(
+        event["data"].get("plan_source") == "template"
+        for event in user_progress
+        if isinstance(event.get("data"), dict)
     )

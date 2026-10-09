@@ -308,9 +308,9 @@ def test_review_command_writes_eval_and_markdown_reports(tmp_path: Path) -> None
     assert run["status"] == "completed"
     assert run["current_phase"] == "REVIEWED"
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
-    assert cost_report["model_calls"] == 4
-    assert cost_report["estimated_input_tokens"] == 60
-    assert cost_report["estimated_output_tokens"] == 100
+    assert cost_report["model_calls"] == 5
+    assert cost_report["estimated_input_tokens"] == 70
+    assert cost_report["estimated_output_tokens"] == 120
     user_progress = [
         json.loads(line)
         for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
@@ -354,7 +354,7 @@ def test_review_command_uses_deterministic_first_for_fast_path_without_model_cli
     assert review_tier["accepted_without_model"] is True
     assert review_tier["fast_path"]["task_kind"] == "simple_file"
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
-    assert cost_report["model_calls"] == 3
+    assert cost_report["model_calls"] == 4
     user_progress = [
         json.loads(line)
         for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
@@ -399,7 +399,7 @@ def test_review_command_accepts_recovered_fast_path_worker_failure_without_model
     assert review_tier["mode"] == "deterministic_first"
     assert review_tier["accepted_without_model"] is True
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
-    assert cost_report["model_calls"] == 3
+    assert cost_report["model_calls"] == 4
 
 
 def test_review_command_accepts_doc_fast_path_readback_without_model_call(
@@ -428,7 +428,7 @@ def test_review_command_accepts_doc_fast_path_readback_without_model_call(
     assert review_tier["accepted_without_model"] is True
     assert review_tier["fast_path"]["task_kind"] == "doc_update"
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
-    assert cost_report["model_calls"] == 3
+    assert cost_report["model_calls"] == 4
 
 
 def test_review_command_requires_command_verification_for_bugfix_fast_path(
@@ -535,7 +535,7 @@ def test_review_command_reports_high_risk_follow_up_without_orchestrating(tmp_pa
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert len(task_plan["tasks"]) == 1
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
-    assert cost_report["model_calls"] == 4
+    assert cost_report["model_calls"] == 5
     assert cost_report["user_decisions"] == 0
 
 

@@ -58,3 +58,31 @@ GoalSpec→tasks 交模型（新 PlanAgent：一次模型调用产 task_plan JSO
 - 顺带发现（A 方案清理项）：`oversized_acceptance` 带硬编码 `task_id != "task-0001"` 豁免——
   同一意图的旧补丁（第一个任务天然 acceptance 长），该修判定语义而非豁免 id。
 - 测试 stub 6 处补 `**kwargs`（evaluate 新 kwarg）；全量 1488 绿。
+
+## 8. A 落地记录（2026-10-09·1.2.162·ADR-0033）
+
+- **PlanAgent**（`agents/plan_agent.py`）：一次模型调用（`purpose="task_planning"`·挂现成
+  PlannerAgent 角色契约·strong 档）产 task_plan JSON；`PlanAgentError` 五类失败（非 JSON/无
+  tasks/session_agent 档非恰好一个任务/超 16 任务/schema 校验失败）与 provider 异常一律触发
+  **RequirementPlanner 模板 fallback**（离线/CI 保底），回退发 `task_plan_model_fallback` 事件
+  + Inspector 进度卡，provider 异常另记 ModelFailureRecorder——绝不静默。
+- **认知与边界的分界线**：分几步、每步 title/description/acceptance/artifacts/changed files/
+  deps 全是模型的；`RequirementPlanner.finalize_model_tasks` 只做归一（规范 id/枚举安全
+  kind/priority、dep 别名重写、缺失字段默认）+ 模板同款硬化链（completion_contract/
+  verification_policy/_apply_runtime_contract/session-agent 写面拓宽·该块抽成
+  `_widen_session_agent_write_surface` 两路共用）。L3 结构闸原样保留（fail 才拦）。
+- **硬编码豁免清理**：`oversized_acceptance` 的 `task_id != "task-0001"` 改为语义判定
+  「单任务计划豁免」（unified or len(tasks)==1）——所有 >4 验收的生产者全是单任务计划，
+  同一意图不再靠 id 巧合。
+- **验证**：新单测 7（归一/角色契约/session-agent 形状契约×2/非 JSON/无 tasks/超 cap/schema
+  失败）+ 集成 2（模型路径 plan_source=model·回退披露事件）+ evaluator 重钉 3；计数断言诚实
+  更新 8 处（规划 1→2 次模型调用：compact 1 处·review 5 处含 token 对·run purpose 序列 1 处·
+  goal_spec 重试阶梯 1 处）；**全量 1498 passed, 1 skipped** + ruff 净。
+- **真栈活体**（glm-5.2·scratch 工作区）：中文目标「写 greet.py + 补单测」⇒ 模型计划
+  （「创建 greet.py 模块并编写单元测试」·逐码点 0 个 U+FFFD），验收含函数签名/两个调用样例/
+  tests/test_greet.py 路径/`pytest tests/test_greet.py -v` 命令，**L3 = 1.0/pass/零 issue**，
+  model_calls 记账 `[goal_spec, task_planning]`、零回退——「补测试推不出测试文件」的模板机
+  泛化 friction（run-20260718）在模型路径下结构性消失。
+- **诚实边界**：规划每 run 多一次 strong 档调用（成本进 cost_report·测试计数已随真实语义
+  更新）；模型计划质量不稳时 L3 兜底，更差退化即回模板（与改前等价）；replan 产 repair 任务
+  的路径不走 PlanAgent（replan_command 自建修复任务·非本刀范围）。

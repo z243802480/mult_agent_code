@@ -78,7 +78,8 @@ def test_compact_command_creates_snapshot_from_latest_run(tmp_path: Path) -> Non
     )
     assert any(event["title"] == "上下文压缩完成" for event in user_progress)
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
-    assert cost_report["model_calls"] == 1
+    # two PLANNING model calls since ADR-0033: L1 goal_spec + L2 task_planning
+    assert cost_report["model_calls"] == 2
     assert cost_report["context_compactions"] == 1
 
 

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from asteria_runtime.agents.goal_spec_agent import GoalSpecAgent
+from asteria_runtime.agents.plan_agent import PlanAgent, PlanAgentError
 from asteria_runtime.agents.planner import RequirementPlanner
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.agent_loop_profiles import AgentLoopProfileRegistry
@@ -495,6 +496,68 @@ class PlanCommand:
             execution_chain=["understand", "goal_spec"],
         )
 
+        # L2 cognition (ADR-0033): the model decomposes the GoalSpec into tasks; the
+        # deterministic template planner is the fallback for provider failures and unusable
+        # model output. Fallbacks are never silent (event + inspector progress record).
+        plan_source = "model"
+        plan_agent_issue: str | None = None
+        try:
+            task_plan = PlanAgent(model_client, self.validator).generate(
+                goal_spec,
+                runtime_context=runtime_context,
+                run_id=run["run_id"],
+                model_tier=selected_model_tier,
+                execution_profile=profile_resolution.profile_id,
+                policy=policy,
+            )
+        except Exception as exc:  # noqa: BLE001 - model boundary diagnostics
+            plan_source = "template"
+            plan_agent_issue = str(exc)
+            failure_data: dict = {"reason": plan_agent_issue}
+            if not isinstance(exc, PlanAgentError):
+                context = model_failure_context_from_client(
+                    model_client,
+                    model_tier=selected_model_tier,
+                )
+                failure_path, _report = ModelFailureRecorder(self.root, self.validator).record(
+                    provider=context.provider,
+                    model_name=context.model_name,
+                    base_url=context.base_url,
+                    error=exc,
+                )
+                failure_data["failure_report"] = str(failure_path)
+            event_logger.record(
+                run["run_id"],
+                "task_plan_model_fallback",
+                "PlanAgent",
+                (
+                    "Model task planning did not produce a usable plan; the deterministic "
+                    f"planner built the task plan instead. ({plan_agent_issue})"
+                ),
+                failure_data,
+            )
+            progress_logger.record(
+                run_id=run["run_id"],
+                channel="evidence",
+                event_type="evidence",
+                phase="plan",
+                status="completed",
+                title="任务计划回退模板生成",
+                summary=(
+                    "模型任务计划不可用，已由确定性规划器生成任务计划；"
+                    "原因与证据见 Inspector。"
+                ),
+                display_level="inspector",
+                transcript_kind="diagnostic",
+                data=failure_data,
+                call_chain=["PlanCommand", "PlanAgent", "RequirementPlanner"],
+                execution_chain=["goal_spec", "task_plan", "fallback"],
+            )
+            task_plan = RequirementPlanner().build_task_plan(
+                goal_spec,
+                runtime_context=runtime_context,
+                execution_profile=profile_resolution.profile_id,
+            )
         planner_event = progress_logger.record(
             run_id=run["run_id"],
             channel="tool",
@@ -502,23 +565,27 @@ class PlanCommand:
             phase="plan",
             status="running",
             title="Build task plan",
-            summary="RequirementPlanner is converting the GoalSpec into a task graph.",
+            summary=(
+                "PlannerAgent (model) turned the GoalSpec into a task plan."
+                if plan_source == "model"
+                else "RequirementPlanner is converting the GoalSpec into a task graph."
+            ),
             display_level="inspector",
-            call_chain=["PlanCommand", "RequirementPlanner"],
+            call_chain=(
+                ["PlanCommand", "PlanAgent"]
+                if plan_source == "model"
+                else ["PlanCommand", "RequirementPlanner"]
+            ),
             execution_chain=["goal_spec", "task_plan"],
             data={
                 "goal_id": goal_spec["goal_id"],
+                "plan_source": plan_source,
                 **(
                     {"research_type": design_intel_research_type}
                     if design_intel_research_type
                     else {}
                 ),
             },
-        )
-        task_plan = RequirementPlanner().build_task_plan(
-            goal_spec,
-            runtime_context=runtime_context,
-            execution_profile=profile_resolution.profile_id,
         )
         task_plan = apply_research_type_to_task_plan(goal_spec, task_plan)
         _apply_validation_probe_hints(task_plan, self.validation_probe_ids)
@@ -568,6 +635,7 @@ class PlanCommand:
             execution_chain=["goal_spec", "task_plan"],
             data={
                 "task_count": len(task_plan["tasks"]),
+                "plan_source": plan_source,
                 "agent_loop_dispatch": loop_dispatch,
                 **(
                     {"research_type": design_intel_research_type}

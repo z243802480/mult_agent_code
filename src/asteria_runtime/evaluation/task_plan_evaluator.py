@@ -43,8 +43,14 @@ class TaskPlanEvaluator:
         tasks = [task for task in task_plan.get("tasks", []) if isinstance(task, dict)]
         issues: list[TaskPlanIssue] = []
         issues.extend(self._board_issues(tasks, goal_spec, unified=unified))
+        # A single-task plan has nothing to split into: a long acceptance list is the spec
+        # being thorough, not a decomposition smell. This replaces the legacy hard-coded
+        # "task_id != task-0001" exemption with the same intent expressed as semantics
+        # (every real >4-acceptance producer — targeted repair, atomic multifile, single
+        # file, session unified — is a single-task plan).
+        single_slice = unified or len(tasks) == 1
         for task in tasks:
-            issues.extend(self._task_issues(task, unified=unified))
+            issues.extend(self._task_issues(task, oversized_exempt=single_slice))
 
         scores = self._scores(tasks, issues)
         overall_score = round(
@@ -195,7 +201,7 @@ class TaskPlanEvaluator:
             )
         return issues
 
-    def _task_issues(self, task: dict[str, Any], *, unified: bool = False) -> list[TaskPlanIssue]:
+    def _task_issues(self, task: dict[str, Any], *, oversized_exempt: bool = False) -> list[TaskPlanIssue]:
         task_id = str(task.get("task_id") or "unknown")
         issues: list[TaskPlanIssue] = []
         description = str(task.get("description") or "").strip()
@@ -247,7 +253,7 @@ class TaskPlanEvaluator:
                     "Add 1-4 observable acceptance criteria.",
                 )
             )
-        if len(acceptance) > 4 and task.get("task_id") != "task-0001":
+        if len(acceptance) > 4 and not oversized_exempt:
             issues.append(
                 TaskPlanIssue(
                     task_id,
@@ -257,8 +263,6 @@ class TaskPlanEvaluator:
                     "Split the task by artifact or behavior so each slice can be verified.",
                 )
             )
-        # A unified session_agent task deliberately bundles the whole slice; a long acceptance list
-        # is the spec being thorough, not a decomposition smell.
         if acceptance and not any(self._is_observable(item) for item in acceptance):
             issues.append(
                 TaskPlanIssue(
