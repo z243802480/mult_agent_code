@@ -126,7 +126,7 @@
     "max_blocked_release_promotions": 0
   },
   "audit": {
-    "tamper_evident": false
+    "tamper_evident": true
   },
   "feature_flags": {
     "streaming": {

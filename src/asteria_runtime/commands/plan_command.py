@@ -22,6 +22,7 @@ from asteria_runtime.core.design_intel_research_bridge import (
 )
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
+from asteria_runtime.storage import audit_chain
 from asteria_runtime.core.execution_profile import resolve_execution_profile
 from asteria_runtime.core.fast_path_policy import classify_fast_path
 from asteria_runtime.core.run_config import apply_run_config, write_run_config
@@ -202,6 +203,10 @@ class PlanCommand:
             fast_path=fast_path.to_dict(),
         )
         policy = apply_run_config(policy, run_config)
+        # Tamper-evident workspaces chain plan-run evidence too (1.2.165): execute/run already
+        # configure the toggle from policy; the standalone plan command writes the same
+        # events/user_progress JSONL and must not be the unchained exception.
+        audit_chain.configure_from_policy(policy)
         event_logger = EventLogger(run_dir / "events.jsonl", self.validator)
         progress_logger = UserProgressLogger(run_dir / "user_progress.jsonl", self.validator)
         budget = BudgetController(policy, run_id=run["run_id"])

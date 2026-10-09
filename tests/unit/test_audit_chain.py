@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from asteria_runtime.storage import audit_chain
@@ -154,3 +155,87 @@ def test_rechain_fsyncs_and_stays_verifiable(tmp_path: Path, monkeypatch) -> Non
 
     assert calls, "re-sealed chain must be fsynced before its atomic rename"
     assert audit_chain.verify_file(path)["ok"] is True
+
+
+def test_both_policy_templates_flip_tamper_evident_on_together() -> None:
+    # 1.2.165: the default flips for NEW workspaces; the repo-root and packaged copies of
+    # policies.default.json must never drift apart (schema-dir twin lesson).
+    import json
+
+    repo_root = Path(__file__).resolve().parents[2]
+    for template in (
+        repo_root / "templates" / "policies.default.json",
+        repo_root / "src" / "asteria_runtime" / "templates" / "policies.default.json",
+    ):
+        policy = json.loads(template.read_text(encoding="utf-8"))
+        assert policy["audit"]["tamper_evident"] is True, template
+
+
+def test_missing_audit_key_falls_back_to_off() -> None:
+    # The flip is a TEMPLATE default (new workspaces via init). A policy that predates the
+    # audit block, or omits it by hand, stays conservatively off — existing workspaces are
+    # preserved untouched by init, so their evidence chain state never changes silently.
+    audit_chain.configure_from_policy({})
+    assert audit_chain.audit_chain_enabled() is False
+    audit_chain.configure_from_policy({"audit": {}})
+    assert audit_chain.audit_chain_enabled() is False
+
+
+def test_plan_run_in_tamper_evident_workspace_chains_its_evidence(tmp_path: Path) -> None:
+    # End to end through the real user path: init (writes the flipped template policy) ->
+    # plan run -> the run's events are hash-chained and verify comes back clean.
+    from asteria_runtime.commands.init_command import InitCommand
+    from asteria_runtime.commands.plan_command import PlanCommand
+
+    InitCommand(tmp_path).run()
+    policy = json.loads((tmp_path / ".asteria" / "policies.json").read_text(encoding="utf-8"))
+    assert policy["audit"]["tamper_evident"] is True
+
+    result = PlanCommand(
+        tmp_path, "做一个密码测试工具", model_client=FakePlanClientForAudit()
+    ).run()
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
+    assert (run_dir / "events.jsonl.chain").exists()
+    report = audit_chain.verify_run(run_dir)
+    assert report["ok"] is True, report
+    assert report["chained_files"] >= 2  # events.jsonl + user_progress.jsonl at least
+
+
+class FakePlanClientForAudit:
+    def chat(self, request):
+        from asteria_runtime.models.base import ChatResponse, TokenUsage
+        import json as _json
+
+        return ChatResponse(
+            content=_json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "goal_id": "goal-0001",
+                    "original_goal": "做一个密码测试工具",
+                    "normalized_goal": "构建本地优先密码测试工具",
+                    "goal_type": "software_tool",
+                    "assumptions": [],
+                    "constraints": [],
+                    "non_goals": [],
+                    "expanded_requirements": [
+                        {
+                            "id": "req-0001",
+                            "priority": "must",
+                            "description": "提供密码强度评分",
+                            "source": "inferred",
+                            "acceptance": ["输入密码后显示评分"],
+                        }
+                    ],
+                    "target_outputs": [],
+                    "definition_of_done": ["可以运行"],
+                    "verification_strategy": ["unit_tests"],
+                    "budget": {"max_iterations": 8, "max_model_calls": 60},
+                },
+                ensure_ascii=False,
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(10, 20, 30),
+            model_provider="fake",
+            model_name="fake-model",
+            raw_response={},
+        )
