@@ -2,8 +2,8 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "G17",
-  "active_phase": "大重塑 Part B（前端拉齐 + 诚实化收敛）",
+  "active_slice": "S91",
+  "active_phase": "重审计收敛与真实证据链",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
     {
@@ -830,6 +830,20 @@
         "python scripts/beta_friction_aggregate.py --root ."
       ],
       "reference_brief": "benchmarks/reference_briefs/S74-post-s73-beta-convergence.md"
+    },
+    {
+      "id": "S91",
+      "name": "Studio real-model nightly proof",
+      "phase": "Evidence convergence",
+      "depends_on": [
+        "S90"
+      ],
+      "user_demo": "nightly records three keyed Studio model-path smokes or an explicit NOT RUN when provider keys are absent",
+      "green_checks": [
+        "pytest tests/unit/test_documentation_contracts.py -q",
+        "python -c \"import yaml; yaml.safe_load(open('.github/workflows/nightly.yml'))\""
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S91-studio-real-model-nightly-proof.md"
     }
   ]
 }

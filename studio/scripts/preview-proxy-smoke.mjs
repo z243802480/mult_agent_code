@@ -42,6 +42,9 @@ const devServer = createServer((req, res) => {
   res.end(`<h1>DEV_ROOT_MARKER ${req.url}</h1>`);
 });
 devServer.on("upgrade", (req, socket) => {
+  // The client deliberately closes after reading the 101 headers; the fake upstream must treat
+  // that expected half-close as normal instead of surfacing an uncaught ECONNRESET.
+  socket.on("error", () => {});
   socket.write(
     "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nX-Dev-Upgrade: DEV_WS_MARKER\r\n\r\n",
   );

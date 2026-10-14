@@ -180,6 +180,10 @@ export function createPreviewSubsystem({ getWorkspace, previewProxyTarget }) {
     // PREVIEW-3: proxy the websocket upgrade too, so the dev server's HMR socket keeps working through
     // the preview iframe (Vite/Next live-update the app without a full reload).
     server.on("upgrade", (req, socket, head) => {
+      // A browser or smoke client may close the connection immediately after receiving the
+      // upgrade headers. Attach the handler before opening the upstream request so that this
+      // expected half-close cannot become an uncaught `ECONNRESET` process error.
+      socket.on("error", () => {});
       if (!previewProxyTarget) {
         socket.destroy();
         return;
@@ -195,6 +199,9 @@ export function createPreviewSubsystem({ getWorkspace, previewProxyTarget }) {
         },
       });
       upstream.on("upgrade", (upRes, upSocket, upHead) => {
+        // Install the upstream error handler before piping. A peer that closes as soon as it
+        // receives the 101 can otherwise emit ECONNRESET on this socket before the pipe setup.
+        upSocket.on("error", () => socket.destroy());
         const statusLine = `HTTP/1.1 ${upRes.statusCode} ${upRes.statusMessage}\r\n`;
         const headerLines = Object.entries(upRes.headers)
           .map(([k, v]) => `${k}: ${v}`)
@@ -203,7 +210,6 @@ export function createPreviewSubsystem({ getWorkspace, previewProxyTarget }) {
         if (upHead?.length) upSocket.unshift(upHead);
         upSocket.pipe(socket);
         socket.pipe(upSocket);
-        upSocket.on("error", () => socket.destroy());
         socket.on("error", () => upSocket.destroy());
       });
       upstream.on("error", () => socket.destroy());

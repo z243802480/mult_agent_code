@@ -7,6 +7,7 @@
  *   3. Faithful: the user message and final answer are present; delta noise is not.
  */
 import { spawn } from "node:child_process";
+import http from "node:http";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -102,13 +103,22 @@ try {
   ];
   await fs.writeFile(eventsFile, rows.map((row) => JSON.stringify(row)).join("\n") + "\n", "utf8");
 
-  const response = await fetch(`${base}/api/studio/sessions/${sid}/export.html`);
-  assert(response.ok, `export.html returned ${response.status}`);
+  // Use a direct loopback request for the artifact itself. Some desktop HTTP filters inject their
+  // own scripts into HTML responses fetched through the configured proxy, which would make this
+  // self-containment assertion test the filter instead of Studio's export route.
+  const response = await directGet(`${base}/api/studio/sessions/${sid}/export.html`);
+  assert(response.status >= 200 && response.status < 300, `export.html returned ${response.status}`);
   assert(
-    String(response.headers.get("content-type")).includes("text/html"),
+    String(response.headers["content-type"]).includes("text/html"),
     "must serve text/html",
   );
-  const html = await response.text();
+  // AdGuard can inject its own loopback helper tags into every local HTML response on Windows.
+  // Remove only that known middleware envelope so the assertions remain about Studio's bytes;
+  // arbitrary external references still fail below.
+  const html = response.body.replace(
+    /<script\b[^>]*\bsrc=["']\/\/local\.adguard\.org[^>]*><\/script>/gi,
+    "",
+  );
 
   // 1. Self-contained: no external references of any kind.
   assert(!/<script[^>]+src=/i.test(html), "replay page must not load external scripts");
@@ -154,4 +164,16 @@ async function fetchJson(url, method = "GET", body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   return response.json();
+}
+
+function directGet(url) {
+  return new Promise((resolve, reject) => {
+    const request = http.get(url, { agent: false }, (response) => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => (body += chunk));
+      response.on("end", () => resolve({ status: response.statusCode || 0, headers: response.headers, body }));
+    });
+    request.on("error", reject);
+  });
 }

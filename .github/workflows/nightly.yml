@@ -12,6 +12,101 @@ permissions:
   contents: read
 
 jobs:
+  # Keyed Studio model smokes stay out of per-push Verify for the same reason as the runtime
+  # ring: they spend provider quota and can be non-deterministic. The runner already has an
+  # explicit real-model bucket and a truthful no-key skip path; this job makes that evidence
+  # recurring instead of leaving it to a developer's laptop.
+  studio-real-model-nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+
+      - name: Install Studio dependencies
+        working-directory: studio
+        run: npm ci
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Asteria runtime
+        run: python -m pip install -e ".[dev]"
+
+      - name: Check real-model secret
+        id: secrets
+        env:
+          MODEL_KEY: ${{ secrets.AGENT_MODEL_API_KEY }}
+          STRONG_KEY: ${{ secrets.AGENT_MODEL_STRONG_API_KEY }}
+        run: |
+          if [ -n "$MODEL_KEY" ] && [ -n "$STRONG_KEY" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Studio real-model smokes skipped: no provider key configured."
+          fi
+
+      - name: Studio real-model smokes
+        if: steps.secrets.outputs.available == 'true'
+        working-directory: studio
+        env:
+          AGENT_MODEL_PROVIDER: minimax
+          AGENT_MODEL_API_KEY: ${{ secrets.AGENT_MODEL_API_KEY }}
+          AGENT_MODEL_STRONG_PROVIDER: glm
+          AGENT_MODEL_STRONG_NAME: glm-5
+          AGENT_MODEL_STRONG_API_KEY: ${{ secrets.AGENT_MODEL_STRONG_API_KEY }}
+        run: |
+          set -o pipefail
+          for smoke in intent-routing-smoke.mjs plan-output-smoke.mjs orchestration-route-worker-smoke.mjs; do
+            echo "=== ${smoke} ===" | tee -a studio-real-model-smokes.log
+            node "scripts/${smoke}" 2>&1 | tee -a studio-real-model-smokes.log
+          done
+
+      - name: Record missing-key status
+        if: steps.secrets.outputs.available != 'true'
+        run: |
+          {
+            echo "## Studio real-model proof"
+            echo "> ⚠️ **STUDIO REAL-MODEL PROOF: NOT RUN** — both MiniMax and GLM provider keys are required."
+            echo "> Hermetic Studio smokes remain covered by the per-push Verify workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record keyed-run status
+        if: steps.secrets.outputs.available == 'true' && success()
+        run: |
+          {
+            echo "## Studio real-model proof"
+            echo "> ✅ Three keyed Studio real-model path smokes passed (intent routing, plan answer, warm route worker)."
+            echo "> This proves the current default Studio model paths, not every provider or release tag."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record keyed-run failure
+        if: steps.secrets.outputs.available == 'true' && failure()
+        run: |
+          {
+            echo "## Studio real-model proof"
+            echo "> ❌ **STUDIO REAL-MODEL PROOF: FAILED** — inspect the uploaded smoke log for the first failing path."
+            echo "> The nightly job remains red; no retry or fallback is treated as proof."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Studio real-model evidence
+        if: steps.secrets.outputs.available == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-real-model-smoke-log
+          path: studio/studio-real-model-smokes.log
+          if-no-files-found: warn
+
   mcp-official-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 15
