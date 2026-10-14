@@ -59,8 +59,60 @@ jobs:
               ;;
           esac
 
+  # S92: Studio keyed smokes are evidence for the release operator, but remain non-blocking until
+  # there is a real history of successful runs. An old nightly without this job is reported as
+  # NEVER RUN instead of being mistaken for Studio proof.
+  studio-real-model-proof:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    steps:
+      - name: Report latest Studio real-model nightly result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          echo "## Studio real-model proof (nightly)" >> "$GITHUB_STEP_SUMMARY"
+          run_json="$(gh run list --workflow=nightly.yml --branch "$DEFAULT_BRANCH" --limit 1 --json databaseId || true)"
+          if [ -z "$run_json" ] || [ "$run_json" = "[]" ]; then
+            echo "> ⚠️ **STUDIO REAL-MODEL PROOF: NEVER RUN** — no nightly workflow run exists on \`$DEFAULT_BRANCH\`." >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::Studio real-model nightly has never run — release continues without Studio proof."
+            exit 0
+          fi
+          run_id="$(printf '%s' "$run_json" | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['databaseId'])")"
+          detail_json="$(gh run view "$run_id" --json jobs || true)"
+          conclusion="$(DETAIL_JSON="$detail_json" python3 - <<'PY'
+          import json, os
+          data = json.loads(os.environ.get("DETAIL_JSON", "{}") or "{}")
+          for job in data.get("jobs", []):
+              if job.get("name") == "studio-real-model-nightly":
+                  print(job.get("conclusion", ""))
+                  break
+          else:
+              print("missing")
+          PY
+          )"
+          case "$conclusion" in
+            success)
+              echo "> ✅ Latest Studio real-model nightly passed (run #$run_id)." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            failure)
+              echo "> ❌ **Latest Studio real-model nightly FAILED** (run #$run_id). Studio proof is not green; this summary is non-blocking." >> "$GITHUB_STEP_SUMMARY"
+              echo "::warning::Latest Studio real-model nightly failed — release continues without Studio proof."
+              ;;
+            missing)
+              echo "> ⚠️ **STUDIO REAL-MODEL PROOF: NEVER RUN** — the latest nightly predates the Studio proof job." >> "$GITHUB_STEP_SUMMARY"
+              echo "::notice::Latest nightly has no studio-real-model-nightly job — release continues without Studio proof."
+              ;;
+            *)
+              echo "> ⚠️ **STUDIO REAL-MODEL PROOF: NOT GREEN** — latest Studio job concluded \`$conclusion\` (run #$run_id)." >> "$GITHUB_STEP_SUMMARY"
+              echo "::notice::Latest Studio real-model nightly is not green — release continues without Studio proof."
+              ;;
+          esac
+
   build-release:
-    needs: [verify, real-stack-proof]
+    needs: [verify, real-stack-proof, studio-real-model-proof]
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository

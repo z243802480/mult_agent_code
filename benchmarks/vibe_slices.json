@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S91",
+  "active_slice": "S92",
   "active_phase": "重审计收敛与真实证据链",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -844,6 +844,20 @@
         "python -c \"import yaml; yaml.safe_load(open('.github/workflows/nightly.yml'))\""
       ],
       "reference_brief": "benchmarks/reference_briefs/S91-studio-real-model-nightly-proof.md"
+    },
+    {
+      "id": "S92",
+      "name": "Studio proof in release summary",
+      "phase": "Evidence convergence",
+      "depends_on": [
+        "S91"
+      ],
+      "user_demo": "release summary reports the latest Studio real-model nightly as passed, never run, or not green without blocking the release",
+      "green_checks": [
+        "python -c \"import yaml; yaml.safe_load(open('.github/workflows/release.yml'))\"",
+        "pytest tests/unit/test_documentation_contracts.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S92-studio-proof-release-summary.md"
     }
   ]
 }
