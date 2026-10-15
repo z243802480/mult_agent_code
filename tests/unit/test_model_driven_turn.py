@@ -313,16 +313,48 @@ def test_json_transport_done_flag_completes_even_with_tool_calls() -> None:
     assert result.observations == []
 
 
-def test_json_transport_invalid_json_does_not_crash() -> None:
-    model = FakeModelClient([SimpleNamespace(content="这不是 JSON", raw_response={})])
-    tools = FakeToolRunner([])
-    task = {"task_id": "task-0001", "allowed_tools": []}  # 无待办 -> 不轻推,如实完成
+def test_json_transport_retries_plain_text_until_it_gets_a_tool_call() -> None:
+    model = FakeModelClient(
+        [
+            SimpleNamespace(content="我先读取目标文件。", raw_response={}),
+            SimpleNamespace(content="现在修改文件。", raw_response={}),
+            _json_resp("读取目标文件", [{"tool_name": "read_file", "args": {"path": "calc.py"}}]),
+            _json_resp("完成", [], done=True),
+        ]
+    )
+    tools = FakeToolRunner([[FakeToolResult(ok=True, summary="read calc.py")]])
+    task = {"task_id": "task-0001", "allowed_tools": ["read_file"], "write_scope": ["calc.py"]}
 
-    result = _run(model, tools, transport="json", task=task)
+    result = _run(model, tools, transport="json", task=task, max_iterations=4)
 
     assert result.status == "completed"
+    assert len(result.observations) == 1
+    assert result.observations[0].tool_name == "read_file"
+    assert len(model.requests) == 4
+    second_call_texts = [m.content for m in model.requests[1].messages]
+    assert any("valid JSON" in text and "tool_calls" in text for text in second_call_texts)
+
+
+def test_json_transport_invalid_json_hits_fuse_without_claiming_completion() -> None:
+    model = FakeModelClient([SimpleNamespace(content="这不是 JSON", raw_response={})])
+    tools = FakeToolRunner([])
+    task = {"task_id": "task-0001", "allowed_tools": []}
+
+    result = _run(model, tools, transport="json", task=task, max_iterations=1)
+
+    assert result.status == "budget_exhausted"
     assert result.iterations == 1
     assert result.observations == []
+
+
+def test_json_transport_missing_contract_fields_is_not_a_final_answer() -> None:
+    model = FakeModelClient([SimpleNamespace(content='{"narration": "edit now"}', raw_response={})])
+    tools = FakeToolRunner([])
+
+    result = _run(model, tools, transport="json", max_iterations=1)
+
+    assert result.status == "budget_exhausted"
+    assert tools.calls_seen == []
 
 
 # --- 控制型 Hook 胶水（把方法论层串进循环，保连续性）--------------------------------------

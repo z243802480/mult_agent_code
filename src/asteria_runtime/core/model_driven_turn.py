@@ -215,7 +215,14 @@ def run_model_driven_turn(
             ),
         )
         response = model_client.chat(request)
-        narration, calls = _read_turn(response, transport)
+        narration, calls, valid_turn = _read_turn(response, transport)
+        if not valid_turn:
+            # Plain prose is not a model decision in the JSON transport: it contains neither a
+            # usable tool call nor an explicit done=true. Ask the model to repair the protocol,
+            # bounded by the same iteration fuse, rather than silently treating prose as success.
+            messages.append(ChatMessage(role="assistant", content=narration or "(empty response)"))
+            messages.append(ChatMessage(role="user", content=_json_format_nudge(available_tools)))
+            continue
         if narration:
             emit(TurnEvent(kind="narration", iteration=iteration, text=narration))
 
@@ -357,22 +364,35 @@ def _execute(
     return observations
 
 
-def _read_turn(response: Any, transport: str) -> tuple[str, list[dict]]:
-    """从模型响应里取出（narration, tool_calls），屏蔽 transport 差异。"""
+def _read_turn(response: Any, transport: str) -> tuple[str, list[dict], bool]:
+    """从模型响应里取出（narration, tool_calls, valid_turn），屏蔽 transport 差异。"""
     content = str(getattr(response, "content", "") or "")
     if transport == "tool_use":
         calls = extract_tool_calls(getattr(response, "raw_response", {}) or {})
-        return content.strip(), calls
+        return content.strip(), calls, True
     # json transport（本弱模型栈的已证明通路）
     try:
         parsed = parse_json_object(content)
     except JsonExtractionError:
-        # 没给合法 JSON：当作一步无效输出（narration=原文、无 tool_calls）——交给轻推/完成判定处理。
-        return content.strip(), []
+        return content.strip(), [], False
+    if not isinstance(parsed.get("tool_calls"), list) or not isinstance(parsed.get("done"), bool):
+        return content.strip(), [], False
     narration = str(parsed.get("narration") or "").strip()
     if parsed.get("done"):
-        return narration, []
-    return narration, _normalize_json_calls(parsed.get("tool_calls"))
+        return narration, [], True
+    return narration, _normalize_json_calls(parsed.get("tool_calls")), True
+
+
+def _json_format_nudge(available_tools: list[str]) -> str:
+    names = ", ".join(available_tools)
+    return (
+        "Your previous response was not valid JSON for an execution turn. No tool was called and no file "
+        "was changed by that response. Return exactly ONE JSON object with keys narration, "
+        "tool_calls, and done; no prose or markdown outside the object. To keep working, set "
+        "done=false and put the tools to run NOW in tool_calls, each with tool_name and args. "
+        f"Available tools: {names}. Use real paths and arguments from the task, not placeholders. "
+        "Only set done=true with empty tool_calls after the task has been changed and verified."
+    )
 
 
 def _normalize_json_calls(raw: Any) -> list[dict]:

@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S93",
+  "active_slice": "S94",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -872,6 +872,21 @@
         "record the real Studio path and first reproducible friction in the S93 report"
       ],
       "reference_brief": "benchmarks/reference_briefs/S93-local-studio-dogfood.md"
+    },
+    {
+      "id": "S94",
+      "name": "Execution model zero tool calls",
+      "phase": "Product dogfood",
+      "depends_on": [
+        "S93"
+      ],
+      "user_demo": "an isolated Studio coding task reaches real tool observations and reports its final verification truthfully",
+      "green_checks": [
+        "targeted pytest for the confirmed response-shape failure",
+        "pytest tests/unit/test_documentation_contracts.py -q",
+        "record the real Studio rerun outcome"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S94-execution-zero-tool-calls.md"
     }
   ]
 }
