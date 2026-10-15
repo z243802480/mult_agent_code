@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
-import platform
 from dataclasses import dataclass
 
 from asteria_runtime.core.agent_role_policy import role_contract_for
+from asteria_runtime.core.execution_environment import command_execution_context
 from asteria_runtime.core.design_intel_contract import apply_research_type_to_goal_spec
 from asteria_runtime.core.execution_preferences import normalize_execution_preferences
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
@@ -258,7 +258,7 @@ You must:
         return f"""User goal:
 {goal}
 
-Host OS: {platform.system()}
+Execution environment: {json.dumps(command_execution_context(), ensure_ascii=False)}
 
 Project context:
 {json.dumps(self._prompt_project_context(project_context), ensure_ascii=False, indent=2)}

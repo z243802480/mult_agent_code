@@ -198,7 +198,7 @@ Add `--run-promoted` to immediately continue the current session after new failu
 Add `--rerun-promoted` to run the promoted tasks and then rerun only the newly promoted scenarios;
 when the rerun passes, the command exits successfully and records the closed failures in the report.
 Newly promoted failures are also recorded as `failure_lesson` entries in `.asteria/memory/failures.jsonl`.
-Verification command rewrites live in `verification_command_normalizer.py` and only cover known low-risk test fixture patterns; unsafe commands still go through policy enforcement.
+Verification commands keep their original meaning: the runtime checks policy, executes the requested command, and records its actual exit status.
 
 ## Verify Locally
 

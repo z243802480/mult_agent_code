@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import os
-import re
-import shlex
 import subprocess
 import sys
 
@@ -37,8 +35,6 @@ class RunCommandTool:
         permissions = context.policy["permissions"]
         protected_paths = context.policy.get("protected_paths")
         ShellGuard(permissions, protected_paths).validate(command)
-        normalized_command = self._normalize_command(command)
-        ShellGuard(permissions, protected_paths).validate(normalized_command)
         timeout = timeout_seconds or self.default_timeout_seconds
 
         # ADR-0030 S-B: when the policy opts into sandbox_shell, the command runs inside an
@@ -61,7 +57,7 @@ class RunCommandTool:
             if sandbox_ctx is not None:
                 completed = run_sandboxed(
                     sandbox_ctx,
-                    normalized_command,
+                    command,
                     cwd=str(context.root),
                     env=self._env(),
                     timeout=timeout,
@@ -72,7 +68,7 @@ class RunCommandTool:
                 # whole tree — including detached children the static ShellGuard can't see — dies
                 # with the run.
                 completed = run_fenced(
-                    normalized_command,
+                    command,
                     cwd=context.root,
                     timeout=timeout,
                     env=self._env(),
@@ -91,18 +87,13 @@ class RunCommandTool:
         stdout = self._truncate(completed.stdout)
         stderr = self._truncate(completed.stderr)
         expected = self._expected_returncodes(expected_returncodes)
-        ok = completed.returncode in expected or self._is_usage_check(command, completed)
-        summary_command = (
-            f"{normalized_command} (normalized from: {command})"
-            if normalized_command != command
-            else command
-        )
+        ok = completed.returncode in expected
         return ToolResult(
             ok=ok,
-            summary=f"Command {'passed' if ok else 'failed'} ({completed.returncode}): {summary_command}",
+            summary=f"Command {'passed' if ok else 'failed'} ({completed.returncode}): {command}",
             error=None if ok else "nonzero_exit",
             data={
-                "command": normalized_command,
+                "command": command,
                 "requested_command": command,
                 "returncode": completed.returncode,
                 "expected_returncodes": sorted(expected),
@@ -129,41 +120,10 @@ class RunCommandTool:
         # payload, so we remove the secret rather than hope to block every exfil command.
         env, _removed = sanitize_subprocess_env()
         executable_dir = os.path.dirname(sys.executable)
-        env["PATH"] = executable_dir + os.pathsep + env.get("PATH", "")
+        # Keep a project's active environment ahead of the harness interpreter. The latter is
+        # only a fallback when no earlier PATH entry provides Python.
+        env["PATH"] = os.pathsep.join(part for part in (env.get("PATH", ""), executable_dir) if part)
         return env
-
-    def _normalize_command(self, command: str) -> str:
-        normalized = self._normalize_python_invocation(command)
-        if os.name == "nt":
-            normalized = self._normalize_windows_ls(normalized)
-        return normalized
-
-    def _normalize_python_invocation(self, command: str) -> str:
-        match = re.match(r"^(\s*)(python3|python)(\s|$)(.*)$", command, flags=re.IGNORECASE | re.DOTALL)
-        if not match:
-            return command
-        prefix, _python_name, separator, rest = match.groups()
-        executable = self._shell_quote(sys.executable)
-        if separator:
-            return f"{prefix}{executable}{separator}{rest}"
-        return f"{prefix}{executable}"
-
-    def _normalize_windows_ls(self, command: str) -> str:
-        match = re.match(r"^\s*ls\s+-la\s+(.+?)\s*$", command, flags=re.IGNORECASE)
-        if not match:
-            return command
-        raw_path = match.group(1).strip().strip('"').strip("'")
-        escaped = raw_path.replace("\\", "\\\\").replace("'", "\\'")
-        executable = self._shell_quote(sys.executable)
-        return (
-            f"{executable} -c \"from pathlib import Path; import sys; "
-            f"sys.exit(0 if Path('{escaped}').exists() else 1)\""
-        )
-
-    def _shell_quote(self, value: str) -> str:
-        if os.name == "nt":
-            return subprocess.list2cmdline([value])
-        return shlex.quote(value)
 
     def _expected_returncodes(self, value: int | list[int] | None) -> set[int]:
         if value is None:
@@ -171,19 +131,6 @@ class RunCommandTool:
         if isinstance(value, int):
             return {value}
         return {int(item) for item in value}
-
-    def _is_usage_check(
-        self,
-        command: str,
-        completed: subprocess.CompletedProcess[str],
-    ) -> bool:
-        if completed.returncode == 0:
-            return False
-        normalized = command.strip().lower()
-        if not re.match(r"^(python3?|py)\s+[\w./\\-]+\.py\s*$", normalized):
-            return False
-        output = f"{completed.stdout}\n{completed.stderr}".lower()
-        return "usage:" in output
 
     def _text(self, value: bytes | str | None) -> str:
         if value is None:
@@ -209,14 +156,12 @@ class RunTestsTool:
         context: RuntimeContext,
         command: str | None = None,
         timeout_seconds: int | None = None,
-        expected_returncodes: int | list[int] | None = None,
     ) -> ToolResult:
         test_command = command or context.policy.get("commands", {}).get("test") or "python -m pytest"
         result = self.command_tool.run(
             context,
             test_command,
             timeout_seconds=timeout_seconds,
-            expected_returncodes=expected_returncodes,
         )
         result.summary = "Test " + result.summary[0].lower() + result.summary[1:]
         return result

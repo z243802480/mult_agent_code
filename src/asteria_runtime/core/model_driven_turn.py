@@ -538,7 +538,7 @@ def _grounding_nudge(task: dict) -> str:
     ]
     target_text = ", ".join(dict.fromkeys(targets)) or "the expected artifact"
     return (
-        f"The task is not complete yet: {target_text} has not been produced. "
-        "Use tool calls (e.g. write_file / edit_file) to produce it now. "
-        "Do not end the turn before the expected artifact exists."
+        f"No tool action has been observed for this task yet. Check {target_text} with the "
+        "available tools; inspect what already exists, make only the changes needed, and verify "
+        "the result. Do not claim completion without tool evidence."
     )

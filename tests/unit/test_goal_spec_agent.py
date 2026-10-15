@@ -50,7 +50,7 @@ def valid_goal_spec_json() -> str:
 
 
 def test_goal_spec_agent_generates_valid_goal_spec(monkeypatch) -> None:
-    monkeypatch.setattr("asteria_runtime.agents.goal_spec_agent.platform.system", lambda: "Windows")
+    monkeypatch.setattr("asteria_runtime.core.execution_environment.platform.system", lambda: "Windows")
     client = FakeClient(valid_goal_spec_json())
     agent = GoalSpecAgent(client, SchemaValidator(Path("schemas")))
 
@@ -59,7 +59,8 @@ def test_goal_spec_agent_generates_valid_goal_spec(monkeypatch) -> None:
     assert result["goal_id"] == "goal-0001"
     assert result["expanded_requirements"][0]["priority"] == "must"
     assert client.requests[0].metadata["agent_role_contract"]["role"] == "GoalSpecAgent"
-    assert "Host OS: Windows" in client.requests[0].messages[1].content
+    assert '"host_os": "Windows"' in client.requests[0].messages[1].content
+    assert '"run_command_shell": "cmd.exe"' in client.requests[0].messages[1].content
     assert "Do not invent a shell command" in client.requests[0].messages[0].content
 
 

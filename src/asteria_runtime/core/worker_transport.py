@@ -121,10 +121,6 @@ def tool_definitions_for(
                     "type": "object",
                     "properties": {
                         "command": {"type": "string"},
-                        "expected_returncodes": {
-                            "type": "array",
-                            "items": {"type": "integer"},
-                        },
                     },
                     "required": ["command"],
                 },

@@ -1,4 +1,6 @@
 import json
+import os
+import sys
 from pathlib import Path
 
 from asteria_runtime.core.budget import BudgetController
@@ -187,7 +189,7 @@ def test_command_tool_runs_safe_command_and_blocks_dangerous(tmp_path: Path) -> 
     assert denied.status == "denied"
 
 
-def test_command_tool_normalizes_common_model_shell_drift(tmp_path: Path) -> None:
+def test_command_tool_preserves_model_command_and_true_exit_status(tmp_path: Path) -> None:
     ctx = context(tmp_path)
     tools = registry()
     (tmp_path / "hello_runtime.txt").write_text("ok\n", encoding="utf-8")
@@ -195,10 +197,22 @@ def test_command_tool_normalizes_common_model_shell_drift(tmp_path: Path) -> Non
     python_alias = tools.call("run_command", ctx, command="python3 --version")
     posix_listing = tools.call("run_command", ctx, command="ls -la hello_runtime.txt")
 
-    assert python_alias.ok
-    assert posix_listing.ok
     assert python_alias.data["requested_command"] == "python3 --version"
+    assert python_alias.data["command"] == "python3 --version"
+    assert python_alias.ok == (python_alias.data["returncode"] == 0)
     assert posix_listing.data["requested_command"] == "ls -la hello_runtime.txt"
+    assert posix_listing.data["command"] == "ls -la hello_runtime.txt"
+    assert posix_listing.ok == (posix_listing.data["returncode"] == 0)
+
+
+def test_command_tool_preserves_project_path_before_harness_python(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "asteria_runtime.tools.command_tools.sanitize_subprocess_env",
+        lambda: ({"PATH": "project-bin"}, []),
+    )
+    path = RunCommandTool()._env()["PATH"].split(os.pathsep)
+    assert path[0] == "project-bin"
+    assert path[-1] == os.path.dirname(sys.executable)
 
 
 def test_command_tool_accepts_expected_nonzero_returncodes(tmp_path: Path) -> None:
@@ -216,7 +230,7 @@ def test_command_tool_accepts_expected_nonzero_returncodes(tmp_path: Path) -> No
     assert result.data["returncode"] == 3
 
 
-def test_run_tests_tool_accepts_expected_nonzero_returncodes(tmp_path: Path) -> None:
+def test_run_tests_tool_cannot_redefine_success_returncode(tmp_path: Path) -> None:
     ctx = context(tmp_path)
     tools = registry()
 
@@ -227,11 +241,12 @@ def test_run_tests_tool_accepts_expected_nonzero_returncodes(tmp_path: Path) -> 
         expected_returncodes=[3],
     )
 
-    assert result.ok
+    assert not result.ok
     assert result.data["returncode"] == 3
+    assert "Ignored unsupported tool args: expected_returncodes" in result.warnings
 
 
-def test_command_tool_accepts_cli_usage_checks(tmp_path: Path) -> None:
+def test_command_tool_usage_text_does_not_override_exit_status(tmp_path: Path) -> None:
     ctx = context(tmp_path)
     tools = registry()
     (tmp_path / "cli.py").write_text(
@@ -241,8 +256,15 @@ def test_command_tool_accepts_cli_usage_checks(tmp_path: Path) -> None:
 
     result = tools.call("run_command", ctx, command="python cli.py")
 
-    assert result.ok
+    assert not result.ok
     assert result.data["returncode"] == 1
+
+    expected = tools.call(
+        "run_command", ctx, command="python cli.py", expected_returncodes=1
+    )
+    assert expected.ok
+    assert expected.data["returncode"] == 1
+
 
 
 def test_tool_registry_ignores_unsupported_model_args(tmp_path: Path) -> None:

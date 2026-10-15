@@ -158,6 +158,7 @@ def test_tool_definitions_for_no_extra_is_unchanged() -> None:
     # No-op parity: existing single-arg callers behave exactly as before.
     specs = tool_definitions_for(["write_file", "run_tests"])
     assert [s["function"]["name"] for s in specs] == ["write_file", "run_tests"]
+    assert "expected_returncodes" not in specs[1]["function"]["parameters"]["properties"]
     assert tool_definitions_for(["write_file"], None) == tool_definitions_for(["write_file"])
 
 

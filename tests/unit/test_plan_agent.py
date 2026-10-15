@@ -106,7 +106,7 @@ def test_plan_agent_normalizes_model_tasks_and_hardens_contracts() -> None:
 
 
 def test_plan_agent_sends_task_planning_request_with_role_contract(monkeypatch) -> None:
-    monkeypatch.setattr("asteria_runtime.agents.plan_agent.platform.system", lambda: "Windows")
+    monkeypatch.setattr("asteria_runtime.core.execution_environment.platform.system", lambda: "Windows")
     client = FakeTaskPlanClient(_plan_payload())
     PlanAgent(client, SchemaValidator(Path.cwd() / "schemas")).generate(
         {"normalized_goal": "x" * 10, "expanded_requirements": []},
@@ -119,7 +119,8 @@ def test_plan_agent_sends_task_planning_request_with_role_contract(monkeypatch) 
     assert request.metadata["agent_role_contract"]["purpose"] == "task_planning"
     assert request.metadata["run_id"] == "run-9"
     assert "GoalSpec" in request.messages[1].content
-    assert "Host OS: Windows" in request.messages[1].content
+    assert '"host_os": "Windows"' in request.messages[1].content
+    assert '"run_command_shell": "cmd.exe"' in request.messages[1].content
     assert "Treat unverified commands in GoalSpec" in request.messages[0].content
 
 

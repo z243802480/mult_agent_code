@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S99",
+  "active_slice": "S100",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -960,6 +960,19 @@
         "Studio build, unit tests, hermetic smokes and documentation contracts"
       ],
       "reference_brief": "benchmarks/reference_briefs/S99-beta-task-variety-dogfood.md"
+    },
+    {
+      "id": "S100",
+      "name": "Model harness boundary audit and truthful command execution",
+      "phase": "产品主路径 dogfood",
+      "depends_on": ["S99"],
+      "user_demo": "Commands run as requested; failures return real exit status while models receive shell context",
+      "green_checks": [
+        "command gateway and model turn regressions",
+        "Python test suite, Ruff and documentation contracts",
+        "Verify workflow after push"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S100-model-harness-boundary-audit.md"
     }
   ]
 }

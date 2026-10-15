@@ -169,7 +169,8 @@ def test_premature_first_round_stop_is_nudged() -> None:
     assert result.iterations == 3
     assert len(result.observations) == 1
     nudge_texts = [m.content for m in model.requests[1].messages]
-    assert any("not complete" in t and "calc.py" in t for t in nudge_texts)
+    assert any("No tool action has been observed" in t and "calc.py" in t for t in nudge_texts)
+    assert all("has not been produced" not in t for t in nudge_texts)
 
 
 def test_no_pending_work_stops_immediately() -> None:

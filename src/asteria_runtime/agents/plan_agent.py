@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
-import platform
 from dataclasses import dataclass
 
 from asteria_runtime.agents.planner import RequirementPlanner
+from asteria_runtime.core.execution_environment import command_execution_context
 from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.core.execution_profile import HARNESS, SESSION_AGENT
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
@@ -146,7 +146,7 @@ You must:
 {json.dumps(goal_spec, ensure_ascii=False, indent=2)}
 
 Execution profile: {execution_profile}
-Host OS: {platform.system()}
+Execution environment: {json.dumps(command_execution_context(), ensure_ascii=False)}
 Existing workspace files:
 {chr(10).join(workspace_files) if workspace_files else "(empty workspace)"}
 
