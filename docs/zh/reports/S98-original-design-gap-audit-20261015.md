@@ -26,6 +26,8 @@
 
 ## 验收与后续
 
-本地验收：`npm run build`、`npm run typecheck`、目标 CSS 的 Prettier、文档契约 23/23、Studio 单测 269/269、hermetic smoke 41/41、Playwright 交互主路径 3/3 均通过。首次并行运行出现事件写入单测 5 秒超时与 smoke 临时目录 `EBUSY`；串行复跑全绿。交互用例初次失败的错误页明确写 `No module named asteria_runtime`，系命令未传 `PYTHONPATH=F:\mult_agent_code\src`；按项目 smoke 环境设置后 3/3 通过。此轮视觉检查用同类卡片 DOM 预览，未触发真实 provider 权限请求，不能据此宣称真实模型链路已验收。远端 Verify 待推送后记录。
+本地验收：`npm run build`、`npm run typecheck`、目标 CSS 的 Prettier、文档契约 23/23、Studio 单测 269/269、hermetic smoke 41/41、Playwright 交互主路径 3/3 均通过。首次并行运行出现事件写入单测 5 秒超时与 smoke 临时目录 `EBUSY`；串行复跑全绿。交互用例初次失败的错误页明确写 `No module named asteria_runtime`，系命令未传 `PYTHONPATH=F:\mult_agent_code\src`；按项目 smoke 环境设置后 3/3 通过。此轮视觉检查用同类卡片 DOM 预览，未触发真实 provider 权限请求，不能据此宣称真实模型链路已验收。
+
+远端验收：[Verify run `38721676522`](https://github.com/z243802480/mult_agent_code/actions/runs/38721676522) 在 `main@a972fc3` 的 Python 3.11、Python 3.13 与 Studio 前端三个 job 全部 success；keyed real-model proof 仍为 `NOT RUN`。
 
 下一项优先按照 `架构设计.md` §10 用不同形状的真实 Beta 任务校准成功率、恢复与体验；若任务实际撞上 G12/G13/G16/G19 再开对应 DecisionPoint。C5/C6/C8 继续作为视觉收口债，不伪装成产品能力缺口。
