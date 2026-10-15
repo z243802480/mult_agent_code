@@ -20,6 +20,7 @@ export function createEventBus({ sessionPath, getWorkspace }) {
   // from the file, which is why `seq` is also PERSISTED: the numbering must survive the process.
   const seqCounters = new Map(); // sessionId -> next seq
   const seqSeeding = new Map(); // sessionId -> in-flight seed promise (concurrent appends must not double-seed)
+  const appendQueues = new Map(); // sessionId -> last settled append
 
   async function nextSeq(sessionId) {
     if (!seqCounters.has(sessionId)) {
@@ -57,7 +58,7 @@ export function createEventBus({ sessionPath, getWorkspace }) {
     }
   }
 
-  async function appendEvent(sessionId, event) {
+  async function writeEvent(sessionId, event) {
     if (!isSafeId(sessionId)) return;
     const seq = await nextSeq(sessionId);
     const full = {
@@ -100,6 +101,18 @@ export function createEventBus({ sessionPath, getWorkspace }) {
     }
     notifySSE(sessionId, full);
     return full;
+  }
+
+  function appendEvent(sessionId, event) {
+    if (!isSafeId(sessionId)) return Promise.resolve();
+    const previous = appendQueues.get(sessionId) ?? Promise.resolve();
+    const current = previous.then(() => writeEvent(sessionId, event));
+    const settled = current.catch(() => {});
+    appendQueues.set(sessionId, settled);
+    void settled.then(() => {
+      if (appendQueues.get(sessionId) === settled) appendQueues.delete(sessionId);
+    });
+    return current;
   }
 
   return { sseClients, notifySSE, appendEvent };

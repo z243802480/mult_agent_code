@@ -107,8 +107,16 @@ class StudioModelEventSink:
         try:
             with _LOCK:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
-                with self.path.open("a", encoding="utf-8") as handle:
-                    handle.write(json.dumps(full, ensure_ascii=False) + "\n")
+                # This file also has a Node writer. Emit each encoded JSONL row in one OS append
+                # call so text buffering cannot split it around a concurrent writer's row.
+                payload = (json.dumps(full, ensure_ascii=False) + "\n").encode("utf-8")
+                flags = os.O_APPEND | os.O_CREAT | os.O_WRONLY | getattr(os, "O_BINARY", 0)
+                fd = os.open(self.path, flags, 0o600)
+                try:
+                    if os.write(fd, payload) != len(payload):
+                        raise OSError("short Studio event append")
+                finally:
+                    os.close(fd)
             return full
         except OSError:
             return None

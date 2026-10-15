@@ -29,6 +29,7 @@ import {
 } from "./lib/attachments.mjs";
 import { createPreviewSubsystem, normalizeProxyTarget } from "./lib/preview-server.mjs";
 import { createEventBus } from "./lib/event-bus.mjs";
+import { parseSessionEvents } from "./lib/session-events.mjs";
 import { parseSessionText, writeSessionJson } from "./lib/session-store.mjs";
 import { renderSessionReplayHtml } from "./lib/session-replay.mjs";
 import { eventsAfter, parseSince } from "./lib/event-cursor.mjs";
@@ -1750,22 +1751,7 @@ async function readSessionEvents(sessionId) {
   if (!isSafeId(sessionId)) return [];
   const file = sessionPath(sessionId, "events.jsonl");
   if (!existsSync(file)) return [];
-  let events = (await fs.readFile(file, "utf8"))
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line, index) => {
-      let event;
-      try {
-        event = redact(JSON.parse(line));
-      } catch {
-        event = { type: "raw", content_delta: redactText(line) };
-      }
-      // Events written before `seq` existed (and unparseable lines) fall back to their line index,
-      // which is exactly what the event bus seeds its counter from — so the numbering is continuous
-      // across the upgrade instead of restarting at 0 and replaying the whole transcript.
-      if (typeof event.seq !== "number") event.seq = index;
-      return event;
-    });
+  let events = parseSessionEvents(await fs.readFile(file, "utf8"));
   // M4: a job-based permission confirm card is a one-shot prompt. Once its job resolved (allow/deny
   // recorded a resolved_job_id marker), drop the original waiting_user permission_request from the
   // thread feed — the "Approved/Canceled" delta already narrates the outcome, and leaving the raw
