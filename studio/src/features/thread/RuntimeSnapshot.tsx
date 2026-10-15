@@ -382,7 +382,7 @@ export function RuntimeSnapshot({
                   className="runtimeActionButton primary accept"
                   type="button"
                   disabled={busy}
-                  onClick={() => void runAction(() => onRuntimeAction(nextActionValue || "accept"))}
+                  onClick={() => void runAction(() => onRuntimeAction("accept"))}
                 >
                   {busy ? <Loader2 size={13} className="spinning" /> : "标记完成"}
                 </button>

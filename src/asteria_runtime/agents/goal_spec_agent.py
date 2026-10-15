@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import platform
 from dataclasses import dataclass
 
 from asteria_runtime.core.agent_role_policy import role_contract_for
@@ -243,6 +244,9 @@ You must:
 - Separate assumptions, constraints, non-goals, and expanded requirements.
 - Include must/should/could priorities.
 - Include a verifiable definition_of_done and verification_strategy.
+- State observable outcomes for acceptance and definition_of_done. Do not invent a shell command
+  unless the user requested it or the project context establishes that it exists on this host;
+  file-content checks can be described without prescribing a specific shell utility.
 - Preserve explicit execution controls such as required subagent delegation and named read directories.
 - Prefer local-first and privacy-safe defaults.
 - Mirror the user's language: write normalized_goal, descriptions, acceptance, definition_of_done and
@@ -253,6 +257,8 @@ You must:
     def _user_prompt(self, goal: str, project_context: dict) -> str:
         return f"""User goal:
 {goal}
+
+Host OS: {platform.system()}
 
 Project context:
 {json.dumps(self._prompt_project_context(project_context), ensure_ascii=False, indent=2)}

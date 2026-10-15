@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import platform
 from dataclasses import dataclass
 
 from asteria_runtime.agents.planner import RequirementPlanner
@@ -119,6 +120,9 @@ You must:
   slice, its behavior, and its target artifact.
 - Write 1-6 acceptance criteria per task that a tool or reviewer can check — name files,
   tests, or commands. Never "works correctly" without an observable check.
+- Treat unverified commands in GoalSpec as suggestions, not requirements. For document/content
+  checks, specify the observable content and use file tools; only prescribe a shell command when
+  it is known to be available on the host OS or in the project.
 - Use concrete file paths for expected_artifacts and expected_changed_files. Never list a
   pre-existing test file the task is judged by; DO list new test files the task authors.
 - Reference only task ids present in this plan inside depends_on; leave it empty for entry
@@ -142,6 +146,7 @@ You must:
 {json.dumps(goal_spec, ensure_ascii=False, indent=2)}
 
 Execution profile: {execution_profile}
+Host OS: {platform.system()}
 Existing workspace files:
 {chr(10).join(workspace_files) if workspace_files else "(empty workspace)"}
 

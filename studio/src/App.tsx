@@ -93,6 +93,30 @@ export function App() {
   });
   runEvidenceRef.current = runEvidence;
 
+  // Review/Accept can finish without changing the event that selected this run. Refresh the
+  // workflow flags and its evidence when this session's job settles, so the next action advances
+  // immediately instead of staying on the old Review card until a page reload.
+  const previousJobRef = useRef({ sessionId: "", running: false });
+  useEffect(() => {
+    const sessionId = bootstrap.activeSession?.session_id ?? "";
+    const previous = previousJobRef.current;
+    previousJobRef.current = { sessionId, running: sessionEvents.isRunning };
+    if (previous.sessionId !== sessionId || !previous.running || sessionEvents.isRunning) return;
+    let cancelled = false;
+    void bootstrap
+      .refreshOverview()
+      .then(async () => {
+        if (cancelled) return;
+        const runId = runEvidenceRef.current?.selectedRunId;
+        if (runId) await runEvidenceRef.current?.openRun(runId);
+        if (!cancelled) await reviewRef.current?.refreshGitStatus();
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [bootstrap.activeSession?.session_id, bootstrap.refreshOverview, sessionEvents.isRunning]);
+
   const review = useWorkspaceReview(
     bootstrap.activeSession,
     sessionEvents.events,

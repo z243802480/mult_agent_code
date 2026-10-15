@@ -60,6 +60,19 @@ export function useStudioBootstrap(callbacks: BootstrapCallbacks = {}) {
     }
   }, []);
 
+  const refreshOverview = useCallback(async () => {
+    const overviewData = await api.overview();
+    const diagnostics = await api.diagnostics().catch(() => null);
+    setOverview((current) => ({
+      ...(current ?? {}),
+      ...overviewData,
+      ...(diagnostics ?? {}),
+      runs: overviewData.runs,
+      workflow: diagnostics?.workflow ?? current?.workflow,
+      modelRoutes: diagnostics?.modelRoutes ?? overviewData.modelRoutes,
+    }));
+  }, []);
+
   useEffect(() => {
     void bootstrap();
   }, [bootstrap]);
@@ -152,6 +165,7 @@ export function useStudioBootstrap(callbacks: BootstrapCallbacks = {}) {
     setWorkspaceOpen,
     promptSignal,
     bootstrap,
+    refreshOverview,
     newSession,
     deleteSession,
     restoreSession,

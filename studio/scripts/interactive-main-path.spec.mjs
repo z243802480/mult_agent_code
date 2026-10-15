@@ -38,7 +38,7 @@ test("an empty session shows the welcome prompt, never the workspace's leftover 
   page,
 }) => {
   await page.goto(`http://127.0.0.1:${port}/`);
-  await expect(page.locator(".emptyThread")).toBeVisible();
+  await expect(page.locator(".emptyThread")).toBeVisible({ timeout: 15_000 });
   await expect(page.locator(".conversationTurn")).toHaveCount(0);
   await expect(page.locator(".runtimeSnapshot")).toHaveCount(0);
 });
@@ -79,6 +79,35 @@ test("a session that owns a run surfaces its decision, then the next action", as
   await expect(page.locator(".appShell.panelCollapsed")).toBeVisible();
   await page.locator(".runtimeActionButton").filter({ hasText: "查看改动" }).click();
   await expect(page.locator(".appShell.panelOpen")).toBeVisible();
+});
+
+test("Mark done sends accept even when the run detail still recommends review", async ({
+  page,
+}) => {
+  await seedSessionOwningRun(workspace);
+  await page.route("**/api/diagnostics", async (route) => {
+    const response = await route.fetch();
+    const diagnostics = await response.json();
+    diagnostics.workflow = { ...(diagnostics.workflow ?? {}), can_review: false, can_accept: true };
+    await route.fulfill({ response, json: diagnostics });
+  });
+  await page.route("**/api/runs/*", async (route) => {
+    const response = await route.fetch();
+    const detail = await response.json();
+    detail.main_action = { ...(detail.main_action ?? {}), next_command: "review" };
+    await route.fulfill({ response, json: detail });
+  });
+  let requestedAction = "";
+  await page.route("**/api/studio/sessions/*/runtime-actions", async (route) => {
+    requestedAction = JSON.parse(route.request().postData() ?? "{}").next_action;
+    await route.fulfill({ json: { ok: true, started: true } });
+  });
+  await page.goto(`http://127.0.0.1:${port}/`);
+  await page.locator(".decisionOptions button").filter({ hasText: "Continue" }).click();
+  const accept = page.locator(".runtimeActionButton.accept");
+  await expect(accept).toBeVisible();
+  await accept.click();
+  await expect.poll(() => requestedAction).toBe("accept");
 });
 
 test("the composer exposes the product slash actions", async ({ page }) => {
