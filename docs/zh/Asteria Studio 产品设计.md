@@ -35,7 +35,7 @@ Ops / Debug Console 负责 runtime 诊断。
 
 默认首页是 Product Workspace：
 
-- Left Sidebar：Sessions（含 all / recent 过滤）、Settings（已实现）；Search / Projects / Workspaces 为规划中、当前**尚未实现**（勿当现状读）。
+- Left Sidebar：Sessions（all / recent / archived 过滤与搜索）、Settings 已实现；工作区切换在全局头部。独立 Projects 总览仍未实现，不把它与已可用的工作区切换混为一谈。
 - Main Thread：用户消息、assistant 进展、权限卡、文件变化、最终结果。
 - Composer：自然语言输入，显式或自动选择 Goal / Plan / Ask。
 - Inspector：选中事件详情、命令输出、文件/diff/artifact、Git、token/cost、evidence refs。
@@ -203,7 +203,4 @@ python -m asteria_runtime studio-benchmark --root . --run-id run-xxx --json
 
 > **现状（2026-06-30，收敛重构①②③(部分) 已上 main）**：统一 **Settings 面板**（顶栏齿轮入口，权限默认档持久化）、**capability 卡**（MCP/Skill 主线程实名化，显示服务器/工具/技能名 + allow·deny + retries/artifacts）、**权限档头部常驻徽章**、**风险扣留主线程卡**（按 `transcript_kind=decision_request` 识别，符合 ADR-0012）均已落地；实时订阅已是 SSE。诚实暂缓：B7 强模型降级卡 / C8 promotion 转人工原因 / D9 内建工具能力徽章——均无落盘证据，需运行时 additive 补发后再做。
 
-剩余：
-1. 用五个基准任务跑真实会话，补齐文件预览和继续迭代证据。
-2. 后端可见化剩余前端切片：C4 隔离→验证→合并三段 lineage、D5 上下文压缩主线程标记、D6 热续作标注。
-3. 保持 Product Workspace 与 Ops / Debug Console 分离，避免默认首页退回后台 dashboard。
+**2026-10-15 对账**：上面 2026-06-30 状态是历史快照。C4 三段 lineage 已在 Inspector `EvidenceExplorer.tsx`；D5“压缩进主线程”与当前会话叙事原则冲突，压缩证据留 Inspector，不按旧清单补做。D6 热续作标注尚无独立的当前用户摩擦证据。会话搜索和工作区切换已落地。剩余可执行工作按 `研发总计划.md` §16.2：用不同形状的真实 Beta 任务验证主路径，遇到具体阻碍再拉起功能；保持 Product Workspace 与 Ops / Debug Console 分离。详见 [S98 设计缺口审计](reports/S98-original-design-gap-audit-20261015.md)。

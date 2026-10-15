@@ -188,7 +188,7 @@ useSessionEvents()                # 轮询 /events + 订阅 SSE
 
 冻结合规：三轨全是**去噪/删重构 + 扩既有面板 + 设计一致性 + 对真实 friction 的根治**，不是独立新功能 Slice，故不触 Studio freeze。**无**新编排 Wave / 全局 parallel_writes / maintainer 命令。CV-C 触内核但仅 append user_progress、不重构既有逻辑，且由用户 2026-06-28「把诊断的未实现都做了」明确裁决授权。需真实 Beta friction 才解锁的 defer 项（Plan/Todo 卡、成本仪表盘、流式 stop/interrupt、逐 token 传输改造）见路线图 §「显式 defer」。
 
-**下一层（已立项 · 待实现）**：对话流对标完成后，外壳/布局/视觉语言的 IDE 化改造已立项——方案见 [plans/Studio-IDE-shell-重设计方案](./plans/Studio-IDE-shell-%E9%87%8D%E8%AE%BE%E8%AE%A1%E6%96%B9%E6%A1%88.md)（全幅 IDE 工作区 + 全局头部 · 会话栏保持 · 改动文件进评审面 · Phase A 表层快赢 → B 骨架 → C 打磨）。同样纯 token/CSS、不碰后端与对话流诚实工作。本文 §6 分层表与 §5.1 在该方案落地后同步更新。
+**IDE 外壳当前状态（2026-10-15 对账）**：方案的 Phase A、Phase B 已落地；Phase C 的安全收口已做，C7 Permission/Decision 行内 notice 于 S98 落地。C5/C6 通用原语、C8 控件密度及其余视觉收口仍待逐刀评审。原“下一层待实现”把整套已完成骨架误记为未做，现以 [S98 设计缺口审计](reports/S98-original-design-gap-audit-20261015.md) 和 [IDE-shell 方案](./plans/Studio-IDE-shell-%E9%87%8D%E8%AE%BE%E8%AE%A1%E6%96%B9%E6%A1%88.md) 的落地记录为准。
 
 ## 10. 约束真源
 
@@ -197,4 +197,4 @@ useSessionEvents()                # 轮询 /events + 订阅 SSE
 - 后端对偶：[Asteria 模型主导运行时设计](./Asteria%20模型主导运行时设计.md)
 - 协议：[用户进展与证据协议](./用户进展与证据协议.md)
 - 路线：[前端对标主流差距与实施路线](./前端对标主流差距与实施路线.md)（2026-07-16 全面对标审计）
-- 重设计：[plans/Studio-IDE-shell-重设计方案](./plans/Studio-IDE-shell-%E9%87%8D%E8%AE%BE%E8%AE%A1%E6%96%B9%E6%A1%88.md)（外壳/布局 IDE 化，已立项待实现）
+- 重设计：[plans/Studio-IDE-shell-重设计方案](./plans/Studio-IDE-shell-%E9%87%8D%E8%AE%BE%E8%AE%A1%E6%96%B9%E6%A1%88.md)（Phase A/B 已落地，Phase C 部分完成）

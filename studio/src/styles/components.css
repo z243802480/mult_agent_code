@@ -115,13 +115,14 @@
 
 /* Permission card */
 .permissionCard {
-  background: var(--permission-bg);
-  border: 1px solid var(--permission-border);
-  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-left: 2px solid var(--permission-accent);
+  border-radius: var(--radius-control);
   display: grid;
-  gap: 10px;
+  gap: 8px;
   max-width: 920px;
-  padding: 14px 16px;
+  padding: 10px 12px;
 }
 
 .permissionCard.resolved {
@@ -133,12 +134,12 @@
 }
 
 .permissionCard.resolved.allow {
-  border-color: var(--ok);
+  border-left-color: var(--ok);
   color: var(--ok-text);
 }
 
 .permissionCard.resolved.deny {
-  border-color: var(--bad);
+  border-left-color: var(--bad);
   color: var(--bad);
 }
 

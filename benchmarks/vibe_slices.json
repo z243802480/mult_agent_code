@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S97",
+  "active_slice": "S98",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -932,6 +932,21 @@
         "pytest tests/unit/test_documentation_contracts.py -q"
       ],
       "reference_brief": "benchmarks/reference_briefs/S97-recap-verification-count.md"
+    },
+    {
+      "id": "S98",
+      "name": "Original design gap audit and IDE Phase C C7 notices",
+      "phase": "Product dogfood",
+      "depends_on": [
+        "S97"
+      ],
+      "user_demo": "permission and decision notices use neutral surfaces and slim status accents in dark and light Studio themes",
+      "green_checks": [
+        "Studio build, typecheck, unit tests and hermetic smokes",
+        "browser dark/light and narrow-width card preview",
+        "pytest tests/unit/test_documentation_contracts.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S98-original-design-gap-audit-and-c7.md"
     }
   ]
 }

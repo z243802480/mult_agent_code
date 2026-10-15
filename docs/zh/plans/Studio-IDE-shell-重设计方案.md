@@ -178,6 +178,10 @@ Studio 当前是**按居中聊天产品布局+装饰的**，再把代码界面�
 >
 > **deferRisky（按 recon，留作专门 slice + before/after 评审）**：① `.btn`/`.badge` 原语（含 composerSend/permission 从 `radius-md→control` 的可见角度改动）；② ~10 个次级按钮簇的 TSX className 改造（高 churn 低收益）；③ 带状态边的去卡片（vmRow/gitChangeRow/reportLead 把状态/选中信号挪到左缘或填充）；④ 删 `DiffScopePanel.tsx`/`GitChangesPanel.tsx`（importers=0，需 git-history 闸）；⑤ Composer `profile.icon/label/tone` 行为死码（DecisionPoint）。
 
+### Phase C — C7 行内 notice（2026-10-15 · S98）
+
+Permission/Decision 卡改用中性 `surface-1` 底、细边框与 2px 状态左缘，收紧内距并统一到 `--radius-control`；权限 scope/code 的 mono 早已落地。本刀浏览器检查深/浅主题及窄宽布局，按钮与权限语义不变。**仍未完成**：C5/C6 通用 `.btn`/`.badge`、C8 编辑器级控件密度及其余视觉收口；上方 deferRisky 是 6 月现场清单，须扣除本刀 C7，不能再把整个 IDE 外壳标为待实现。逐项现状见 [S98 审计](../reports/S98-original-design-gap-audit-20261015.md)。
+
 ## 4. 冻结 / 边界（必须遵守）
 
 **不得改**：
