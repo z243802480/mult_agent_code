@@ -142,15 +142,18 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ run_id: runId, decision_id: decisionId, answer }),
     }),
-  permitJob: (sessionId: string, jobId: string, action: "allow" | "deny") =>
-    requestJson<AnyRecord>(
+  permitJob: async (sessionId: string, jobId: string, action: "allow" | "deny") => {
+    const result = await requestJson<AnyRecord>(
       `/api/studio/sessions/${encodeURIComponent(sessionId)}/jobs/${encodeURIComponent(jobId)}/permission`,
       {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action }),
       },
-    ),
+    );
+    if (!result?.ok) throw new Error(String(result?.error || "permission was not resolved"));
+    return result;
+  },
   stopSession: (sessionId: string) =>
     requestJson<AnyRecord>(`/api/studio/sessions/${encodeURIComponent(sessionId)}/stop`, {
       method: "POST",

@@ -32,6 +32,8 @@ export function PermissionCard({
         await onDeny();
         setResolved("denied");
       }
+    } catch {
+      // The caller reports the server error. Keep this card actionable for a retry.
     } finally {
       setBusy(false);
     }

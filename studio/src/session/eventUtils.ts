@@ -45,7 +45,16 @@ export function pickRunTriggerEvent(events: StudioEvent[]): StudioEvent | null {
 export function mergeEventLists(prev: StudioEvent[], incoming: StudioEvent[]): StudioEvent[] {
   const existingIds = new Set(prev.map((event) => event.event_id));
   const fresh = incoming.filter((event) => !existingIds.has(event.event_id));
-  if (!fresh.length) return prev;
+  // The server filters resolved permission requests from a fresh replay, but the live page has an
+  // append-only cache. Remove a one-shot card as soon as its approval/denial marker arrives over SSE;
+  // also keep it out if an older replay races in afterward. The original JSONL remains audit evidence.
+  const combined = [...prev, ...fresh];
+  const resolvedJobIds = new Set(combined.map((event) => event.resolved_job_id).filter(Boolean));
+  const visible = combined.filter(
+    (event) =>
+      !(event.type === "permission_request" && event.job_id && resolvedJobIds.has(event.job_id)),
+  );
+  if (!fresh.length && visible.length === prev.length) return prev;
   // Assign every event a numeric time KEY, then sort on (key, insertion-index). Events with a
   // parseable created_at use it; events without inherit the last seen timestamp (carry-forward) so
   // they stay adjacent to where they arrived rather than teleporting to the epoch origin. The key is
@@ -54,7 +63,7 @@ export function mergeEventLists(prev: StudioEvent[], incoming: StudioEvent[]): S
   // event whose index landed between two timestamped events with the opposite time-order created a
   // sort cycle that silently mis-ordered timestamped events too (L8).
   let lastTs = 0;
-  return [...prev, ...fresh]
+  return visible
     .map((event, index) => {
       const ts = eventTimeValue(event);
       if (Number.isFinite(ts)) lastTs = ts;

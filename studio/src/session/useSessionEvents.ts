@@ -186,8 +186,14 @@ export function useSessionEvents(
     if (!activeSession) return;
     try {
       await api.permitJob(activeSession.session_id, jobId, action);
+      const eventData = await api
+        .events(activeSession.session_id)
+        .catch(() => ({ events: [] as StudioEvent[] }));
+      mergeEvents(eventData.events ?? []);
+      toast.success(action === "allow" ? "已记录批准。" : "已取消，本次不会继续执行。");
     } catch {
       toast.error(`无法记录你的${action === "allow" ? "批准" : "拒绝"}——请重试。`);
+      throw new Error("permission was not resolved");
     }
   }
 

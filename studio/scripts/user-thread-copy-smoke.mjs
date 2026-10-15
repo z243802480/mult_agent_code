@@ -112,6 +112,31 @@ try {
     "PermissionCard must render semantic permission impact",
   );
 
+  // One-shot gate: denying one job closes only that card. A second denial of the same stale job
+  // must fail, rather than falsely reporting another successful cancellation.
+  const firstJobId = permissionRequests[0].job_id;
+  const secondJobId = permissionRequests[1].job_id;
+  const permissionRoute = `/api/studio/sessions/${encodeURIComponent(sessionId)}/jobs/${encodeURIComponent(firstJobId)}/permission`;
+  const denied = await patchJson(permissionRoute, { action: "deny" });
+  assert(denied.ok && denied.started === false, "first permission denial was not recorded");
+  const afterDenial = await fetchJson(
+    `/api/studio/sessions/${encodeURIComponent(sessionId)}/events`,
+  );
+  assert(
+    !(afterDenial.events || []).some(
+      (event) => event.type === "permission_request" && event.job_id === firstJobId,
+    ),
+    "resolved permission card reappeared in the session replay",
+  );
+  assert(
+    (afterDenial.events || []).some(
+      (event) => event.type === "permission_request" && event.job_id === secondJobId,
+    ),
+    "resolving one job removed another pending permission card",
+  );
+  const deniedAgain = await patchJson(permissionRoute, { action: "deny" });
+  assert(deniedAgain.ok === false, "stale permission denial reported success");
+
   console.log("Studio user-thread copy smoke passed");
 } finally {
   server.kill("SIGTERM");
@@ -150,6 +175,17 @@ async function fetchJson(route) {
 async function postJson(route, body) {
   const response = await fetch(`http://127.0.0.1:${port}${route}`, {
     method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok)
+    throw new Error(`${route} returned ${response.status}: ${await response.text()}`);
+  return response.json();
+}
+
+async function patchJson(route, body) {
+  const response = await fetch(`http://127.0.0.1:${port}${route}`, {
+    method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });

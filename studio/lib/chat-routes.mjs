@@ -922,6 +922,9 @@ export function createChatRoutes({
       return { ok: true, started: outcome.started };
     }
     if (action === "deny") {
+      const pending = pendingJobs.get(jobId);
+      if (!pending || pending.sessionId !== sessionId)
+        return { ok: false, error: "job not found or session mismatch" };
       pendingJobs.delete(jobId);
       await appendEvent(sessionId, {
         type: "assistant_delta",
