@@ -17,6 +17,10 @@ def _workspace_files_outside_runtime(root: Path) -> dict[str, str]:
         relative = path.relative_to(root)
         if not path.is_file() or ".asteria" in relative.parts:
             continue
+        # InitCommand's local workspace registry may refresh its access timestamps during Plan.
+        # It is runtime metadata, not one of the user's project files this test protects.
+        if relative.as_posix() == "asteria-home/workspaces.json":
+            continue
         files[relative.as_posix()] = path.read_text(encoding="utf-8")
     return files
 

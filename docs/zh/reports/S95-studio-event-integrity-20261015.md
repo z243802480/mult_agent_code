@@ -19,3 +19,7 @@ S94 真模型运行完成，但 Studio 主线程显示一段 `rovider_call_secon
 ## 边界
 
 跨进程测试覆盖了本机一次 100+100 并发追加，尚不能证明所有平台、所有异常中断下 JSONL 永不损坏。读取端会隔离坏行，但坏行承载的事件无法恢复。若再观察到跨进程损坏，应改为单写者汇流。S93 的已确认权限卡残留留作下一刀独立复现。
+
+## 首轮远端反馈
+
+`main@0df24af` 的 Verify run `38709363127`：Studio frontend 与 Python 3.13 通过，Python 3.11 的 `test_plan_mode_does_not_modify_workspace_files_outside_runtime` 因时间戳跨秒刷新失败。测试原快照包含 `asteria-home/workspaces.json`；它是 `InitCommand` 的本地运行时登记表，Plan 只更新了 `last_opened_at` / `updated_at`，用户的 README、源码和笔记未改。测试现仅排除这个确切的登记表路径，继续比较其余工作区文件。`test_run_config.py` 5/5 和 Ruff 通过；远端复验待推送后核对。
