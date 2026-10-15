@@ -33,3 +33,10 @@ release 硬闸；没有 run、缺 key 或失败都必须原样标出。
 - `6b4c365` 的 Verify run `38679750093`：Python 3.11/3.13 **通过**，Studio 通过 smoke 后停在 UI tests。继续将 UI 失败尾段写成 Actions error annotation（不改变 exit code），再按新日志修具体断言。Windows 本地 UI 有 5 项红，其中 4 项是本机未安装 runtime 的 `init exit 1`，不能推成 Linux CI 同因；另 1 项待远端比对。
 - `27ebf53` 的 Verify run `38680150659`：Python 两档仍绿；Studio UI 8/12，4 个 model-pin specs 均 `spawn python ENOENT`。代码中 `new URL(import.meta.url).pathname.slice(1)` 把 Linux 绝对路径首个 `/` 去掉，使 spawn 的 `cwd` 不存在；改用跨平台 `fileURLToPath(import.meta.url)`。本地以 `PYTHONPATH=src` 跑该 spec 4/4 通过；远端待复验。
 - `c27abca` 的 Verify run `38680540072` **整体 success**：Studio、Python 3.11、Python 3.13 三 job 全绿。S92 代码与离线门已验收；release workflow 尚无该提交的手动运行，且双 key 的 Studio/ring nightly 仍未实际执行，因此 release 中的真模型状态仍应是 `NOT RUN`。
+
+## Release 真跑验收（2026-10-15）
+
+- [Release run 38688770468](https://github.com/z243802480/mult_agent_code/actions/runs/38688770468) 在 `main@c6cdab7` 手动触发并 **success**：可复用 Verify 的 Studio、Python 3.11、Python 3.13 三个 job 均通过，两个 proof job 与 `build-release` 也通过。
+- 两个 proof job 的真实日志分别报告 `Studio real-model proof: NOT RUN` 与 `Real-stack proof (ring-recovery): NOT RUN`。所读 [Studio nightly 38676431024](https://github.com/z243802480/mult_agent_code/actions/runs/38676431024) 和 [ring run 38639068136](https://github.com/z243802480/mult_agent_code/actions/runs/38639068136) 的 keyed smoke 步骤均为 `skipped`；Studio 日志明确提示未配置 provider key。Release 的绿色不代表真模型通过。
+- `build-release` 日志列出 `asteria_runtime-0.2.0a2-py3-none-any.whl`、`asteria-studio-0.2.0a2.zip`、`asteria-beta-0.2.0a2.zip`、`SHA256SUMS.txt`；Actions 上传了 `beta-release-assets` artifact（ID `11952015699`）。本次 `workflow_dispatch` 未创建 GitHub Release。
+- S92 的远端工作流验收已完成。仍待有双 provider key 的 nightly/ring 真实运行；此前不得把 keyed 路径标成 PASSED。
