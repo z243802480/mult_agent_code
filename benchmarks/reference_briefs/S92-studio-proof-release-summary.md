@@ -40,3 +40,7 @@ release 硬闸；没有 run、缺 key 或失败都必须原样标出。
 - 两个 proof job 的真实日志分别报告 `Studio real-model proof: NOT RUN` 与 `Real-stack proof (ring-recovery): NOT RUN`。所读 [Studio nightly 38676431024](https://github.com/z243802480/mult_agent_code/actions/runs/38676431024) 和 [ring run 38639068136](https://github.com/z243802480/mult_agent_code/actions/runs/38639068136) 的 keyed smoke 步骤均为 `skipped`；Studio 日志明确提示未配置 provider key。Release 的绿色不代表真模型通过。
 - `build-release` 日志列出 `asteria_runtime-0.2.0a2-py3-none-any.whl`、`asteria-studio-0.2.0a2.zip`、`asteria-beta-0.2.0a2.zip`、`SHA256SUMS.txt`；Actions 上传了 `beta-release-assets` artifact（ID `11952015699`）。本次 `workflow_dispatch` 未创建 GitHub Release。
 - S92 的远端工作流验收已完成。仍待有双 provider key 的 nightly/ring 真实运行；此前不得把 keyed 路径标成 PASSED。
+
+## 密钥边界纠偏（2026-10-15）
+
+用户指出把 provider key 配到 GitHub 不是合适的默认下一步。密钥绝不提交 Git；GitHub Actions Secrets 与 Git 仓库历史分离，但仍扩大密钥的托管和工作流使用范围。S92 不以配置远端密钥为收尾条件，keyed CI 保持 `NOT RUN` 即诚实结果；后续研发转向不依赖远端 provider key 的产品 dogfood。只有用户另行决定信任边界后才启用远端 keyed 运行。
