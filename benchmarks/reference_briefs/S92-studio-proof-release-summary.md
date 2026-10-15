@@ -28,3 +28,4 @@ release 硬闸；没有 run、缺 key 或失败都必须原样标出。
 - `main@0f5802b` 的 Verify run `38677142768` 三个 job 均红：Studio 停在 Format check，Python 3.11/3.13 停在 Verify 步骤。此红灯先于 release 验收，不能据本地 29 个相关测试代替全量 CI。
 - 本地按 LF 规范化逐文件运行 Prettier，找到 21 个真实格式差异；只格式化这些文件。另以 Ruff 定位两个被跟踪的 Python 违规：路径引导后的延迟 import E402、未用 import F401。修复后重新推送 Verify，按远端结果再判断是否收口。
 - provider key 的 Actions 配置仍不可由此切片推定为已完成；现有 Studio/ring smoke 都是 `NOT RUN`。
+- 复验 `da07df1` 的 Verify 继续红：Studio 已越过 Format check，停在 `Studio smokes`；Python 3.11/3.13 仍停在 `Verify`。公开 GitHub API 只暴露失败步骤，日志需登录；因此在 Verify workflow 中于失败时把末段输出写为 Actions error annotation，同时保持原始失败 exit code。该摘要不包含 provider key，因为 Verify 路径不接入真模型密钥。
