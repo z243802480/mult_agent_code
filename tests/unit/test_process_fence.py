@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from asteria_runtime.core.process_fence import run_fenced
+from asteria_runtime.core.process_fence import _decode_output, run_fenced
 
 
 def test_captures_output_and_returncode(tmp_path: Path) -> None:
@@ -32,6 +32,22 @@ def test_nonzero_exit_is_reported_not_raised(tmp_path: Path) -> None:
         timeout=30,
     )
     assert result.returncode == 3
+
+
+def test_utf8_command_output_survives_windows_legacy_locale(tmp_path: Path) -> None:
+    result = run_fenced(
+        f'"{sys.executable}" -c "import sys; sys.stdout.buffer.write(bytes.fromhex(\'e4b8ade69687\'))"',
+        cwd=tmp_path,
+        env=_env(),
+        timeout=30,
+    )
+    assert result.returncode == 0
+    assert "中文" in result.stdout
+
+
+def test_command_output_falls_back_to_host_encoding(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("asteria_runtime.core.process_fence.locale.getencoding", lambda: "gbk")
+    assert _decode_output("中文".encode("gbk")) == "中文"
 
 
 def test_timeout_raises_with_captured_output(tmp_path: Path) -> None:

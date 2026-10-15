@@ -2028,10 +2028,12 @@ class FakeModelDrivenClient:
     def __init__(self) -> None:
         self.calls = 0
         self.transports: list[str] = []
+        self.tiers: list[str] = []
 
     def chat(self, request: ChatRequest) -> ChatResponse:
         self.calls += 1
         self.transports.append(str(request.worker_transport))
+        self.tiers.append(request.model_tier)
         if self.calls == 1:
             payload = {
                 "narration": "创建并验证 notes 工具模块。",
@@ -2109,6 +2111,21 @@ def test_execute_command_model_driven_turn_flag_routes_through_real_thing(
     loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
     assert loop_summary["status"] == "completed"
     assert loop_summary["exit_reason"] == "completed"
+
+
+def test_execute_command_uses_runtime_selected_model_tier(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    plan_path = tmp_path / ".asteria" / "runs" / plan.run_id / "task_plan.json"
+    task_plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    task_plan["tasks"][0]["runtime_profile_hints"] = {"model_tier": "medium"}
+    plan_path.write_text(json.dumps(task_plan), encoding="utf-8")
+    client = FakeModelDrivenClient()
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
+
+    assert result.completed == 1
+    assert client.tiers and set(client.tiers) == {"medium"}
 
 
 class FakeModelDrivenRecoveryClient:

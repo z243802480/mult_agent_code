@@ -327,6 +327,7 @@ def test_runtime_profile_builder_ignores_stale_capability_profile_when_route_mis
     selection = mount.runtime_context["model_selection"]
     route = mount.runtime_context["model_route_resolution"]
     assert selection["selected_tier"] == "medium"
+    assert mount.runtime_context["execution_model_tier"] == "medium"
     assert selection["reason"] == "task_default"
     assert selection["capability_feedback"]["decision"] == (
         "default_route_fallback_due_stale_capability_profile"
@@ -456,6 +457,7 @@ def test_runtime_profile_builder_honors_explicit_task_model_tier(tmp_path: Path)
     )
 
     assert mount.runtime_context["model_selection"]["selected_tier"] == "strong"
+    assert mount.runtime_context["execution_model_tier"] == "strong"
     assert mount.runtime_context["model_selection"]["reason"] == "explicit_task_model_tier"
 
 

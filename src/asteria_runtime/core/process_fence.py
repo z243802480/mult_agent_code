@@ -16,6 +16,7 @@ weaker by nature — a double-forked daemon escapes a process group — and is b
 
 from __future__ import annotations
 
+import locale
 import os
 import signal
 import subprocess
@@ -48,14 +49,34 @@ def run_fenced(
 def _plain_run(
     command: str, *, cwd: os.PathLike[str] | str, env: dict[str, str], timeout: int
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    completed = subprocess.run(
         command,
         cwd=cwd,
         shell=True,
         capture_output=True,
-        text=True,
         timeout=timeout,
         env=env,
+    )
+    return _completed(command, completed.returncode, completed.stdout, completed.stderr)
+
+
+def _decode_output(value: bytes | str | None) -> str:
+    """Decode mixed command output without losing the command's exit status to a codec error."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        return value.decode("utf-8")
+    except UnicodeDecodeError:
+        return value.decode(locale.getencoding(), errors="replace")
+
+
+def _completed(
+    command: str, returncode: int, stdout: bytes | str | None, stderr: bytes | str | None
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(
+        command, returncode, _decode_output(stdout), _decode_output(stderr)
     )
 
 
@@ -71,7 +92,6 @@ def _run_posix(
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
         env=env,
         start_new_session=True,
     ) as proc:
@@ -80,10 +100,12 @@ def _run_posix(
         except subprocess.TimeoutExpired:
             _killpg(proc.pid)
             stdout, stderr = proc.communicate()
-            raise subprocess.TimeoutExpired(command, timeout, output=stdout, stderr=stderr)
+            raise subprocess.TimeoutExpired(
+                command, timeout, output=_decode_output(stdout), stderr=_decode_output(stderr)
+            )
         finally:
             _killpg(proc.pid)  # reap any group stragglers left after normal exit
-    return subprocess.CompletedProcess(command, proc.returncode, stdout, stderr)
+    return _completed(command, proc.returncode, stdout, stderr)
 
 
 def _killpg(pid: int) -> None:
@@ -181,7 +203,6 @@ def _run_win32(
             shell=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
             env=env,
         ) as proc:
             # Assign right after spawn. cmd.exe must load, parse, and only then CreateProcess the
@@ -195,8 +216,10 @@ def _run_win32(
             except subprocess.TimeoutExpired:
                 proc.kill()
                 stdout, stderr = proc.communicate()
-                raise subprocess.TimeoutExpired(command, timeout, output=stdout, stderr=stderr)
-        return subprocess.CompletedProcess(command, proc.returncode, stdout, stderr)
+                raise subprocess.TimeoutExpired(
+                    command, timeout, output=_decode_output(stdout), stderr=_decode_output(stderr)
+                )
+        return _completed(command, proc.returncode, stdout, stderr)
     finally:
         # Closing the last handle to the job trips KILL_ON_JOB_CLOSE: any process still alive in
         # the tree — including a detached grandchild communicate() never waited for — is reaped now.

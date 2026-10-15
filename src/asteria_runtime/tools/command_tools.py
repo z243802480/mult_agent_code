@@ -84,8 +84,10 @@ class RunCommandTool:
                     "returncode": None,
                 },
             )
-        stdout = self._truncate(completed.stdout)
-        stderr = self._truncate(completed.stderr)
+        raw_stdout = self._text(completed.stdout)
+        raw_stderr = self._text(completed.stderr)
+        stdout = self._truncate(raw_stdout)
+        stderr = self._truncate(raw_stderr)
         expected = self._expected_returncodes(expected_returncodes)
         ok = completed.returncode in expected
         return ToolResult(
@@ -99,8 +101,8 @@ class RunCommandTool:
                 "expected_returncodes": sorted(expected),
                 "stdout": stdout,
                 "stderr": stderr,
-                "stdout_truncated": len(completed.stdout) > len(stdout),
-                "stderr_truncated": len(completed.stderr) > len(stderr),
+                "stdout_truncated": len(raw_stdout) > len(stdout),
+                "stderr_truncated": len(raw_stderr) > len(stderr),
             },
         )
 

@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -205,6 +206,27 @@ def test_command_tool_preserves_model_command_and_true_exit_status(tmp_path: Pat
     assert posix_listing.ok == (posix_listing.data["returncode"] == 0)
 
 
+def test_command_tool_returns_unicode_output_without_losing_exit_status(tmp_path: Path) -> None:
+    result = registry().call(
+        "run_command",
+        context(tmp_path),
+        command="python -c \"import sys; sys.stdout.buffer.write(bytes.fromhex('e4b8ade69687'))\"",
+    )
+    assert result.ok
+    assert result.data["returncode"] == 0
+    assert "中文" in result.data["stdout"]
+
+
+def test_command_tool_handles_absent_captured_streams(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "asteria_runtime.tools.command_tools.run_fenced",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0, None, None),
+    )
+    result = registry().call("run_command", context(tmp_path), command="python --version")
+    assert result.ok
+    assert result.data["stdout"] == result.data["stderr"] == ""
+
+
 def test_command_tool_preserves_project_path_before_harness_python(monkeypatch) -> None:
     monkeypatch.setattr(
         "asteria_runtime.tools.command_tools.sanitize_subprocess_env",
@@ -259,12 +281,9 @@ def test_command_tool_usage_text_does_not_override_exit_status(tmp_path: Path) -
     assert not result.ok
     assert result.data["returncode"] == 1
 
-    expected = tools.call(
-        "run_command", ctx, command="python cli.py", expected_returncodes=1
-    )
+    expected = tools.call("run_command", ctx, command="python cli.py", expected_returncodes=1)
     assert expected.ok
     assert expected.data["returncode"] == 1
-
 
 
 def test_tool_registry_ignores_unsupported_model_args(tmp_path: Path) -> None:

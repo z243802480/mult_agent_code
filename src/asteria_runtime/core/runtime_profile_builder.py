@@ -156,6 +156,7 @@ class RuntimeProfileBuilder:
         scoped["sandbox_profile_id"] = sandbox_profile.sandbox_profile_id
         scoped["account_profile_id"] = account_profile.account_profile_id
         scoped["model_selection"] = model_selection
+        scoped["execution_model_tier"] = model_tier
         scoped["model_route_resolution"] = resolved_route.to_dict()
         scoped["agent_role_contract"] = role_contract_dict
         scoped["worker_topology"] = self._worker_topology(task, runtime_profile)
