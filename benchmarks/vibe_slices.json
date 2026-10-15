@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S96",
+  "active_slice": "S97",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -917,6 +917,21 @@
         "pytest tests/unit/test_documentation_contracts.py -q"
       ],
       "reference_brief": "benchmarks/reference_briefs/S96-permission-card-resolution.md"
+    },
+    {
+      "id": "S97",
+      "name": "Evidence-bound verification numbers in the closing recap",
+      "phase": "Product dogfood",
+      "depends_on": [
+        "S96"
+      ],
+      "user_demo": "a completed Studio run does not present a mixed validation-record count as a pytest case count",
+      "green_checks": [
+        "recap context and unsupported count regression tests",
+        "runtime workflow and validation-run tests",
+        "pytest tests/unit/test_documentation_contracts.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S97-recap-verification-count.md"
     }
   ]
 }

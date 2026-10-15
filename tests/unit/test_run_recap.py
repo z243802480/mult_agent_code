@@ -60,7 +60,7 @@ def test_recap_returns_empty_on_model_failure():
 
 
 def test_recap_returns_model_prose_and_passes_context():
-    client = _StubModelClient("Done — I updated src/a.py and all 2 checks passed.")
+    client = _StubModelClient("Done — I updated src/a.py and verification passed.")
     text = author_run_recap(
         model_client=client,
         goal="修复登录缺陷",
@@ -69,13 +69,14 @@ def test_recap_returns_model_prose_and_passes_context():
         file_changes=[{"path": "src/auth.py"}],
         validation=_validation(),
     )
-    assert text == "Done — I updated src/a.py and all 2 checks passed."
+    assert text == "Done — I updated src/a.py and verification passed."
     # Context handed to the model must carry the goal, status, verification and files.
     user_msg = client.last_request.messages[-1].content
     assert "修复登录缺陷" in user_msg
     assert "completed" in user_msg
     assert "src/auth.py" in user_msg
-    assert "2/2" in user_msg
+    assert "2/2" not in user_msg
+    assert "Verification status: passed" in user_msg
 
 
 def test_recap_request_uses_role_contract_and_deadline():
@@ -99,9 +100,7 @@ def test_recap_request_uses_role_contract_and_deadline():
 
 
 def test_recap_strips_markdown_scaffolding_and_clamps():
-    client = _StubModelClient(
-        "## Result\n- I finished the task.\nVerification: all checks passed."
-    )
+    client = _StubModelClient("## Result\n- I finished the task.\nVerification: all checks passed.")
     text = author_run_recap(
         model_client=client,
         goal="g",
@@ -134,7 +133,7 @@ def test_recap_strips_reasoning_think_block_and_keeps_the_answer():
     # <think>…</think>; the recap is the prose after it. The think block must never reach the thread.
     client = _StubModelClient(
         "<think>\nThe user asked me to add a flag. I created add.py and the test passed.\n"
-        "Let me phrase a short recap.\n</think>\n\n已完成：新增 add.py 与测试，6/6 检查通过。"
+        "Let me phrase a short recap.\n</think>\n\n已完成：新增 add.py 与测试，验证通过。"
     )
     text = author_run_recap(
         model_client=client,
@@ -146,7 +145,7 @@ def test_recap_strips_reasoning_think_block_and_keeps_the_answer():
     )
     assert "<think>" not in text
     assert "chain-of-thought" not in text.lower()
-    assert text == "已完成：新增 add.py 与测试，6/6 检查通过。"
+    assert text == "已完成：新增 add.py 与测试，验证通过。"
 
 
 def test_recap_untagged_reasoning_preamble_falls_back_to_empty():
@@ -171,7 +170,9 @@ def test_recap_untagged_reasoning_preamble_falls_back_to_empty():
 
 
 def test_recap_chinese_untagged_reasoning_preamble_falls_back_to_empty():
-    client = _StubModelClient("用户想让我总结这次运行。任务是新增一个函数并跑测试，让我组织一下语言。")
+    client = _StubModelClient(
+        "用户想让我总结这次运行。任务是新增一个函数并跑测试，让我组织一下语言。"
+    )
     text = author_run_recap(
         model_client=client,
         goal="加个函数",
@@ -183,19 +184,52 @@ def test_recap_chinese_untagged_reasoning_preamble_falls_back_to_empty():
     assert text == ""
 
 
-def test_recap_legit_prose_mentioning_user_is_not_dropped():
-    # Guard against over-matching: a real recap may reference "the user" mid-sentence. Only a
-    # leading meta-preamble should trigger the fallback, not any occurrence of the word.
-    client = _StubModelClient("I added the --version flag the user asked for; all 8 checks passed.")
+def test_recap_drops_unsupported_check_count():
+    client = _StubModelClient("我已完成修改，pytest 运行结果显示全部 6 项检查通过。")
     text = author_run_recap(
         model_client=client,
-        goal="add --version",
+        goal="给 greet_cli.py 增加 --version",
+        run_status="completed",
+        steps=[("verify", "completed", "Validation passed: 6/6 check(s) passed.")],
+        file_changes=[],
+        validation={"status": "passed", "passed": 6, "total": 6, "verification_command_count": 3},
+    )
+    assert text == ""
+    assert "6/6" not in client.last_request.messages[-1].content
+
+
+def test_recap_drops_other_unsupported_test_counts():
+    for answer in (
+        "All three tests passed.",
+        "The tests: 3 passed.",
+        "三个测试都通过了。",
+        "Verification succeeded with 6/6 checks.",
+        "Validation passed: 6/6 check(s) passed.",
+    ):
+        assert (
+            author_run_recap(
+                model_client=_StubModelClient(answer),
+                goal="add a test",
+                run_status="completed",
+                steps=[],
+                file_changes=[],
+                validation=_validation(),
+            )
+            == ""
+        )
+
+
+def test_recap_keeps_version_number_and_unquantified_verification():
+    client = _StubModelClient("I added --version 0.1.0 as the user asked; pytest passed.")
+    text = author_run_recap(
+        model_client=client,
+        goal="add --version 0.1.0",
         run_status="completed",
         steps=[],
         file_changes=[],
         validation=_validation(),
     )
-    assert text == "I added the --version flag the user asked for; all 8 checks passed."
+    assert text == "I added --version 0.1.0 as the user asked; pytest passed."
 
 
 def test_recap_reasoning_only_truncation_falls_back_to_empty():

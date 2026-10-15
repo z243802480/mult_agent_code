@@ -35,7 +35,9 @@ _SYSTEM_PROMPT = (
     "passed, and — only if it is genuinely useful — the single best next step. Be "
     "honest: if the run was blocked or verification failed, say so plainly. Match "
     "the language of the goal (reply in Chinese when the goal is in Chinese). Do not "
-    "invent results that are not supported by the context below. "
+    "invent results that are not supported by the context below. The verification "
+    "status does not include a test-case count: do not claim any number of tests or "
+    "checks in the recap. "
     "Output ONLY the recap itself. Do NOT think out loud, do NOT restate or analyze "
     "the task, and do NOT write meta sentences such as 'The user wants me to…', "
     "'The task involves…', 'Let me…', or 'As Asteria, a coding agent…'. Start "
@@ -53,6 +55,16 @@ _MAX_FILES = 12
 # was too small: the whole budget went to thinking and the answer was never emitted).
 _MAX_OUTPUT_TOKENS = 2048
 _THINK_BLOCK = re.compile(r"<think\b[^>]*>.*?</think>", re.DOTALL | re.IGNORECASE)
+_COUNT = (
+    r"(?:\d+(?:/\d+)?|[零一二三四五六七八九十百千万两]+|"
+    r"\b(?:one|two|three|four|five|six|seven|eight|nine|ten)\b)"
+)
+_CHECK_UNIT = r"(?:test(?:s|\(s\))?|check(?:s|\(s\))?|测试(?:用例)?|检查(?:项)?|验证(?:项)?)"
+_CHECK_COUNT = re.compile(
+    rf"(?:{_COUNT}\s*(?:个|项|条|次|passed|failed|通过|失败)?\s*{_CHECK_UNIT}"
+    rf"|{_CHECK_UNIT}\s*(?:[:：]|共|全部)?\s*{_COUNT})",
+    re.IGNORECASE,
+)
 
 # Plain-prose chain-of-thought that reasoning models emit WITHOUT <think> tags: the model narrates
 # its plan ("The user wants me to write a recap… The task involves…") instead of writing the recap,
@@ -142,7 +154,13 @@ def author_run_recap(
         response = model_client.chat(request)
     except Exception:  # noqa: BLE001 — recap is best-effort; never fail the run.
         return ""
-    return _clean(getattr(response, "content", ""))
+    recap = _clean(getattr(response, "content", ""))
+    # The aggregate validation total combines records and command executions; it is not a count
+    # of pytest cases. If the model supplies a concrete test/check count anyway, use the existing
+    # structured fallback instead of displaying a number without provenance.
+    if _CHECK_COUNT.search(recap):
+        return ""
+    return recap
 
 
 def _build_context(
@@ -159,12 +177,7 @@ def _build_context(
 
     validation = validation or {}
     v_status = str(validation.get("status") or "not_recorded")
-    v_passed = validation.get("passed")
-    v_total = validation.get("total")
-    if v_total:
-        lines.append(f"Verification: {v_status} ({v_passed}/{v_total} checks passed)")
-    else:
-        lines.append(f"Verification: {v_status}")
+    lines.append(f"Verification status: {v_status}")
 
     changed = [str(item.get("path") or "") for item in (file_changes or []) if item.get("path")]
     if changed:
@@ -178,13 +191,13 @@ def _build_context(
         lines.append("Loop steps:")
         for name, status, summary in steps[-_MAX_STEPS:]:
             detail = str(summary or "").strip().replace("\n", " ")
+            if _CHECK_COUNT.search(detail):
+                detail = "Verification step recorded; see status above."
             if len(detail) > 160:
                 detail = detail[:157] + "..."
             lines.append(f"- {name}: {status} — {detail}")
 
-    lines.append(
-        "\nWrite the closing recap now (1–3 sentences, conversational, no headings)."
-    )
+    lines.append("\nWrite the closing recap now (1–3 sentences, conversational, no headings).")
     return "\n".join(lines)
 
 
