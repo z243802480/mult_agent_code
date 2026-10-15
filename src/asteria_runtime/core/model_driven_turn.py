@@ -50,6 +50,7 @@ _JSON_TURN_CONTRACT = (
     '"tool_calls": [], "done": true}.\n'
     "- Never return prose or markdown outside the JSON object."
 )
+_MAX_CONSECUTIVE_INVALID_TURNS = 3
 
 
 class ToolRunner(Protocol):
@@ -166,6 +167,7 @@ def run_model_driven_turn(
             on_event(event)
 
     nudged = False
+    consecutive_invalid_turns = 0
     for iteration in range(1, max_iterations + 1):
         # 用户暂停边界（与人审边界同一条通路）：只在**回合起点**检查——上一批工具已经跑完、下一次
         # 模型调用还没发出。所以暂停不会把一批工具劈成两半，workspace 无残留写入，run 可 resume。
@@ -222,7 +224,18 @@ def run_model_driven_turn(
             # bounded by the same iteration fuse, rather than silently treating prose as success.
             messages.append(ChatMessage(role="assistant", content=narration or "(empty response)"))
             messages.append(ChatMessage(role="user", content=_json_format_nudge(available_tools)))
+            consecutive_invalid_turns += 1
+            if consecutive_invalid_turns >= _MAX_CONSECUTIVE_INVALID_TURNS:
+                emit(TurnEvent(kind="fuse", iteration=iteration))
+                return ModelDrivenTurnResult(
+                    status="budget_exhausted",
+                    final_message="",
+                    iterations=iteration,
+                    events=events,
+                    observations=all_observations,
+                )
             continue
+        consecutive_invalid_turns = 0
         if narration:
             emit(TurnEvent(kind="narration", iteration=iteration, text=narration))
 

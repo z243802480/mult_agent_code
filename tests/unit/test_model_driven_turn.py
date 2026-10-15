@@ -348,6 +348,35 @@ def test_json_transport_invalid_json_hits_fuse_without_claiming_completion() -> 
     assert result.observations == []
 
 
+def test_json_transport_stops_after_three_consecutive_protocol_errors() -> None:
+    model = FakeModelClient([SimpleNamespace(content="not JSON", raw_response={}) for _ in range(3)])
+    result = _run(model, FakeToolRunner([]), transport="json", max_iterations=8)
+
+    assert result.status == "budget_exhausted"
+    assert result.iterations == 3
+    assert len(model.requests) == 3
+    assert result.events[-1].kind == "fuse"
+
+
+def test_json_transport_valid_turn_resets_protocol_error_streak() -> None:
+    model = FakeModelClient(
+        [
+            SimpleNamespace(content="not JSON", raw_response={}),
+            SimpleNamespace(content="not JSON", raw_response={}),
+            _json_resp("read", [{"tool_name": "read_file", "args": {"path": "calc.py"}}]),
+            SimpleNamespace(content="not JSON", raw_response={}),
+            _json_resp("done", [], done=True),
+        ]
+    )
+    tools = FakeToolRunner([[FakeToolResult(ok=True, summary="read calc.py")]])
+
+    result = _run(model, tools, transport="json", max_iterations=8)
+
+    assert result.status == "completed"
+    assert result.iterations == 5
+    assert len(result.observations) == 1
+
+
 def test_json_transport_missing_contract_fields_is_not_a_final_answer() -> None:
     model = FakeModelClient([SimpleNamespace(content='{"narration": "edit now"}', raw_response={})])
     tools = FakeToolRunner([])
