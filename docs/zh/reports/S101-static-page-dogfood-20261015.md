@@ -26,4 +26,5 @@
 - `RuntimeProfileBuilder` 现把已选择的模型档位写入执行上下文，避免 `ExecuteCommand` 因读不到 `execution_model_tier` 恒回退 strong。档位选择单测与真实执行请求的集成断言通过；相关 runtime profile / execute 测试 51/51 通过。
 - 连续无效 JSON 回合现在最多调用 3 次模型；出现合法回合即重置计数。两条单测锁定早停与重置，`test_model_driven_turn.py` 22/22 通过。该边界未改变工具选择，也不能替代任务验证。
 - `main@8236539` 的 [Verify run 38739392288](https://github.com/z243802480/mult_agent_code/actions/runs/38739392288) 三 job（Studio、Python 3.11、Python 3.13）均通过。
+- 复查 `PlanAgent` 的通用任务分解提示：它已有少任务、工具可验及新测试文件需列入产物的原则，但没有约束“先建一个环境报告任务”，也没有明确新验证脚本必须落在**同一任务**写入范围。补两条规划约束：环境探测留在需要它的实施任务内；若任务可能新建验证脚本，将路径列入该任务的 `expected_changed_files`，并诚实说明交互检查不可用时的证据等级。PlanAgent/PlanCommand 14/14 测试通过。**效果尚未由真实模型复跑证明**，不能据此宣称 S101 闭环。
 - 前两项通用修复的 `main@aae0484` [Verify run 38736896113](https://github.com/z243802480/mult_agent_code/actions/runs/38736896113) 三 job（Studio、Python 3.11、Python 3.13）均通过。**仍未证实**：原 Session 的三件事交互修复、普通入口完整 Review→Accept、Linux 真实模型路径。S101 保持活动，下一步先处理闭环耗时与验证策略，再决定是否换任务形状。

@@ -123,8 +123,13 @@ You must:
 - Treat unverified commands in GoalSpec as suggestions, not requirements. For document/content
   checks, specify the observable content and use file tools; only prescribe a shell command when
   it is known to be available on the host OS or in the project.
+- Keep environment discovery inside the task that needs it. Do not make dependency or test-tool
+  probing a separate deliverable unless the goal itself asks for an environment report. If an
+  interactive check may be unavailable, state the fallback evidence honestly.
 - Use concrete file paths for expected_artifacts and expected_changed_files. Never list a
   pre-existing test file the task is judged by; DO list new test files the task authors.
+- If a task may author a verification script, include that new file in the same task's
+  expected_changed_files so its write scope permits creation. Keep checks near their change.
 - Reference only task ids present in this plan inside depends_on; leave it empty for entry
   tasks.
 - Pick task_kind from: implementation, verification, diagnostic, research, decision,
