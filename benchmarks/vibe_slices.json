@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S100",
+  "active_slice": "S101",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -973,6 +973,20 @@
         "Verify workflow after push"
       ],
       "reference_brief": "benchmarks/reference_briefs/S100-model-harness-boundary-audit.md"
+    },
+    {
+      "id": "S101",
+      "name": "Static landing page real beta task and follow-up friction",
+      "phase": "产品主路径 dogfood",
+      "depends_on": ["S100"],
+      "user_demo": "A real model creates a static page and browser verification checks its actual interaction",
+      "green_checks": [
+        "real model and tool evidence recorded without secrets",
+        "browser desktop and narrow viewport inspection",
+        "follow-up correction independently verified or honestly marked blocked",
+        "documentation contracts"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S101-static-page-dogfood.md"
     }
   ]
 }
