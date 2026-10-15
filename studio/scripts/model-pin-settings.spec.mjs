@@ -8,10 +8,12 @@
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import { createFixtureWorkspace, startStudioServer, waitForHealth } from "./studio-fixture.mjs";
 
 const port = Number(process.env.ASTERIA_STUDIO_MODEL_PIN_PORT || 18862);
+const studioDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 let workspace;
 let server;
@@ -23,7 +25,7 @@ let server;
 function initWorkspace(root) {
   return new Promise((resolve, reject) => {
     const init = spawn("python", ["-m", "asteria_runtime", "init", "--root", root], {
-      cwd: path.resolve(path.dirname(new URL(import.meta.url).pathname.slice(1)), ".."),
+      cwd: studioDir,
       stdio: "ignore",
     });
     init.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`init exit ${code}`))));
