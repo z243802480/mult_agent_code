@@ -26,4 +26,4 @@
 
 ## 后续验收与路线
 
-定向测试覆盖原命令透传、`Usage:` 非零失败、`run_tests` 不接受预期非零码、项目 PATH 优先、三阶段环境上下文和零工具提示。相关短回归 **82 passed**，另有关键执行提示/PATH/返回码 3 项复验通过；`ruff check src tests` 通过。全工作区 `ruff check .` 被既有未跟踪验证目录中的 2 处 lint 问题挡住；`mypy src` 报 15 个未修改文件中的 60 个既有类型问题，均不计为本刀通过。较宽的相关范围首轮 **257 passed / 1 failed**：失败项是旧测试仍断言 `run_tests` 可把非零码算成功；按新契约更正后该工具组 **15 passed**。远端 Verify 尚待提交后核对。下一批 Beta 任务应同时包含 Windows 与 Linux、文档与代码、至少两条 provider 路线；记录命令失败后的自修率和假绿率，再决定是否需要更强工具 schema 或按任务加载技能。避免给所有模型继续追加一次性提示规则。
+定向测试覆盖原命令透传、`Usage:` 非零失败、`run_tests` 不接受预期非零码、项目 PATH 优先、三阶段环境上下文和零工具提示。相关短回归 **82 passed**，另有关键执行提示/PATH/返回码 3 项复验通过；`ruff check src tests` 通过。全工作区 `ruff check .` 被既有未跟踪验证目录中的 2 处 lint 问题挡住；`mypy src` 报 15 个未修改文件中的 60 个既有类型问题，均不计为本刀通过。较宽的相关范围首轮 **257 passed / 1 failed**：失败项是旧测试仍断言 `run_tests` 可把非零码算成功；按新契约更正后该工具组 **15 passed**。`main@647f66a` 的 [Verify run 38730482982](https://github.com/z243802480/mult_agent_code/actions/runs/38730482982) 三个 job（Studio 前端、Python 3.11、Python 3.13）均通过。下一批 Beta 任务应同时包含 Windows 与 Linux、文档与代码、至少两条 provider 路线；记录命令失败后的自修率和假绿率，再决定是否需要更强工具 schema 或按任务加载技能。避免给所有模型继续追加一次性提示规则。
