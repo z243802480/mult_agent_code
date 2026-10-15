@@ -17,7 +17,7 @@
 
 Review 后 `/api/diagnostics.workflow.can_accept=true`，但运行详情的 `main_action.next_command` 仍为 `review`。原按钮写着“标记完成”却把这个过期命令提交给服务端，因此会再跑一次 Review。按钮现在固定提交 `accept`。同时，任务结束后 Studio 原先没有刷新工作流状态，卡片会停在旧的“查看”；现在运行态转为空闲时刷新 overview、diagnostics、该 run 证据与改动状态。浏览器实测无需页面重载即可从 Accept 进入终态，卡片消失，线程显示最终交付记录。
 
-回归覆盖“诊断允许 Accept，但运行详情仍建议 Review”的组合，断言 POST `next_action=accept`。交互 Playwright 4/4；Python 相关测试与文档契约 45/45；Studio 单测 269/269；Studio build/typecheck 通过。hermetic smoke 首轮 40/41，唯一超时的 `chat-lifecycle-smoke.mjs` 单独复跑通过，完整套件随后复跑 41/41。远端 Verify 尚待提交后核对。
+回归覆盖“诊断允许 Accept，但运行详情仍建议 Review”的组合，断言 POST `next_action=accept`。交互 Playwright 4/4；Python 相关测试与文档契约 45/45；Studio 单测 269/269；Studio build/typecheck 通过。hermetic smoke 首轮 40/41，唯一超时的 `chat-lifecycle-smoke.mjs` 单独复跑通过，完整套件随后复跑 41/41。[`main@ed9308e` 的 Verify run `38726773000`](https://github.com/z243802480/mult_agent_code/actions/runs/38726773000) 三个 job 全部通过。
 
 ## 后续
 
