@@ -25,4 +25,5 @@
 - `process_fence` 改为捕获原始字节，优先按 UTF-8、否则按主机编码解读；解码异常不再吞掉退出码。`RunCommandTool` 对缺失输出流返回空文本，避免二次 `NoneType` 崩溃。测试以真实 UTF-8 子进程输出复现并覆盖主机编码回退；命令网关与进程围栏 23/23 通过。原来导致 `NoneType` 的 `findstr /C:"MAX_TASKS = 3" ... index.html` 在修复后重放，返回码 0、stdout 340 字符且包含 `limit-alert`，未再崩溃。
 - `RuntimeProfileBuilder` 现把已选择的模型档位写入执行上下文，避免 `ExecuteCommand` 因读不到 `execution_model_tier` 恒回退 strong。档位选择单测与真实执行请求的集成断言通过；相关 runtime profile / execute 测试 51/51 通过。
 - 连续无效 JSON 回合现在最多调用 3 次模型；出现合法回合即重置计数。两条单测锁定早停与重置，`test_model_driven_turn.py` 22/22 通过。该边界未改变工具选择，也不能替代任务验证。
+- `main@8236539` 的 [Verify run 38739392288](https://github.com/z243802480/mult_agent_code/actions/runs/38739392288) 三 job（Studio、Python 3.11、Python 3.13）均通过。
 - 前两项通用修复的 `main@aae0484` [Verify run 38736896113](https://github.com/z243802480/mult_agent_code/actions/runs/38736896113) 三 job（Studio、Python 3.11、Python 3.13）均通过。**仍未证实**：原 Session 的三件事交互修复、普通入口完整 Review→Accept、Linux 真实模型路径。S101 保持活动，下一步先处理闭环耗时与验证策略，再决定是否换任务形状。
