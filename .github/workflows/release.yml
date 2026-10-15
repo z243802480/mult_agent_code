@@ -25,39 +25,25 @@ jobs:
   real-stack-proof:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       actions: read
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Report latest real-stack (ring-recovery) nightly result
         env:
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          echo "## Real-stack proof (ring-recovery nightly)" >> "$GITHUB_STEP_SUMMARY"
-          run_json="$(gh run list --workflow=ring-recovery-nightly.yml --branch "$DEFAULT_BRANCH" --limit 1 --json conclusion,createdAt,url || true)"
-          if [ -z "$run_json" ] || [ "$run_json" = "[]" ]; then
-            echo "> ⚠️ **REAL-STACK PROOF: NEVER RUN** — the ring-recovery nightly has no runs on \`${DEFAULT_BRANCH}\` (provider secrets likely not configured). This release is verified by the deterministic suite only; no real glm/minimax stack proof exists." >> "$GITHUB_STEP_SUMMARY"
-            echo "::notice::Real-stack nightly has never run — release proceeds without real-stack proof."
-            exit 0
+          run_json="$(gh run list --workflow=ring-recovery-nightly.yml --branch "$DEFAULT_BRANCH" --limit 1 --json databaseId,status,conclusion,createdAt,url || printf 'null')"
+          jobs_json='{}'
+          if [ "$run_json" != 'null' ] && [ "$run_json" != '[]' ]; then
+            run_id="$(printf '%s' "$run_json" | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['databaseId'])")"
+            jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?per_page=100" || true)"
           fi
-          conclusion="$(printf '%s' "$run_json" | python3 -c "import json,sys; print(json.loads(sys.stdin.read())[0]['conclusion'])")"
-          created="$(printf '%s' "$run_json" | python3 -c "import json,sys; print(json.loads(sys.stdin.read())[0]['createdAt'])")"
-          url="$(printf '%s' "$run_json" | python3 -c "import json,sys; print(json.loads(sys.stdin.read())[0]['url'])")"
-          case "$conclusion" in
-            success)
-              echo "> ✅ Latest real-stack nightly **passed** at \`${created}\` — [run](${url})." >> "$GITHUB_STEP_SUMMARY"
-              echo "> Nightly runs prove the default-branch runtime end to end (glm/minimax plan→repair→replan→auto-accept), not this exact tag." >> "$GITHUB_STEP_SUMMARY"
-              ;;
-            failure)
-              echo "> ❌ **Latest real-stack nightly FAILED** at \`${created}\` — [run](${url})." >> "$GITHUB_STEP_SUMMARY"
-              echo "::error::Real-stack ring-recovery nightly is red — refusing to ship. Re-run the nightly green (or fix the regression) first."
-              exit 1
-              ;;
-            *)
-              echo "> ⚠️ Latest real-stack nightly concluded **\`${conclusion}\`** at \`${created}\` — [run](${url}). Real-stack proof is NOT green." >> "$GITHUB_STEP_SUMMARY"
-              echo "::notice::Real-stack nightly last concluded '${conclusion}' — release proceeds; treat real-stack proof as missing."
-              ;;
-          esac
+          PROOF_KIND=ring RUN_JSON="$run_json" JOBS_JSON="$jobs_json" python3 scripts/nightly_release_proof.py
 
   # S92: Studio keyed smokes are evidence for the release operator, but remain non-blocking until
   # there is a real history of successful runs. An old nightly without this job is reported as
@@ -65,51 +51,25 @@ jobs:
   studio-real-model-proof:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       actions: read
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Report latest Studio real-model nightly result
         env:
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          echo "## Studio real-model proof (nightly)" >> "$GITHUB_STEP_SUMMARY"
-          run_json="$(gh run list --workflow=nightly.yml --branch "$DEFAULT_BRANCH" --limit 1 --json databaseId || true)"
-          if [ -z "$run_json" ] || [ "$run_json" = "[]" ]; then
-            echo "> ⚠️ **STUDIO REAL-MODEL PROOF: NEVER RUN** — no nightly workflow run exists on \`$DEFAULT_BRANCH\`." >> "$GITHUB_STEP_SUMMARY"
-            echo "::notice::Studio real-model nightly has never run — release continues without Studio proof."
-            exit 0
+          run_json="$(gh run list --workflow=nightly.yml --branch "$DEFAULT_BRANCH" --limit 1 --json databaseId,status,createdAt,url || printf 'null')"
+          jobs_json='{}'
+          if [ "$run_json" != 'null' ] && [ "$run_json" != '[]' ]; then
+            run_id="$(printf '%s' "$run_json" | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['databaseId'])")"
+            jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?per_page=100" || true)"
           fi
-          run_id="$(printf '%s' "$run_json" | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['databaseId'])")"
-          detail_json="$(gh run view "$run_id" --json jobs || true)"
-          conclusion="$(DETAIL_JSON="$detail_json" python3 - <<'PY'
-          import json, os
-          data = json.loads(os.environ.get("DETAIL_JSON", "{}") or "{}")
-          for job in data.get("jobs", []):
-              if job.get("name") == "studio-real-model-nightly":
-                  print(job.get("conclusion", ""))
-                  break
-          else:
-              print("missing")
-          PY
-          )"
-          case "$conclusion" in
-            success)
-              echo "> ✅ Latest Studio real-model nightly passed (run #$run_id)." >> "$GITHUB_STEP_SUMMARY"
-              ;;
-            failure)
-              echo "> ❌ **Latest Studio real-model nightly FAILED** (run #$run_id). Studio proof is not green; this summary is non-blocking." >> "$GITHUB_STEP_SUMMARY"
-              echo "::warning::Latest Studio real-model nightly failed — release continues without Studio proof."
-              ;;
-            missing)
-              echo "> ⚠️ **STUDIO REAL-MODEL PROOF: NEVER RUN** — the latest nightly predates the Studio proof job." >> "$GITHUB_STEP_SUMMARY"
-              echo "::notice::Latest nightly has no studio-real-model-nightly job — release continues without Studio proof."
-              ;;
-            *)
-              echo "> ⚠️ **STUDIO REAL-MODEL PROOF: NOT GREEN** — latest Studio job concluded \`$conclusion\` (run #$run_id)." >> "$GITHUB_STEP_SUMMARY"
-              echo "::notice::Latest Studio real-model nightly is not green — release continues without Studio proof."
-              ;;
-          esac
+          RUN_JSON="$run_json" JOBS_JSON="$jobs_json" python3 scripts/nightly_release_proof.py
 
   build-release:
     needs: [verify, real-stack-proof, studio-real-model-proof]
