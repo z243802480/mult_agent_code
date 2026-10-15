@@ -2508,22 +2508,22 @@ def _run_cli() -> None:
         workspaces_command = WorkspacesCommand()
         action = args.workspaces_action
         if action == "list":
-            result = workspaces_command.list_registry()
+            workspaces_result = workspaces_command.list_registry()
         elif action == "register":
-            result = workspaces_command.register(
+            workspaces_result = workspaces_command.register(
                 Path(args.root),
                 init_if_needed=not args.no_init,
             )
         elif action == "describe":
-            result = workspaces_command.describe(Path(args.root))
+            workspaces_result = workspaces_command.describe(Path(args.root))
         else:
             parser.error(f"Unsupported workspaces action: {action}")
             return
         if args.json:
-            print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+            print(json.dumps(workspaces_result.to_dict(), ensure_ascii=False, indent=2))
         else:
-            print(result.to_text())
-        if not result.ok:
+            print(workspaces_result.to_text())
+        if not workspaces_result.ok:
             raise SystemExit(1)
         return
 

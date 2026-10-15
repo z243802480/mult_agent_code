@@ -405,7 +405,7 @@ class SkillAdapter:
                     "boolean": isinstance(value, bool),
                     "array": isinstance(value, list),
                     "object": isinstance(value, dict),
-                }.get(expected)
+                }.get(expected) if isinstance(expected, str) else None
                 if type_ok is False:
                     problems.append(f"argument '{key}' must be of type {expected}")
         return "; ".join(problems)

@@ -22,9 +22,24 @@ function assert(cond, message) {
 const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-snap-smoke-"));
 
 function runCommand(command, cwd, envOverrides = {}) {
+  // A developer's global Git identity must not make this smoke pass when CI has none.
+  const env = {
+    ...process.env,
+    GIT_CONFIG_GLOBAL: path.join(workspace, "missing-global-gitconfig"),
+    GIT_CONFIG_NOSYSTEM: "1",
+    ...envOverrides,
+  };
+  for (const key of [
+    "GIT_AUTHOR_NAME",
+    "GIT_AUTHOR_EMAIL",
+    "GIT_COMMITTER_NAME",
+    "GIT_COMMITTER_EMAIL",
+  ]) {
+    if (!(key in envOverrides)) delete env[key];
+  }
   const result = spawnSync(command[0], command.slice(1), {
     cwd,
-    env: { ...process.env, ...envOverrides },
+    env,
     encoding: "utf8",
     windowsHide: true,
   });

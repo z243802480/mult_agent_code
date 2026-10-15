@@ -49,7 +49,7 @@ export function createGitHelpers({ getWorkspace, runCommand }) {
     ".mypy_cache/",
     ".ruff_cache/",
   ];
-  // Commit identity pinned so shadow commits work on machines with no global git identity.
+  // Commit identity pinned for Studio-owned shadow baselines and rewind snapshots.
   const SHADOW_IDENTITY = {
     GIT_AUTHOR_NAME: "Asteria Studio",
     GIT_AUTHOR_EMAIL: "studio@asteria.local",
@@ -411,7 +411,7 @@ export function createGitHelpers({ getWorkspace, runCommand }) {
       const tree = wrote.stdout.trim();
       const commitArgs = ["commit-tree", tree, "-m", `asteria snapshot (${label})`];
       if (hasHead) commitArgs.push("-p", head.stdout.trim());
-      const committed = await runGit(commitArgs);
+      const committed = await runGit(commitArgs, SHADOW_IDENTITY);
       if (committed.code !== 0)
         return { ok: false, reason: redactText(committed.stderr || "git commit-tree failed") };
       const snapshot = committed.stdout.trim();

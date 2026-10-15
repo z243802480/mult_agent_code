@@ -29,3 +29,4 @@ release 硬闸；没有 run、缺 key 或失败都必须原样标出。
 - 本地按 LF 规范化逐文件运行 Prettier，找到 21 个真实格式差异；只格式化这些文件。另以 Ruff 定位两个被跟踪的 Python 违规：路径引导后的延迟 import E402、未用 import F401。修复后重新推送 Verify，按远端结果再判断是否收口。
 - provider key 的 Actions 配置仍不可由此切片推定为已完成；现有 Studio/ring smoke 都是 `NOT RUN`。
 - 复验 `da07df1` 的 Verify 继续红：Studio 已越过 Format check，停在 `Studio smokes`；Python 3.11/3.13 仍停在 `Verify`。公开 GitHub API 只暴露失败步骤，日志需登录；因此在 Verify workflow 中于失败时把末段输出写为 Actions error annotation，同时保持原始失败 exit code。该摘要不包含 provider key，因为 Verify 路径不接入真模型密钥。
+- `8756aeb` 的 annotations 给出真因：Studio 39/40，唯一失败是 G7 快照 smoke；在无全局 Git identity 的环境复现 `commit-tree` 报 `Author identity unknown`，给 Studio 自有快照固定 identity，并让 smoke 清空全局 identity 钉住回归。Python 失败是 mypy ratchet：历史 baseline 按 Windows 产生，Linux 把 Windows ctypes 名称当新债；此外本机缺 mypy 时 ratchet 曾将 exit 1 + 空 stdout 误判为 0 错误。固定 Windows 3.11 类型目标、缺 mypy 时 fail loud，并修 6 个与平台无关的新类型错误；baseline 不扩张。待远端 Verify 复验。

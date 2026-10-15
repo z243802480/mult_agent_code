@@ -38,7 +38,8 @@ ERROR_RE = re.compile(r"^(?P<file>.+?):(?P<line>\d+): error: (?P<message>.*?)\s+
 
 def _run_mypy() -> str:
     completed = subprocess.run(
-        [sys.executable, "-m", "mypy", TARGET],
+        # Compare one stable target across the Python/OS CI matrix: the Windows 3.11 baseline.
+        [sys.executable, "-m", "mypy", "--platform", "win32", "--python-version", "3.11", TARGET],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -47,6 +48,12 @@ def _run_mypy() -> str:
     if completed.returncode not in (0, 1):  # 2+ means mypy itself failed (bad config, crash)
         sys.stderr.write(completed.stdout + completed.stderr)
         raise SystemExit(f"mypy could not run (exit {completed.returncode})")
+    if completed.stderr.strip() or (
+        completed.returncode == 1
+        and not any(ERROR_RE.match(line.strip()) for line in completed.stdout.splitlines())
+    ):
+        sys.stderr.write(completed.stdout + completed.stderr)
+        raise SystemExit("mypy did not produce parseable type errors")
     return completed.stdout
 
 
