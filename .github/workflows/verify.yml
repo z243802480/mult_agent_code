@@ -107,4 +107,12 @@ jobs:
       # They used to be un-runnable in CI (one keyed off the developer's local .asteria/runs), which
       # is exactly how they rotted unnoticed.
       - name: UI tests
-        run: npm run test:ui
+        run: |
+          set +e
+          npm run test:ui 2>&1 | tee ui-tests.log
+          result=${PIPESTATUS[0]}
+          set -e
+          if [ "$result" -ne 0 ]; then
+            python -c "from pathlib import Path; s=Path('ui-tests.log').read_text(errors='replace')[-5000:]; print('::error title=Studio UI failure tail::'+s.replace('%','%25').replace(chr(13),'%0D').replace(chr(10),'%0A'))"
+          fi
+          exit "$result"
