@@ -71,7 +71,7 @@ export function friendlyErrorText(text) {
     ].join("\n");
   }
   if (
-    /econnrefused|connection refused|failed to connect|getaddrinfo|enotfound|network is unreachable|proxy/.test(
+    /econnrefused|connection refused|failed to connect|getaddrinfo|\benotfound\b|network is unreachable|proxy/.test(
       lower,
     )
   ) {
@@ -114,7 +114,7 @@ export function friendlyErrorCategory(text) {
     return "rate_limit";
   if (/timed out|timeout|deadline|handshake/.test(lower)) return "timeout";
   if (
-    /econnrefused|connection refused|failed to connect|getaddrinfo|enotfound|network is unreachable|proxy|ssl|tls/.test(
+    /econnrefused|connection refused|failed to connect|getaddrinfo|\benotfound\b|network is unreachable|proxy|ssl|tls/.test(
       lower,
     )
   )

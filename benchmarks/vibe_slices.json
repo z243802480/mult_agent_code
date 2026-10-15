@@ -2,8 +2,8 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S92",
-  "active_phase": "重审计收敛与真实证据链",
+  "active_slice": "S93",
+  "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
     {
@@ -858,6 +858,20 @@
         "pytest tests/unit/test_documentation_contracts.py -q"
       ],
       "reference_brief": "benchmarks/reference_briefs/S92-studio-proof-release-summary.md"
+    },
+    {
+      "id": "S93",
+      "name": "Local Studio main-path dogfood",
+      "phase": "Product dogfood",
+      "depends_on": [
+        "S92"
+      ],
+      "user_demo": "an isolated small CLI task reaches an honest Studio result with inspectable changes and verification",
+      "green_checks": [
+        "pytest tests/unit/test_documentation_contracts.py -q",
+        "record the real Studio path and first reproducible friction in the S93 report"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S93-local-studio-dogfood.md"
     }
   ]
 }

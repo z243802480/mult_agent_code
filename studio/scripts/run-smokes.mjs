@@ -67,6 +67,7 @@ const HERMETIC = [
   "tool-output-clamp-smoke.mjs",
   "turn-rewind-smoke.mjs",
   "user-thread-copy-smoke.mjs",
+  "warm-worker-error-smoke.mjs",
   "workspace-files-smoke.mjs",
   "workspace-switcher-smoke.mjs",
 ];

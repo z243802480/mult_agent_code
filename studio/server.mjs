@@ -1021,7 +1021,7 @@ function prewarmWorkerAtBoot() {
   } catch {}
 }
 
-function finalizeWarmActive(active, w, { code, runIdHint }) {
+function finalizeWarmActive(active, w, { code, runIdHint, stderr = "" }) {
   active.stopTail();
   active.job.child = null;
   w.active = null;
@@ -1032,6 +1032,7 @@ function finalizeWarmActive(active, w, { code, runIdHint }) {
     sessionId: active.sessionId,
     command: active.command,
     code,
+    stderr,
     runIdHint: runIdHint ?? active.runId,
   });
 }
@@ -1043,7 +1044,11 @@ function handleWarmClose(w) {
   // The worker died with a run in flight. A user Stop tree-killed it (job.cancelled) → finalize as a
   // clean stop; otherwise it crashed → non-zero exit so the honest failure path runs. Either way the
   // next run re-warms a fresh worker.
-  finalizeWarmActive(active, w, { code: active.job.cancelled ? 0 : 1, runIdHint: null });
+  finalizeWarmActive(active, w, {
+    code: active.job.cancelled ? 0 : 1,
+    runIdHint: null,
+    stderr: active.job.cancelled ? "" : "Warm worker exited before completing the run.",
+  });
 }
 
 function handleWarmControl(w, msg) {
@@ -1062,6 +1067,10 @@ function handleWarmControl(w, msg) {
     finalizeWarmActive(active, w, {
       code: typeof msg.exit_code === "number" ? msg.exit_code : msg.event === "error" ? 1 : 0,
       runIdHint: active.runId,
+      stderr:
+        msg.event === "error"
+          ? redactText(String(msg.error || "Warm worker failed without a reason."))
+          : "",
     });
     if (w.runCount >= WARM_WORKER_MAX_RUNS) {
       try {
