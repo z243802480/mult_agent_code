@@ -18,7 +18,7 @@ def _ensure_src_path() -> None:
 
 _ensure_src_path()
 
-from asteria_runtime.core.friction_contract import evaluate_friction
+from asteria_runtime.core.friction_contract import evaluate_friction  # noqa: E402
 
 
 def main() -> None:

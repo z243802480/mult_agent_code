@@ -54,7 +54,12 @@ describe("isSessionLive tie-breaking", () => {
   it("a final_answer cuts off everything before it (unchanged)", () => {
     const events = [
       evt({ created_at: "2026-07-19T14:58:06.000+08:00", seq: 10, status: "running" }),
-      evt({ created_at: "2026-07-19T14:58:08.000+08:00", seq: 11, type: "final_answer", status: "completed" }),
+      evt({
+        created_at: "2026-07-19T14:58:08.000+08:00",
+        seq: 11,
+        type: "final_answer",
+        status: "completed",
+      }),
     ];
     expect(isSessionLive(events)).toBe(false);
   });

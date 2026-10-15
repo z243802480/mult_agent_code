@@ -42,7 +42,10 @@ function sanitize(items: unknown): PlanRevision[] {
     return [
       {
         text: record.text.slice(0, MAX_PLAN_REVISION_CHARS),
-        original: typeof record.original === "string" ? record.original.slice(0, MAX_PLAN_REVISION_CHARS) : "",
+        original:
+          typeof record.original === "string"
+            ? record.original.slice(0, MAX_PLAN_REVISION_CHARS)
+            : "",
       },
     ];
     // Only ever one draft: there is one plan, so a second entry is corruption, not history.
@@ -70,7 +73,10 @@ export function setPlanRevision(text: string, original: string): void {
     return;
   }
   store.setItems([
-    { text: trimmed.slice(0, MAX_PLAN_REVISION_CHARS), original: original.slice(0, MAX_PLAN_REVISION_CHARS) },
+    {
+      text: trimmed.slice(0, MAX_PLAN_REVISION_CHARS),
+      original: original.slice(0, MAX_PLAN_REVISION_CHARS),
+    },
   ]);
 }
 
@@ -105,7 +111,10 @@ export function countChangedLines(revision: PlanRevision): number {
 
 /** The plan as editable text: one step per line, no numbering (line order IS the order). */
 export function planAsText(titles: string[]): string {
-  return titles.map((title) => title.trim()).filter(Boolean).join("\n");
+  return titles
+    .map((title) => title.trim())
+    .filter(Boolean)
+    .join("\n");
 }
 
 /**

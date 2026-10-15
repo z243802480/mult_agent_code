@@ -13,7 +13,9 @@ describe("sniffImageType", () => {
   it("identifies the formats the runtime accepts", () => {
     expect(sniffImageType(PNG)).toBe("image/png");
     expect(sniffImageType(JPEG)).toBe("image/jpeg");
-    expect(sniffImageType(Buffer.concat([Buffer.from("GIF89a"), Buffer.alloc(6)]))).toBe("image/gif");
+    expect(sniffImageType(Buffer.concat([Buffer.from("GIF89a"), Buffer.alloc(6)]))).toBe(
+      "image/gif",
+    );
     expect(
       sniffImageType(Buffer.concat([Buffer.from("RIFF"), Buffer.alloc(4), Buffer.from("WEBP")])),
     ).toBe("image/webp");
@@ -26,7 +28,9 @@ describe("sniffImageType", () => {
     // source (git then treats the whole test file as binary and can never diff it) and
     // Buffer.from(str) would UTF-8 encode the 0x90 into two bytes anyway, so it was not the
     // header it claimed to be.
-    const dosExecutable = Buffer.from([0x4d, 0x5a, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00]);
+    const dosExecutable = Buffer.from([
+      0x4d, 0x5a, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00,
+    ]);
     expect(sniffImageType(dosExecutable)).toBe("");
     expect(sniffImageType(Buffer.from("<script>alert(1)</script>"))).toBe("");
   });

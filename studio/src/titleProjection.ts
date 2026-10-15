@@ -133,10 +133,7 @@ const SUMMARY_PROJECTIONS: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
     /^Runtime accepted the user goal and started a planning run\.?$/,
     () => `已接收目标，开始规划运行。`,
   ],
-  [
-    /^Asteria is preparing the next step\.?$/,
-    () => `正在准备下一步。`,
-  ],
+  [/^Asteria is preparing the next step\.?$/, () => `正在准备下一步。`],
   [
     /^Permission mode is (.+?)\.?$/,
     (m) => {

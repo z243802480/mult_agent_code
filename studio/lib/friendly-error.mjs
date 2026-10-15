@@ -139,8 +139,7 @@ export function friendlyErrorSummary(text) {
   const friendly = friendlyErrorText(text);
   if (!friendly) return "";
   return (
-    friendly.split("\n").find((line) => line && !line.startsWith("##")) ||
-    "这次请求没有完成。"
+    friendly.split("\n").find((line) => line && !line.startsWith("##")) || "这次请求没有完成。"
   );
 }
 

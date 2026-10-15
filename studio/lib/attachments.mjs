@@ -109,7 +109,11 @@ export async function saveAttachment({ workspace, sessionId, buffer }) {
  */
 export function resolveAttachmentRequest(workspace, relative) {
   const normalized = String(relative || "").replace(/\\/g, "/");
-  if (!/^\.asteria\/attachments\/[A-Za-z0-9_.-]+\/[a-f0-9]{8,}\.(png|jpg|jpeg|gif|webp)$/i.test(normalized)) {
+  if (
+    !/^\.asteria\/attachments\/[A-Za-z0-9_.-]+\/[a-f0-9]{8,}\.(png|jpg|jpeg|gif|webp)$/i.test(
+      normalized,
+    )
+  ) {
     return "";
   }
   if (normalized.includes("..")) return "";
@@ -117,7 +121,10 @@ export function resolveAttachmentRequest(workspace, relative) {
 }
 
 export function attachmentMimeFor(relative) {
-  const ext = String(relative || "").split(".").pop()?.toLowerCase();
+  const ext = String(relative || "")
+    .split(".")
+    .pop()
+    ?.toLowerCase();
   for (const [mime, suffix] of Object.entries(ATTACHMENT_EXTENSIONS)) {
     if (suffix === ext || (ext === "jpeg" && suffix === "jpg")) return mime;
   }

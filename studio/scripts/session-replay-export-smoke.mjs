@@ -107,11 +107,11 @@ try {
   // own scripts into HTML responses fetched through the configured proxy, which would make this
   // self-containment assertion test the filter instead of Studio's export route.
   const response = await directGet(`${base}/api/studio/sessions/${sid}/export.html`);
-  assert(response.status >= 200 && response.status < 300, `export.html returned ${response.status}`);
   assert(
-    String(response.headers["content-type"]).includes("text/html"),
-    "must serve text/html",
+    response.status >= 200 && response.status < 300,
+    `export.html returned ${response.status}`,
   );
+  assert(String(response.headers["content-type"]).includes("text/html"), "must serve text/html");
   // AdGuard can inject its own loopback helper tags into every local HTML response on Windows.
   // Remove only that known middleware envelope so the assertions remain about Studio's bytes;
   // arbitrary external references still fail below.
@@ -172,7 +172,9 @@ function directGet(url) {
       let body = "";
       response.setEncoding("utf8");
       response.on("data", (chunk) => (body += chunk));
-      response.on("end", () => resolve({ status: response.statusCode || 0, headers: response.headers, body }));
+      response.on("end", () =>
+        resolve({ status: response.statusCode || 0, headers: response.headers, body }),
+      );
     });
     request.on("error", reject);
   });

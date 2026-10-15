@@ -300,7 +300,13 @@ export function createChatRoutes({
     if (mode !== "plan" && permission !== "allow") {
       const preview = permissionPreviewForMode(mode);
       const pendingJobId = `pending-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-      pendingJobs.set(pendingJobId, { sessionId: activeSessionId, mode, goal, command, warmParams });
+      pendingJobs.set(pendingJobId, {
+        sessionId: activeSessionId,
+        mode,
+        goal,
+        command,
+        warmParams,
+      });
       await appendEvent(activeSessionId, {
         type: "permission_request",
         status: "waiting_user",

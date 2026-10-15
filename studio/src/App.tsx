@@ -176,7 +176,11 @@ export function App() {
     freshSession?.goal_preview || bootstrap.activeSession?.goal_preview,
   );
   const headerTitle =
-    cleanedTitle !== "未命名会话" ? cleanedTitle : goalFallback !== "未命名会话" ? goalFallback : cleanedTitle;
+    cleanedTitle !== "未命名会话"
+      ? cleanedTitle
+      : goalFallback !== "未命名会话"
+        ? goalFallback
+        : cleanedTitle;
 
   // OS notifications ("done and you're not looking") + favicon status dot (G1).
   useNotifications({

@@ -27,7 +27,11 @@ describe("buildRunNarrative — bookkeeping suppression (F4)", () => {
 
   it("keeps user-meaningful milestones beside a suppressed one", () => {
     const { steps } = buildRunNarrative([
-      evt({ title: "GoalSpec file written", transcript_kind: "file_change", display_level: "main" }),
+      evt({
+        title: "GoalSpec file written",
+        transcript_kind: "file_change",
+        display_level: "main",
+      }),
       evt({
         title: "我已实现 stats 子命令。",
         transcript_kind: "assistant_message",

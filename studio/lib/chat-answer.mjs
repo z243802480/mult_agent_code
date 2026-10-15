@@ -192,12 +192,7 @@ export function createChatAnswer({
     return await chatStatusAnswer(sessionId);
   }
 
-  async function chatGeneralAnswer(
-    message,
-    sessionId,
-    onLifecycleStart = null,
-    attachments = [],
-  ) {
+  async function chatGeneralAnswer(message, sessionId, onLifecycleStart = null, attachments = []) {
     const context = await readChatContext(sessionId).catch(() => ({}));
     const kind = classifyChatRequest(message);
     const prompt = [

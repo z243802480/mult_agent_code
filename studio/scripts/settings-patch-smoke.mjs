@@ -17,8 +17,17 @@ const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-settings-"));
 
 const server = spawn(
   process.execPath,
-  ["server.mjs", "--workspace", workspace, "--runtime-root", repoRoot, "--port", String(port),
-   "--python", python],
+  [
+    "server.mjs",
+    "--workspace",
+    workspace,
+    "--runtime-root",
+    repoRoot,
+    "--port",
+    String(port),
+    "--python",
+    python,
+  ],
   {
     cwd: studioDir,
     stdio: ["ignore", "pipe", "pipe"],
@@ -33,23 +42,38 @@ try {
   await waitForHealth();
 
   const initial = await get();
-  expect(initial.settings.modelStrategy === "auto", `fresh workspace must default to auto strategy,
-    got ${initial.settings.modelStrategy}`);
+  expect(
+    initial.settings.modelStrategy === "auto",
+    `fresh workspace must default to auto strategy,
+    got ${initial.settings.modelStrategy}`,
+  );
 
   // The pre-G8-a request shape, byte for byte. This is the regression that matters.
   const tierOnly = await post({ permissionMode: "auto" });
-  expect(tierOnly.ok, `single-field permissionMode save must still work: ${JSON.stringify(tierOnly)}`);
+  expect(
+    tierOnly.ok,
+    `single-field permissionMode save must still work: ${JSON.stringify(tierOnly)}`,
+  );
   expect(tierOnly.settings.permissionMode === "auto", "permissionMode did not save");
   expect(tierOnly.settings.modelStrategy === "auto", "strategy must be untouched by a tier save");
 
   const strategyOnly = await post({ modelStrategy: "economy" });
-  expect(strategyOnly.ok, `single-field modelStrategy save failed: ${JSON.stringify(strategyOnly)}`);
+  expect(
+    strategyOnly.ok,
+    `single-field modelStrategy save failed: ${JSON.stringify(strategyOnly)}`,
+  );
   expect(strategyOnly.settings.modelStrategy === "economy", "modelStrategy did not save");
   // The point of patch semantics: the model panel must not silently reset the permission tier.
-  expect(strategyOnly.settings.permissionMode === "auto", "tier must be untouched by a strategy save");
+  expect(
+    strategyOnly.settings.permissionMode === "auto",
+    "tier must be untouched by a strategy save",
+  );
 
   const both = await post({ permissionMode: "ask_everything", modelStrategy: "quality" });
-  expect(both.ok && both.settings.permissionMode === "ask_everything", "combined save lost the tier");
+  expect(
+    both.ok && both.settings.permissionMode === "ask_everything",
+    "combined save lost the tier",
+  );
   expect(both.settings.modelStrategy === "quality", "combined save lost the strategy");
 
   // G8-b: per-tier model pins are the third field, and the one with structure.
@@ -97,7 +121,8 @@ try {
   // A rejected save must leave the stored values alone.
   const after = await get();
   expect(
-    after.settings.permissionMode === "ask_everything" && after.settings.modelStrategy === "quality",
+    after.settings.permissionMode === "ask_everything" &&
+      after.settings.modelStrategy === "quality",
     `rejected saves mutated state: ${JSON.stringify(after.settings)}`,
   );
 
@@ -110,7 +135,9 @@ try {
     `settings.json disagrees with the payload: ${JSON.stringify(persisted)}`,
   );
 
-  console.log(JSON.stringify({ ok: true, summary: "settings patch smoke passed", persisted }, null, 2));
+  console.log(
+    JSON.stringify({ ok: true, summary: "settings patch smoke passed", persisted }, null, 2),
+  );
 } finally {
   server.kill("SIGTERM");
   await fs.rm(workspace, { recursive: true, force: true });

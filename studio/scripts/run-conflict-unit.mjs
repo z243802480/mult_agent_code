@@ -69,7 +69,10 @@ check("a running read-only job blocks nobody", () => {
   }
 });
 check("the first running writer is the one reported", () =>
-  assert.equal(blockingJob([running("chat"), running("resume"), running("run")], "run").job_id, "j-resume"),
+  assert.equal(
+    blockingJob([running("chat"), running("resume"), running("run")], "run").job_id,
+    "j-resume",
+  ),
 );
 check("an unknown running mode blocks (inverted default, both directions)", () => {
   assert.equal(blockingJob([running("some-future-mode")], "run").job_id, "j-some-future-mode");

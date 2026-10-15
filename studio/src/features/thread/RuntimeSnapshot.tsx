@@ -234,12 +234,7 @@ export function runtimeSnapshotActionable(
     String(mainAction.next_command ?? ""),
     String(progress.next_command ?? ""),
   );
-  if (
-    !nextActionValue &&
-    !noteworthyExitReason(loop.exit_reason) &&
-    !canReview &&
-    !canAccept
-  )
+  if (!nextActionValue && !noteworthyExitReason(loop.exit_reason) && !canReview && !canAccept)
     return false;
   return true;
 }

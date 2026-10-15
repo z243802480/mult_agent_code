@@ -26,9 +26,9 @@ const noEvents: StudioEvent[] = [];
 
 describe("runtimeSnapshotActionable honesty gates", () => {
   it("gate 1: while the session's job runs, workspace-level can_accept must not surface the bar", () => {
-    expect(
-      runtimeSnapshotActionable(acceptingOverview, runDetailWith({}), noEvents, true),
-    ).toBe(false);
+    expect(runtimeSnapshotActionable(acceptingOverview, runDetailWith({}), noEvents, true)).toBe(
+      false,
+    );
   });
 
   it("gate 1 exception: a pending decision card still surfaces mid-run", () => {

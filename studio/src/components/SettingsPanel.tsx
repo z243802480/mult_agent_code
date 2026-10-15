@@ -267,7 +267,9 @@ function ModelStrategySection({
 
   return (
     <>
-      <p className="muted">挑模型时的取舍偏好。运行时始终按每一步的需要来选，这里只是给它一个倾向。</p>
+      <p className="muted">
+        挑模型时的取舍偏好。运行时始终按每一步的需要来选，这里只是给它一个倾向。
+      </p>
       <div className="permTierList" role="radiogroup" aria-label="模型档位">
         {MODEL_STRATEGIES.map((strategy) => {
           const active = saved === strategy.id;

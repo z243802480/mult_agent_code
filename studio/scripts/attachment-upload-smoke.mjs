@@ -51,13 +51,18 @@ try {
   const again = await postBytes(`${base}/api/studio/attachments?session=smoke-1`, PNG);
   assert(again.path === upload.path, "same bytes produced a different path");
 
-  const echo = await fetch(`${base}/api/studio/attachments?path=${encodeURIComponent(upload.path)}`);
+  const echo = await fetch(
+    `${base}/api/studio/attachments?path=${encodeURIComponent(upload.path)}`,
+  );
   assert(echo.status === 200, `echo GET failed: ${echo.status}`);
   assert(
     /image\/png/.test(echo.headers.get("content-type") || ""),
     `echo content-type wrong: ${echo.headers.get("content-type")}`,
   );
-  assert(Buffer.from(await echo.arrayBuffer()).equals(PNG), "echoed bytes differ from the original");
+  assert(
+    Buffer.from(await echo.arrayBuffer()).equals(PNG),
+    "echoed bytes differ from the original",
+  );
 
   // Non-image content must be refused whatever it is named.
   const bogus = await postBytes(
@@ -75,7 +80,9 @@ try {
     assert(res.status === 400 || res.status === 404, `${attempt} served with ${res.status}`);
   }
 
-  console.log("Studio attachment smoke passed (binary round trip, content addressing, path safety)");
+  console.log(
+    "Studio attachment smoke passed (binary round trip, content addressing, path safety)",
+  );
 } finally {
   server.kill("SIGTERM");
   await fs.rm(workspace, { recursive: true, force: true });

@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 from asteria_runtime.commands.cancel_command import CancelCommand

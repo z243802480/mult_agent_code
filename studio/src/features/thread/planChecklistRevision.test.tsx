@@ -9,7 +9,11 @@ import { PlanChecklist } from "./PlanChecklist";
 import type { PlanModel } from "./planModel";
 import { DiffCommentTray, buildFeedbackMessage } from "../../components/DiffCommentTray";
 import { addPlanComment, setPlanCommentSession } from "../../session/planComments";
-import { setPlanRevision, setPlanRevisionSession, getPlanRevision } from "../../session/planRevision";
+import {
+  setPlanRevision,
+  setPlanRevisionSession,
+  getPlanRevision,
+} from "../../session/planRevision";
 import { setDiffCommentSession } from "../../session/diffComments";
 
 const plan: PlanModel = {
@@ -92,12 +96,19 @@ describe("buildFeedbackMessage", () => {
   it("puts the rewritten plan after the step comments that constrain it", () => {
     addPlanComment(1, "实现 power 函数", "别动 schema");
     setPlanRevision("先写测试\n再实现", "实现 power 函数\n写测试");
-    const message = buildFeedbackMessage([], [{ id: "p1", step: 1, title: "实现", text: "别动 schema" }], getPlanRevision());
+    const message = buildFeedbackMessage(
+      [],
+      [{ id: "p1", step: 1, title: "实现", text: "别动 schema" }],
+      getPlanRevision(),
+    );
     expect(message.indexOf("别动 schema")).toBeLessThan(message.indexOf("todo_write"));
   });
 
   it("is unchanged for callers with no rewrite (刀一 regression)", () => {
-    const message = buildFeedbackMessage([], [{ id: "p1", step: 2, title: "写测试", text: "别动 schema" }]);
+    const message = buildFeedbackMessage(
+      [],
+      [{ id: "p1", step: 2, title: "写测试", text: "别动 schema" }],
+    );
     expect(message).toContain("对计划第 2 步");
     expect(message).not.toContain("todo_write");
   });

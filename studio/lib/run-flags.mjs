@@ -81,7 +81,9 @@ export function mapModelNames(modelNames) {
   if (!modelNames || typeof modelNames !== "object") return {};
   const mapped = {};
   for (const [tier, name] of Object.entries(modelNames)) {
-    const normalizedTier = String(tier || "").trim().toLowerCase();
+    const normalizedTier = String(tier || "")
+      .trim()
+      .toLowerCase();
     const normalizedName = String(name ?? "").trim();
     if (MODEL_TIERS.includes(normalizedTier) && normalizedName) {
       mapped[normalizedTier] = normalizedName;

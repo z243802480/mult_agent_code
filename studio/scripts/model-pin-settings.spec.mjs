@@ -72,13 +72,17 @@ test("typing a model name pins that tier, and only that tier", async ({ page }) 
   await strong.blur();
 
   // The file the run path actually reads — not just the panel's own state.
-  await expect.poll(async () => (await persistedSettings()).modelNames).toEqual({
-    strong: "glm-4.5-air",
-  });
+  await expect
+    .poll(async () => (await persistedSettings()).modelNames)
+    .toEqual({
+      strong: "glm-4.5-air",
+    });
   await expect(strong).toHaveValue("glm-4.5-air");
 });
 
-test("clearing the box unpins the tier instead of storing an empty model name", async ({ page }) => {
+test("clearing the box unpins the tier instead of storing an empty model name", async ({
+  page,
+}) => {
   await openModelSettings(page);
   const strong = page.locator(".settingsRowInput").first();
 
@@ -95,9 +99,7 @@ test("clearing the box unpins the tier instead of storing an empty model name", 
 test("a pin does not disturb the permission tier or the model strategy", async ({ page }) => {
   await openModelSettings(page);
   await page.getByRole("radio", { name: /重节省/ }).click();
-  await expect
-    .poll(async () => (await persistedSettings()).modelStrategy)
-    .toBe("economy");
+  await expect.poll(async () => (await persistedSettings()).modelStrategy).toBe("economy");
 
   await page.locator(".settingsRowInput").first().fill("glm-4.5-air");
   await page.locator(".settingsRowInput").first().blur();

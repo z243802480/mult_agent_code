@@ -27,15 +27,15 @@ describe("clipboardImages", () => {
 
   it("ignores non-image files", () => {
     const pdf = new File([new Uint8Array([1])], "a.pdf", { type: "application/pdf" });
-    expect(clipboardImages(dataTransfer([{ kind: "file", type: "application/pdf", file: pdf }]))).toEqual(
-      [],
-    );
+    expect(
+      clipboardImages(dataTransfer([{ kind: "file", type: "application/pdf", file: pdf }])),
+    ).toEqual([]);
   });
 
   it("skips items whose getAsFile yields nothing", () => {
-    expect(clipboardImages(dataTransfer([{ kind: "file", type: "image/png", file: null }]))).toEqual(
-      [],
-    );
+    expect(
+      clipboardImages(dataTransfer([{ kind: "file", type: "image/png", file: null }])),
+    ).toEqual([]);
   });
 
   it("survives a paste with no clipboard data", () => {
@@ -47,9 +47,9 @@ describe("turnAttachmentPaths", () => {
   const event = (data: unknown): StudioEvent => ({ data }) as unknown as StudioEvent;
 
   it("reads the paths a user turn carried", () => {
-    expect(turnAttachmentPaths(event({ attachments: [".asteria/attachments/s1/ab.png"] }))).toEqual([
-      ".asteria/attachments/s1/ab.png",
-    ]);
+    expect(turnAttachmentPaths(event({ attachments: [".asteria/attachments/s1/ab.png"] }))).toEqual(
+      [".asteria/attachments/s1/ab.png"],
+    );
   });
 
   it("returns nothing for an ordinary message", () => {
@@ -58,6 +58,8 @@ describe("turnAttachmentPaths", () => {
   });
 
   it("drops non-string entries rather than rendering junk", () => {
-    expect(turnAttachmentPaths(event({ attachments: ["ok.png", 3, null, ""] }))).toEqual(["ok.png"]);
+    expect(turnAttachmentPaths(event({ attachments: ["ok.png", 3, null, ""] }))).toEqual([
+      "ok.png",
+    ]);
   });
 });
