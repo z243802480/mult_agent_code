@@ -58,6 +58,11 @@ class ReviewResult:
     recommended_next_command: str | None = None
     failure_classification: dict | None = None
 
+    @property
+    def primary_blocker(self) -> str | None:
+        blockers = self.blockers or []
+        return blockers[0] if blockers else None
+
     def to_dict(self) -> dict:
         return {
             "schema_version": "0.1.0",
@@ -75,11 +80,6 @@ class ReviewResult:
             "recommended_next_command": self.recommended_next_command,
             "failure_classification": self.failure_classification or {},
         }
-
-    @property
-    def primary_blocker(self) -> str | None:
-        blockers = self.blockers or []
-        return blockers[0] if blockers else None
 
     def to_text(self) -> str:
         lines = [
@@ -106,6 +106,143 @@ class ReviewResult:
         if self.recommended_next_command:
             lines.append(f"Recommended next command: asteria {self.recommended_next_command}")
         return "\n".join(lines)
+
+
+_VERIFICATION_COMMAND_TOOLS = {"run_command", "run_tests", "run_pytest"}
+
+
+def _verification_row_key(row: dict) -> tuple | None:
+    """Identity of a verification-eligible ledger row (tool_calls or tool_observations),
+    or ``None`` when the row is not a dedupable verification observation.
+
+    Handles both ledger shapes: ``tool_calls`` rows carry ``input_summary`` — a dict when read
+    raw, a serialized string after schema validation (use the string itself as the identity,
+    the way ``correctness_eval_command._signals`` keys its dedup); ``tool_observations`` rows
+    carry the structured payload under ``observation.data``. Mirrors the identity semantics of
+    ``execute_command._latest_verification_per_command`` (command text for run tools, file
+    path for readbacks); rows without an extractable identity pass through unchanged."""
+    tool = str(row.get("tool_name") or "")
+    command: str | None = None
+    path: str | None = None
+    input_summary = row.get("input_summary")
+    if isinstance(input_summary, dict):
+        command = str(input_summary.get("requested_command") or input_summary.get("command") or "").strip() or None
+        path = str(input_summary.get("path") or "").strip() or None
+    elif isinstance(input_summary, str) and input_summary.strip():
+        # Schema-validated tool_calls row: the summary is the serialized input dict; its
+        # exact text is a stable per-command identity (same command → same string).
+        command = path = input_summary.strip()
+    observation = row.get("observation")
+    if isinstance(observation, dict) and isinstance(observation.get("data"), dict):
+        data = observation["data"]
+        if command is None:
+            command = str(data.get("requested_command") or data.get("command") or "").strip() or None
+        if path is None:
+            path = str(data.get("path") or "").strip() or None
+    if tool in _VERIFICATION_COMMAND_TOOLS:
+        if command:
+            return ("command", tool, command)
+        return None
+    if tool == "read_file":
+        if path:
+            return ("readback", path)
+        return None
+    return None
+
+
+def _latest_verification_rows(rows: list[dict]) -> list[dict]:
+    """Judge verification on each command's LATEST outcome, not the cumulative pass/fail of
+    every ledger row (S101 run-20261106-0001, 2026-11-06).
+
+    A repair loop legitimately runs its verification red first, then green: ``python
+    verify_daylight.py`` appeared six times in that run's ledger (success→failure→success→
+    failure→success→success). The completion contract — which dedups via
+    ``execute_command._latest_verification_per_command`` — correctly closed every task green,
+    but review then counted the stale reds cumulatively (verification_pass_rate 0.68 → verdict
+    partial, route diagnose→resume). Because the ledger is append-only, ``resume`` can never
+    repair that: every new green raises numerator and denominator together, so the rate
+    asymptotically approaches 1 without reaching it — a review-layer repair-loop trap.
+
+    Keeps the LAST row per identity at the FIRST occurrence's position, so red→green on the
+    same command reads green while a red command's latest still reads red (a red test cannot
+    be masked by running a different passing command). Non-verification rows pass through
+    unchanged. Same semantics as ``execute_command._latest_verification_per_command`` and
+    ``correctness_eval_command._signals`` — review is the last consumer to single-source it."""
+    result: list[dict] = []
+    position_by_key: dict[tuple, int] = {}
+    for row in rows:
+        key = _verification_row_key(row)
+        if key is None:
+            result.append(row)
+            continue
+        if key in position_by_key:
+            result[position_by_key[key]] = row
+        else:
+            position_by_key[key] = len(result)
+            result.append(row)
+    return result
+
+
+def _verification_item_kind(item: dict) -> str:
+    """Classify a final-round verification observation: command run vs artifact readback."""
+    data = item.get("data")
+    if not isinstance(data, dict):
+        data = {}
+    if item.get("requested_command") or data.get("requested_command") or data.get("command"):
+        return "command"
+    if data.get("path"):
+        return "readback"
+    return "other"
+
+
+_VERIFICATION_GAP_MARKERS = (
+    "incomplete",
+    "did not pass",
+    "failed",
+    "unverified",
+    "not verified",
+    "missing",
+    "insufficient",
+)
+
+
+def _model_asserts_verification_gap(reason: str) -> bool:
+    """The model-asserted arm of the verification_failed classification: the review model's
+    prose asserts a verification gap (its structured outcome_eval may omit the pass rate while
+    the model judges the evidence insufficient — ``test_user_workflow_loop`` pins this). A
+    POSITIVE mention ("all verification commands passed") must NOT classify as failed: S101
+    run-20261106-0001's post-fix reason says exactly that with rate 1.0, and the previous bare
+    ``"verification" in reason`` substring arm turned it into verification_failed → resume on
+    a contract-green run."""
+    lowered = reason.lower()
+    if "verif" not in lowered:
+        return False
+    return any(marker in lowered for marker in _VERIFICATION_GAP_MARKERS)
+
+
+def _final_round_verification(execution_evidence: list[dict]) -> list[dict]:
+    """The verification observations the completion contract actually judged.
+
+    The latest ``task_execution_evidence`` row per task carries that task's FINAL round
+    ``verification_results`` — the exact set ``check_completion_contract`` consumed when it
+    decided done/blocked. Grading review on THIS set single-sources verification semantics
+    with the completion gate (RA7b-4): the gate is the deterministic authority on
+    "verified", so review must not re-litigate it from raw attempt history (S101
+    run-20261106-0001: 17 abandoned one-shot exploration probes — env detection, findstr
+    trials, a denied path — permanently capped the historical pass rate at 0.68 on a run
+    whose contract-judged final state was fully green, and ``resume`` can never repair
+    already-recorded history). Earlier blocked rounds of the same task are superseded by
+    its latest row; tasks are append-only and chronological."""
+    latest_by_task: dict[str, dict] = {}
+    for row in execution_evidence:
+        task_id = str(row.get("task_id") or "")
+        latest_by_task[task_id] = row
+    collected: list[dict] = []
+    for row in latest_by_task.values():
+        results = row.get("verification_results")
+        if isinstance(results, list):
+            collected.extend(item for item in results if isinstance(item, dict))
+    return collected
 
 
 class ReviewCommand:
@@ -552,7 +689,6 @@ class ReviewCommand:
     def _failure_classification(self, eval_report: dict) -> dict:
         overall = eval_report.get("overall") or {}
         status = str(overall.get("status") or "unknown")
-        overall_reason = str(overall.get("reason") or "").lower()
         if status == "pass":
             return {
                 "category": "none",
@@ -580,7 +716,9 @@ class ReviewCommand:
                 "recommended_command": "resume",
                 "reason": "Execution has blocked tasks; continue the session from the concrete failure evidence.",
             }
-        if verification_rate < 1.0 or "verification" in overall_reason:
+        if verification_rate < 1.0 or _model_asserts_verification_gap(
+            str(overall.get("reason") or "")
+        ):
             return {
                 "category": "verification_failed",
                 "recommended_command": "resume",
@@ -637,10 +775,11 @@ class ReviewCommand:
         goal_spec = self.store.read(run_dir / "goal_spec.json", "goal_spec")
         task_plan = self.store.read(run_dir / "task_plan.json", "task_board")
         cost_report = self._read_cost(run_dir / "cost_report.json", run_id)
-        tool_calls = self._read_jsonl(run_dir / "tool_calls.jsonl", "tool_call")
-        tool_observations = self._read_jsonl(
-            run_dir / "tool_observations.jsonl",
-            "tool_observation",
+        tool_calls = _latest_verification_rows(
+            self._read_jsonl(run_dir / "tool_calls.jsonl", "tool_call")
+        )
+        tool_observations = _latest_verification_rows(
+            self._read_jsonl(run_dir / "tool_observations.jsonl", "tool_observation")
         )
         model_calls = self._read_jsonl(run_dir / "model_calls.jsonl", "model_call")
         model_profiles = self._read_jsonl(run_dir / "model_profiles.jsonl", "model_profile")
@@ -676,7 +815,6 @@ class ReviewCommand:
             },
             "deterministic_checks": self._deterministic_checks(
                 task_plan,
-                tool_calls,
                 cost_report,
                 runtime_os_evidence,
             ),
@@ -716,7 +854,6 @@ class ReviewCommand:
     def _deterministic_checks(
         self,
         task_plan: dict,
-        tool_calls: list[dict],
         cost_report: dict,
         runtime_os_evidence: dict | None = None,
     ) -> dict:
@@ -733,16 +870,19 @@ class ReviewCommand:
         }
         done = [task for task in active_tasks if task["status"] == "done"]
         blocked = [task for task in active_tasks if task["status"] == "blocked"]
-        command_verification_calls = [
-            call for call in tool_calls if call["tool_name"] in {"run_tests", "run_command"}
+        # Verification fields grade the contract-judged FINAL round per task (see
+        # _final_round_verification) — not raw attempt history, which penalizes mandatory
+        # red→green repair iterations and abandoned exploration probes forever.
+        final_verification = _final_round_verification(execution_evidence)
+        final_command_verification = [
+            item for item in final_verification if _verification_item_kind(item) == "command"
         ]
-        artifact_readback_calls = [
-            call for call in tool_calls if call["tool_name"] in {"read_file"}
+        final_readbacks = [
+            item for item in final_verification if _verification_item_kind(item) == "readback"
         ]
-        verification_calls = [*command_verification_calls, *artifact_readback_calls]
-        passed_verification = [call for call in verification_calls if call["status"] == "success"]
+        passed_verification = [item for item in final_verification if item.get("ok") is True]
         passed_command_verification = [
-            call for call in command_verification_calls if call["status"] == "success"
+            item for item in final_command_verification if item.get("ok") is True
         ]
         return {
             "task_completion_rate": len(done) / len(active_tasks) if active_tasks else 0,
@@ -779,17 +919,17 @@ class ReviewCommand:
                 ]
             ),
             "runtime_os_summary": runtime_summary,
-            "verification_call_count": len(verification_calls),
+            "verification_call_count": len(final_verification),
             "verification_pass_rate": (
-                len(passed_verification) / len(verification_calls) if verification_calls else 0
+                len(passed_verification) / len(final_verification) if final_verification else 0
             ),
-            "command_verification_call_count": len(command_verification_calls),
+            "command_verification_call_count": len(final_command_verification),
             "command_verification_pass_rate": (
-                len(passed_command_verification) / len(command_verification_calls)
-                if command_verification_calls
+                len(passed_command_verification) / len(final_command_verification)
+                if final_command_verification
                 else 0
             ),
-            "artifact_readback_call_count": len(artifact_readback_calls),
+            "artifact_readback_call_count": len(final_readbacks),
             "cost_status": cost_report.get("status", "within_budget"),
         }
 
@@ -867,7 +1007,7 @@ class ReviewCommand:
         overall = eval_report["overall"]
         action_plan = observation_next_action_plan(tool_observations or [])
         latest_plan = latest_observation_plan or {}
-        effective_plan = latest_plan or action_plan
+        effective_plan = action_plan or latest_plan
         route_health = route_health or {}
         model_selection = model_selection or {}
         latest_real_provider_matrix = latest_real_provider_matrix or {}
@@ -1001,9 +1141,14 @@ class ReviewCommand:
         overall = eval_report.get("overall") or {}
         if overall.get("status") != "pass":
             blockers.append(f"Review verdict is {overall.get('status')}: {overall.get('reason')}")
-        source_plan = latest_plan or action_plan
+        # Prefer the plan RECOMPUTED from the deduped ledger over the run-time persisted one:
+        # the persisted plan froze mid-run guidance (superseded reds included) that a resume
+        # round can never resolve. A pass verdict renders no plan blockers at all — they are
+        # next-step hints for an agent, not acceptance blockers (S101 run-20261106-0001).
+        source_plan = action_plan or latest_plan or {}
         blockers.extend(str(item) for item in (route_health or {}).get("blockers") or [])
-        blockers.extend(str(item) for item in source_plan.get("blockers") or [])
+        if overall.get("status") != "pass":
+            blockers.extend(str(item) for item in source_plan.get("blockers") or [])
         follow_ups = self._follow_ups(eval_report)
         if follow_ups:
             blockers.append(f"{len(follow_ups)} follow-up item(s) remain from review.")
@@ -1018,7 +1163,7 @@ class ReviewCommand:
         route_health: dict | None = None,
         model_selection: dict | None = None,
     ) -> list[str]:
-        source_plan = latest_plan or action_plan
+        source_plan = action_plan or latest_plan or {}
         evidence = [
             f"overall={eval_report['overall'].get('status')} score={eval_report['overall'].get('score')}",
         ]

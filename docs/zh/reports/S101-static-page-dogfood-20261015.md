@@ -28,3 +28,19 @@
 - `main@8236539` 的 [Verify run 38739392288](https://github.com/z243802480/mult_agent_code/actions/runs/38739392288) 三 job（Studio、Python 3.11、Python 3.13）均通过。
 - 复查 `PlanAgent` 的通用任务分解提示：它已有少任务、工具可验及新测试文件需列入产物的原则，但没有约束“先建一个环境报告任务”，也没有明确新验证脚本必须落在**同一任务**写入范围。补两条规划约束：环境探测留在需要它的实施任务内；若任务可能新建验证脚本，将路径列入该任务的 `expected_changed_files`，并诚实说明交互检查不可用时的证据等级。PlanAgent/PlanCommand 14/14 测试通过。**效果尚未由真实模型复跑证明**，不能据此宣称 S101 闭环。
 - 前两项通用修复的 `main@aae0484` [Verify run 38736896113](https://github.com/z243802480/mult_agent_code/actions/runs/38736896113) 三 job（Studio、Python 3.11、Python 3.13）均通过。**仍未证实**：原 Session 的三件事交互修复、普通入口完整 Review→Accept、Linux 真实模型路径。S101 保持活动，下一步先处理闭环耗时与验证策略，再决定是否换任务形状。
+
+## 2026-11-06 追加：闭环验收真跑走通（run-20261106-0001）
+
+前两刀的通用修复（输出解码、档位接线、JSON 早停）与规划约束（环境探测随实施任务走、验证脚本列入同一任务 scope）全部就位后，在全新隔离工作区 `asteria-s101-closure-a46bb32f` 做闭环验收。工作区重建缺陷页（文案承诺「每天只选三件」但可添加第 4 件、无上限提示、无删除）与 PRODUCT.md，走普通用户入口 `asteria goal --permission-level auto --model-strategy auto --no-research --max-iterations 3`。
+
+结果：**首次完整走通 Goal→Plan→Execute→Verify→Review→Accept**。Plan 3 个任务，两条新约束兑现——task-0002 的写范围就是 `[verify_daylight.py, verify_daylight_result.txt]`（验证脚本规划期即在 scope 内，不再跨任务被拒），且没有独立的环境探测任务。task-0001 写入三项修复；task-0002 自建 headless 浏览器真交互验证（Playwright+chrome）三用例全过（第 4 件被拒且提示可见、删除释放名额、常规路径），期间 3 次被完成闸以「verification did not pass」正确挡下、软保险丝 3/6 自动续跑后转绿——这是闸在拒绝未验证的工作，不是缺验证死循环；task-0003 产出验证结论报告。`asteria review` pass/1.00 → `asteria accept` accepted。独立复测：preview 浏览器实操三项交互全过，375px 视口无横向溢出。
+
+### 真跑暴露的新 friction：review 层 repair-loop 陷阱（已修）
+
+首次 review 三次 partial/0.68 并路由 `verification_failed → resume`，但账本 append-only，历史分数结构性无法被 resume 修复——又一个修复循环陷阱，只是这次在 review 层。真因是三处与完成闸口径不一致：①`_deterministic_checks` 把全部历史尝试（含 17 条一次性废弃探针与环境探测）累计进验证通过率，而完成闸只判每任务**终轮**验证集；②review 证据窗口与观察行动计划没做「同命令取最新」去重（完成闸与 correctness-eval 早已这么做）；③失败分类存在 `"verification" in overall_reason` 子串误触发（通过率已 1.0 仍判失败）。修复把三处全部单一真源到完成闸的终轮证据（见 changelog 1.2.193），修复后同一 run 无需任何新模型执行即 pass/1.00。
+
+### 诚实边界
+
+- 最终交互验证 = 模型自建的 headless Playwright 脚本 + 我方 preview 浏览器独立复测；没有人类手点全流程。
+- 本次仍是 Windows 单 OS 样本；Linux 与独立 provider 对照归 §16.2 第 14 行的后续采样。
+- run 账本在 `asteria-s101-closure-a46bb32f/.asteria/runs/run-20261106-0001/`（本机临时目录），含 prompt/工具/验证全量证据。

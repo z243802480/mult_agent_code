@@ -658,3 +658,84 @@ def test_review_command_includes_collaboration_summary_in_markdown_report(
     assert "Workers:" in review_md
     assert "failed=1" in review_md
     assert "Debug failed child worker" in review_md
+
+
+def test_review_ignores_superseded_red_history_from_append_only_ledger(
+    tmp_path: Path,
+) -> None:
+    """S101 run-20261106-0001: a repair loop's red→green on the same verification command plus
+    abandoned one-shot probe commands used to cap review's verification_pass_rate below 1.0
+    forever (the ledger is append-only, so resume could never repair it), routing a
+    contract-green run into verification_failed → resume. Deterministic checks must grade the
+    contract-judged final round per task, and the model-visible evidence must show each
+    verification command's LATEST outcome, not stale reds."""
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a reviewed module", model_client=FakePlanClient()).run()
+    execute = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeExecuteClient()).run()
+    assert execute.completed == 1
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+
+    validator_command = (
+        "python -c \"from reviewed_module import answer; assert answer() == 42\""
+    )
+    from asteria_runtime.storage.jsonl_store import JsonlStore
+    from asteria_runtime.storage.schema_validator import SchemaValidator
+
+    jsonl = JsonlStore(SchemaValidator(Path.cwd() / "schemas"))
+    calls = jsonl.read_all(run_dir / "tool_calls.jsonl", "tool_call")
+    template = dict(calls[-1])
+    poisoned = [
+        # A red→green repair pair on the same command: the red must not survive as failure.
+        {**template, "tool_call_id": "call-red-1", "tool_name": "run_tests",
+         "input_summary": str({"command": validator_command}), "status": "failure"},
+        {**template, "tool_call_id": "call-green-1", "tool_name": "run_tests",
+         "input_summary": str({"command": validator_command}), "status": "success"},
+        # Abandoned one-shot probes that failed and were never re-run.
+        {**template, "tool_call_id": "call-probe-1", "tool_name": "run_command",
+         "input_summary": str({"command": "dir /b && where node"}), "status": "failure"},
+        {**template, "tool_call_id": "call-probe-2", "tool_name": "run_command",
+         "input_summary": str({"command": 'findstr /C:"answer" reviewed_module.py'}),
+         "status": "failure"},
+    ]
+    with (run_dir / "tool_calls.jsonl").open("a", encoding="utf-8") as handle:
+        for row in poisoned:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+    observations = jsonl.read_all(run_dir / "tool_observations.jsonl", "tool_observation")
+    obs_template = dict(observations[-1])
+    poisoned_obs = [
+        {**obs_template, "observation_id": "obs-red-1", "tool_name": "run_tests",
+         "status": "failure", "ok": False,
+         "observation": {**obs_template["observation"], "ok": False, "status": "failure",
+                         "data": {"command": validator_command,
+                                  "requested_command": validator_command, "returncode": 1}}},
+        {**obs_template, "observation_id": "obs-green-1", "tool_name": "run_tests",
+         "status": "success", "ok": True,
+         "observation": {**obs_template["observation"], "ok": True, "status": "success",
+                         "data": {"command": validator_command,
+                                  "requested_command": validator_command, "returncode": 0}}},
+    ]
+    with (run_dir / "tool_observations.jsonl").open("a", encoding="utf-8") as handle:
+        for row in poisoned_obs:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+    seen: dict = {}
+
+    class RecordingReviewClient(FakeReviewClient):
+        def chat(self, request: ChatRequest) -> ChatResponse:
+            seen["payload"] = json.loads(request.messages[-1].content)
+            return super().chat(request)
+
+    result = ReviewCommand(tmp_path, run_id=plan.run_id, model_client=RecordingReviewClient()).run()
+
+    assert result.status == "pass"
+    # The model-visible trajectory shows the LATEST outcome per verification command: the
+    # poisoned red→green pair collapsed to its green, and no duplicate pair remains.
+    trajectory_calls = seen["payload"]["trajectory"]["tool_calls"]
+    verify_rows = [
+        row for row in trajectory_calls if row["tool_name"] == "run_tests"
+    ]
+    assert len(verify_rows) == 1
+    assert verify_rows[0]["status"] == "success"
+    eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
+    assert eval_report["overall"]["status"] == "pass"
