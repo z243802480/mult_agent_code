@@ -3494,6 +3494,40 @@ def test_model_driven_spine_reports_verification_calls_on_success(tmp_path: Path
     assert result.executed_tasks[0].verification_calls >= 1
 
 
+@pytest.mark.spine_default
+def test_protocol_diagnostic_is_persisted_while_the_task_recovers(tmp_path: Path) -> None:
+    class RecoveringClient:
+        def __init__(self) -> None:
+            self.bad_response_sent = False
+            self.valid = FakeModelDrivenClient()
+
+        def chat(self, request: ChatRequest) -> ChatResponse:
+            if not self.bad_response_sent:
+                self.bad_response_sent = True
+                return ChatResponse(
+                    content='{"tool_calls":[{"tool_name":"read_file","args":[]}],"done":false}',
+                    finish_reason="stop", usage=TokenUsage(1, 1, 2), model_provider="fake",
+                    model_name="protocol-recovery", raw_response={},
+                )
+            return self.valid.chat(request)
+
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=RecoveringClient()).run()
+    assert result.completed == 1
+    assert result.blocked == 0
+    progress = tmp_path / ".asteria" / "runs" / plan.run_id / "user_progress.jsonl"
+    diagnostics = [
+        event for line in progress.read_text(encoding="utf-8").splitlines()
+        if (event := json.loads(line)).get("data", {}).get("protocol_error")
+    ]
+    assert len(diagnostics) == 1
+    assert diagnostics[0]["status"] == "running"
+    assert diagnostics[0]["display_level"] == "inspector"
+    assert "tool_calls[0].args" in diagnostics[0]["summary"]
+    assert (tmp_path / "src" / "notes_tool.py").is_file()
+
+
 class FakeModelDrivenVerifiesNeverDoneClient:
     """Writes the artifact + a passing verification, then NEVER emits done — so the loop runs until
     the round fuse trips (``budget_exhausted``) while the completion contract is already satisfied."""

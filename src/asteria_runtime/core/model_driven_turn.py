@@ -74,7 +74,7 @@ class ChatClient(Protocol):
 class TurnEvent:
     """一步循环产生的可观察事件（narration/工具观察/完成/保险丝/人审暂停），供上层投影到主线程。"""
 
-    kind: str  # "narration" | "tool_observation" | "final" | "fuse" | "paused" | "steer"
+    kind: str  # narration | tool_observation | protocol_error | final | fuse | paused | steer
     iteration: int
     text: str = ""
     observations: list[ToolObservation] = field(default_factory=list)
@@ -217,16 +217,19 @@ def run_model_driven_turn(
             ),
         )
         response = model_client.chat(request)
-        narration, calls, valid_turn = _read_turn(response, transport)
-        if not valid_turn:
+        narration, calls, protocol_error = _read_turn(response, transport)
+        if protocol_error:
             # Plain prose is not a model decision in the JSON transport: it contains neither a
             # usable tool call nor an explicit done=true. Ask the model to repair the protocol,
             # bounded by the same iteration fuse, rather than silently treating prose as success.
             messages.append(ChatMessage(role="assistant", content=narration or "(empty response)"))
-            messages.append(ChatMessage(role="user", content=_json_format_nudge(available_tools)))
+            messages.append(
+                ChatMessage(role="user", content=_json_format_nudge(available_tools, protocol_error))
+            )
+            emit(TurnEvent(kind="protocol_error", iteration=iteration, text=protocol_error))
             consecutive_invalid_turns += 1
             if consecutive_invalid_turns >= _MAX_CONSECUTIVE_INVALID_TURNS:
-                emit(TurnEvent(kind="fuse", iteration=iteration))
+                emit(TurnEvent(kind="fuse", iteration=iteration, text="protocol_error_limit"))
                 return ModelDrivenTurnResult(
                     status="budget_exhausted",
                     final_message="",
@@ -377,30 +380,41 @@ def _execute(
     return observations
 
 
-def _read_turn(response: Any, transport: str) -> tuple[str, list[dict], bool]:
-    """从模型响应里取出（narration, tool_calls, valid_turn），屏蔽 transport 差异。"""
+def _read_turn(response: Any, transport: str) -> tuple[str, list[dict], str | None]:
+    """Read action intent without inventing arguments or silently discarding calls."""
     content = str(getattr(response, "content", "") or "")
     if transport == "tool_use":
         calls = extract_tool_calls(getattr(response, "raw_response", {}) or {})
-        return content.strip(), calls, True
+        return content.strip(), calls, None
     # json transport（本弱模型栈的已证明通路）
+    if getattr(response, "finish_reason", None) == "length":
+        return content.strip(), [], "output_token_limit: resend a smaller tool batch or edit."
     try:
         parsed = parse_json_object(content)
-    except JsonExtractionError:
-        return content.strip(), [], False
-    if not isinstance(parsed.get("tool_calls"), list) or not isinstance(parsed.get("done"), bool):
-        return content.strip(), [], False
+    except JsonExtractionError as exc:
+        return content.strip(), [], f"invalid_json: {exc}"
+    raw_calls = parsed.get("tool_calls", [])
+    if not isinstance(raw_calls, list):
+        return content.strip(), [], "tool_calls must be an array."
     narration = str(parsed.get("narration") or "").strip()
-    if parsed.get("done"):
-        return narration, [], True
-    return narration, _normalize_json_calls(parsed.get("tool_calls")), True
+    try:
+        calls = _normalize_json_calls(raw_calls)
+    except ValueError as exc:
+        return content.strip(), [], str(exc)
+    # Calls express actionable intent; a redundant/missing done flag must not erase them.
+    # Completion is checked on a subsequent call-free turn and by the existing task contract.
+    if calls:
+        return narration, calls, None
+    if parsed.get("done") is True:
+        return narration, [], None
+    return content.strip(), [], "No action or completion: provide tool_calls or explicit done=true."
 
 
-def _json_format_nudge(available_tools: list[str]) -> str:
+def _json_format_nudge(available_tools: list[str], error: str) -> str:
     names = ", ".join(available_tools)
     return (
-        "Your previous response was not valid JSON for an execution turn. No tool was called and no file "
-        "was changed by that response. Return exactly ONE JSON object with keys narration, "
+        f"Execution protocol error: {error} No tool was called and no file "
+        "was changed by that response. Return valid JSON as ONE object with keys narration, "
         "tool_calls, and done; no prose or markdown outside the object. To keep working, set "
         "done=false and put the tools to run NOW in tool_calls, each with tool_name and args. "
         f"Available tools: {names}. Use real paths and arguments from the task, not placeholders. "
@@ -408,20 +422,19 @@ def _json_format_nudge(available_tools: list[str]) -> str:
     )
 
 
-def _normalize_json_calls(raw: Any) -> list[dict]:
-    if not isinstance(raw, list):
-        return []
+def _normalize_json_calls(raw: list[Any]) -> list[dict]:
     calls: list[dict] = []
-    for item in raw:
+    for index, item in enumerate(raw):
         if not isinstance(item, dict):
-            continue
-        name = str(item.get("tool_name") or item.get("name") or "").strip()
-        if not name:
-            continue
-        raw_args = item.get("args")
-        args = raw_args if isinstance(raw_args, dict) else {}
+            raise ValueError(f"tool_calls[{index}] must be an object; resend the complete batch.")
+        name = item.get("tool_name") or item.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError(f"tool_calls[{index}].tool_name must be a nonempty string.")
+        args = item.get("args", {})
+        if not isinstance(args, dict):
+            raise ValueError(f"tool_calls[{index}].args must be an object, not a JSON string or array.")
         calls.append(
-            {"tool_name": name, "args": args, "reason": "model_driven_turn json tool call"}
+            {"tool_name": name.strip(), "args": args, "reason": "model_driven_turn json tool call"}
         )
     return calls
 

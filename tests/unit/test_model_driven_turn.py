@@ -14,6 +14,8 @@ import json
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
+import pytest
+
 from asteria_runtime.core.model_driven_turn import (
     TurnControl,
     TurnEvent,
@@ -299,10 +301,12 @@ def test_json_transport_failure_fed_back_without_repair_branch() -> None:
     assert any("1 failed" in t or "AssertionError" in t for t in second_call_texts)
 
 
-def test_json_transport_done_flag_completes_even_with_tool_calls() -> None:
-    # done=true 收尾优先——即便模型顺手又塞了 tool_calls,也当完成,防止困惑的模型无限调用。
+def test_json_transport_done_flag_does_not_discard_tool_calls() -> None:
     model = FakeModelClient(
-        [_json_resp("其实已经好了", [{"tool_name": "write_file", "args": {"path": "x", "content": "y"}}], done=True)]
+        [
+            _json_resp("write", [{"tool_name": "write_file", "args": {"path": "x", "content": "y"}}], done=True),
+            _json_resp("verified", [], done=True),
+        ]
     )
     tools = FakeToolRunner([])
     task = {"task_id": "task-0001", "allowed_tools": ["write_file"]}
@@ -310,8 +314,22 @@ def test_json_transport_done_flag_completes_even_with_tool_calls() -> None:
     result = _run(model, tools, transport="json", task=task)
 
     assert result.status == "completed"
-    assert result.iterations == 1
-    assert result.observations == []
+    assert result.iterations == 2
+    assert len(tools.calls_seen) == 1
+    assert tools.calls_seen[0][0]["args"] == {"path": "x", "content": "y"}
+    assert len(result.observations) == 1
+
+
+def test_json_transport_conflicting_done_still_enforces_approval() -> None:
+    model = FakeModelClient([
+        _json_resp("request", [{"tool_name": "run_command", "args": {"command": "dangerous"}}], done=True),
+    ])
+    tools = FakeToolRunner([])
+    decision = {"decision_id": "permission-needed"}
+    result = _run(model, tools, transport="json", approval_gate=lambda calls: decision)
+    assert result.status == "paused"
+    assert result.pending_decision == decision
+    assert tools.calls_seen == []
 
 
 def test_json_transport_retries_plain_text_until_it_gets_a_tool_call() -> None:
@@ -356,6 +374,7 @@ def test_json_transport_stops_after_three_consecutive_protocol_errors() -> None:
     assert result.iterations == 3
     assert len(model.requests) == 3
     assert result.events[-1].kind == "fuse"
+    assert result.events[-1].text == "protocol_error_limit"
 
 
 def test_json_transport_valid_turn_resets_protocol_error_streak() -> None:
@@ -385,6 +404,76 @@ def test_json_transport_missing_contract_fields_is_not_a_final_answer() -> None:
 
     assert result.status == "budget_exhausted"
     assert tools.calls_seen == []
+
+
+def test_json_transport_actions_do_not_require_redundant_done_or_narration() -> None:
+    model = FakeModelClient([
+        SimpleNamespace(content='{"tool_calls":[{"tool_name":"read_file","args":{"path":"a.py"}}]}'),
+        SimpleNamespace(content='{"done":true}'),
+    ])
+    tools = FakeToolRunner([])
+    result = _run(model, tools, transport="json")
+    assert result.status == "completed"
+    assert tools.calls_seen[0][0]["args"] == {"path": "a.py"}
+    assert not any(event.kind == "protocol_error" for event in result.events)
+
+
+@pytest.mark.parametrize("bad_call,error_field", [
+    ("read a.py", "tool_calls[1]"),
+    ({"args": {"path": "b.py"}}, "tool_name"),
+    ({"tool_name": "read_file", "args": '{"path":"b.py"}'}, ".args"),
+    ({"tool_name": "read_file", "args": []}, ".args"),
+])
+def test_json_transport_repairs_whole_batch_without_guessing_arguments(bad_call, error_field) -> None:
+    valid = {"tool_name": "read_file", "args": {"path": "a.py"}}
+    second = {"tool_name": "read_file", "args": {"path": "b.py"}}
+    model = FakeModelClient([
+        _json_resp("inspect", [valid, bad_call]),
+        _json_resp("corrected", [valid, second]),
+        _json_resp("done", done=True),
+    ])
+    tools = FakeToolRunner([])
+    result = _run(model, tools, transport="json")
+    assert result.status == "completed"
+    # The valid prefix must not run twice or hide a dropped call from the original batch.
+    assert len(tools.calls_seen) == 1
+    assert [call["args"]["path"] for call in tools.calls_seen[0]] == ["a.py", "b.py"]
+    assert error_field in model.requests[1].messages[-1].content
+    assert error_field in next(e.text for e in result.events if e.kind == "protocol_error")
+
+
+def test_json_transport_empty_continuation_requests_an_action_instead_of_finishing() -> None:
+    model = FakeModelClient([
+        _json_resp("continue"),
+        _json_resp("read", [{"tool_name": "read_file", "args": {"path": "a.py"}}]),
+        _json_resp("done", done=True),
+    ])
+    tools = FakeToolRunner([])
+    result = _run(model, tools, transport="json", task={"task_id": "task-0001"})
+    assert result.iterations == 3
+    assert len(tools.calls_seen) == 1
+    assert "No action or completion" in model.requests[1].messages[-1].content
+
+
+def test_json_transport_output_limit_does_not_execute_even_a_closed_partial_batch() -> None:
+    response = _json_resp("write", [{"tool_name": "write_file", "args": {"path": "x", "content": "y"}}])
+    response.finish_reason = "length"
+    model = FakeModelClient([response, _json_resp("done", done=True)])
+    tools = FakeToolRunner([])
+    result = _run(model, tools, transport="json")
+    assert tools.calls_seen == []
+    assert "output_token_limit" in model.requests[1].messages[-1].content
+    assert result.status == "completed"
+
+
+def test_json_transport_keeps_wrapped_json_and_literal_file_content() -> None:
+    text = 'import json\nvalue = {"nested": "a,b"}\n'
+    response = _json_resp("write", [{"tool_name": "write_file", "args": {"path": "a.py", "content": text}}])
+    response.content = "```json\n" + response.content + "\n```"
+    model = FakeModelClient([response, _json_resp("done", done=True)])
+    tools = FakeToolRunner([])
+    _run(model, tools, transport="json")
+    assert tools.calls_seen[0][0]["args"]["content"] == text
 
 
 # --- 控制型 Hook 胶水（把方法论层串进循环，保连续性）--------------------------------------
@@ -417,7 +506,7 @@ def test_hook_pre_final_holds_loop_open_until_evidence() -> None:
     # then the model does the work and finishes. Guardrail = boundary, model still decides the step.
     model = FakeModelClient(
         [
-            _json_resp("看起来不用做什么"),  # premature stop
+            _json_resp("看起来不用做什么", done=True),  # premature stop
             _json_resp("好,建文件", [{"tool_name": "write_file", "args": {"path": "calc.py", "content": "code"}}]),
             _json_resp("完成", [], done=True),
         ]

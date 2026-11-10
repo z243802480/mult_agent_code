@@ -1,0 +1,79 @@
+import copy
+import csv
+import io
+import json
+import subprocess
+import sys
+from decimal import Decimal
+
+import pytest
+
+from ledgerkit.importer import export_csv, load, merge_entries
+
+HEADER = 'id,account,kind,amount,currency,date\n'
+LEFT = HEADER + 'z,"A,B",income,0.10,USD,2026-01-01\na,Home,expense,2.00,EUR,2026-02-01\n'
+RIGHT = HEADER + 'b,Home,income,1.00,EUR,2026-02-02\n'
+
+
+def test_merge_is_sorted_idempotent_and_nonmutating():
+    left, right = load(LEFT), load(RIGHT)
+    before = copy.deepcopy((left, right))
+    result = merge_entries(left, right)
+    assert [r['id'] for r in result] == ['a', 'b', 'z']
+    assert merge_entries(result, left) == result
+    assert (left, right) == before
+    result[0]['account'] = 'changed'
+    assert left[1]['account'] == 'Home'
+
+
+@pytest.mark.parametrize('field,value', [('account', 'Elsewhere'), ('amount', Decimal('9.00')), ('kind', 'income'), ('currency', 'USD'), ('date', '2026-02-02')])
+def test_conflicting_duplicate_rejected_without_mutation(field, value):
+    left = load(LEFT)
+    other = copy.deepcopy(left[1])
+    other[field] = value
+    before = copy.deepcopy(left)
+    with pytest.raises(ValueError, match='a'):
+        merge_entries(left, [other])
+    assert left == before
+
+
+def test_export_round_trip_and_exact_columns():
+    entries = merge_entries(load(LEFT), load(RIGHT))
+    text = export_csv(entries)
+    rows = list(csv.DictReader(io.StringIO(text)))
+    assert list(rows[0]) == ['id', 'account', 'kind', 'amount', 'currency', 'date']
+    assert rows[-1]['amount'] == '0.10'
+    assert load(text) == entries
+
+
+def test_export_empty_still_has_header():
+    assert export_csv([]).strip() == HEADER.strip()
+    assert load(export_csv([])) == []
+
+
+def test_cli_merge_keeps_existing_totals(tmp_path):
+    left, right = tmp_path / 'left.csv', tmp_path / 'right.csv'
+    left.write_text(LEFT, encoding='utf-8')
+    right.write_text(RIGHT, encoding='utf-8')
+    result = subprocess.run([sys.executable, '-m', 'ledgerkit', str(left), '--merge', str(right)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == [{'account': 'A,B', 'currency': 'USD', 'total': '0.10'}, {'account': 'Home', 'currency': 'EUR', 'total': '-1.00'}]
+
+
+def test_cli_ledger_export_after_filter(tmp_path):
+    left, right = tmp_path / 'left.csv', tmp_path / 'right.csv'
+    left.write_text(LEFT, encoding='utf-8')
+    right.write_text(RIGHT, encoding='utf-8')
+    result = subprocess.run([sys.executable, '-m', 'ledgerkit', str(left), '--merge', str(right), '--format', 'ledger-csv', '--start', '2026-02-01'], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert [r['id'] for r in load(result.stdout)] == ['a', 'b']
+
+
+def test_cli_merge_conflict_is_user_error(tmp_path):
+    left, right = tmp_path / 'left.csv', tmp_path / 'right.csv'
+    left.write_text(LEFT, encoding='utf-8')
+    right.write_text(LEFT.replace('2.00', '3.00'), encoding='utf-8')
+    result = subprocess.run([sys.executable, '-m', 'ledgerkit', str(left), '--merge', str(right)], capture_output=True, text=True)
+    assert result.returncode == 2
+    assert 'a' in result.stderr
+    assert 'Traceback' not in result.stderr

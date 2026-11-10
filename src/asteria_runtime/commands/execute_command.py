@@ -1764,6 +1764,10 @@ class ExecuteCommand:
             "root cause from the ACTUAL error/output (not an unchecked hypothesis), then make the "
             "minimal fix and confirm it is resolved. A failure comes back as an observation, does "
             "not block you, and needs no one's permission to continue.\n"
+            "- Derive self-authored checks from the user's requirements. If your own assertion "
+            "conflicts with the specification or existing acceptance tests, reconcile the expected "
+            "result before changing implementation. Do not add behavior that depends on the shape "
+            "of a test example just to make your assertion pass.\n"
             "- Before you finish, check each acceptance criterion is actually met and point to the "
             "evidence for it; if something is only partly done, say so honestly rather than "
             "reporting done.\n"
@@ -2022,6 +2026,24 @@ class ExecuteCommand:
                             "model_driven_turn": True,
                         },
                     )
+        elif event.kind == "protocol_error":
+            self._record_progress(
+                context,
+                task,
+                channel="progress",
+                event_type="message",
+                phase="execute",
+                status="running",
+                title="模型响应待纠正",
+                summary=event.text,
+                display_level="inspector",
+                data={
+                    "task_id": task_id,
+                    "iteration": event.iteration,
+                    "model_driven_turn": True,
+                    "protocol_error": True,
+                },
+            )
         elif event.kind == "fuse":
             # "running" (valid enum) — the terminal blocked status is set by the caller's
             # finalization; this is only an inspector breadcrumb, not the task's final status.
@@ -2033,9 +2055,18 @@ class ExecuteCommand:
                 phase="execute",
                 status="running",
                 title="迭代保险丝",
-                summary="模型驱动循环达到迭代上限（预算保险丝），可 resume 继续。",
+                summary=(
+                    "模型连续响应无法解析为动作或完成，已达到协议纠正上限，可 resume 继续。"
+                    if event.text == "protocol_error_limit"
+                    else "模型驱动循环达到迭代上限（预算保险丝），可 resume 继续。"
+                ),
                 display_level="inspector",
-                data={"task_id": task_id, "iteration": event.iteration, "model_driven_turn": True},
+                data={
+                    "task_id": task_id,
+                    "iteration": event.iteration,
+                    "model_driven_turn": True,
+                    "fuse_reason": event.text or "iteration_limit",
+                },
             )
 
     def _execute_task(
