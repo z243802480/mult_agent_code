@@ -506,6 +506,27 @@ class PlanCommand:
         # model output. Fallbacks are never silent (event + inspector progress record).
         plan_source = "model"
         plan_agent_issue: str | None = None
+        invalid_plan_attempts = 0
+
+        def record_invalid_plan(attempt: int, reason: str, will_retry: bool) -> None:
+            nonlocal invalid_plan_attempts
+            invalid_plan_attempts = attempt
+            data = {"attempt": attempt, "reason": reason, "will_retry": will_retry}
+            event_logger.record(
+                run["run_id"], "task_plan_model_validation_failed", "PlanAgent",
+                "Model task plan failed validation; "
+                + ("requesting one correction." if will_retry else "correction limit reached."),
+                data,
+            )
+            progress_logger.record(
+                run_id=run["run_id"], channel="evidence", event_type="evidence", phase="plan",
+                status="running" if will_retry else "failed", title="模型计划校验失败",
+                summary="已将具体错误反馈给模型纠正。" if will_retry else "纠正仍失败，将按原规则回退。",
+                display_level="inspector", transcript_kind="diagnostic", data=data,
+                call_chain=["PlanCommand", "PlanAgent"],
+                execution_chain=["task_plan", "validation", "retry" if will_retry else "limit"],
+            )
+
         try:
             task_plan = PlanAgent(model_client, self.validator).generate(
                 goal_spec,
@@ -514,11 +535,20 @@ class PlanCommand:
                 model_tier=selected_model_tier,
                 execution_profile=profile_resolution.profile_id,
                 policy=policy,
+                on_invalid_plan=record_invalid_plan,
             )
+            if invalid_plan_attempts:
+                event_logger.record(
+                    run["run_id"], "task_plan_model_recovered", "PlanAgent",
+                    "Model corrected the task plan; original validation rules passed.",
+                    {"attempts": invalid_plan_attempts + 1},
+                )
         except Exception as exc:  # noqa: BLE001 - model boundary diagnostics
             plan_source = "template"
             plan_agent_issue = str(exc)
-            failure_data: dict = {"reason": plan_agent_issue}
+            failure_data: dict = {
+                "reason": plan_agent_issue, "invalid_plan_attempts": invalid_plan_attempts,
+            }
             if not isinstance(exc, PlanAgentError):
                 context = model_failure_context_from_client(
                     model_client,
@@ -585,6 +615,7 @@ class PlanCommand:
             data={
                 "goal_id": goal_spec["goal_id"],
                 "plan_source": plan_source,
+                "invalid_plan_attempts": invalid_plan_attempts,
                 **(
                     {"research_type": design_intel_research_type}
                     if design_intel_research_type

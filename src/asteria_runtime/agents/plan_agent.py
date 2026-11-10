@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 
 from asteria_runtime.agents.planner import RequirementPlanner
 from asteria_runtime.core.execution_environment import command_execution_context
@@ -21,11 +22,12 @@ class PlanAgentError(RuntimeError):
 
 
 MAX_PLAN_TASKS = 16
+MAX_PLAN_ATTEMPTS = 2
 
 
 @dataclass
 class PlanAgent:
-    """L2 cognition (ADR-0033): GoalSpec -> tasks by one model call.
+    """L2 cognition (ADR-0033): GoalSpec -> tasks with one bounded correction.
 
     The model decides the decomposition; RequirementPlanner.finalize_model_tasks only
     normalizes shape and applies the same contract hardening the template branch uses.
@@ -43,6 +45,7 @@ class PlanAgent:
         model_tier: str = "strong",
         execution_profile: str = HARNESS,
         policy: dict | None = None,
+        on_invalid_plan: Callable[[int, str, bool], None] | None = None,
     ) -> dict:
         runtime_context = runtime_context or {}
         role_contract = role_contract_for(
@@ -69,8 +72,48 @@ class PlanAgent:
                 "agent_role_contract": role_contract.to_dict(),
             },
         )
-        response = self.model_client.chat(request)
-        raw_tasks = self._parse_tasks(response.content)
+        attempt = 1
+        while True:
+            # The original client still owns accounting and provider/budget failures.
+            # Only a received but invalid plan gets format feedback, never transport errors.
+            response = self.model_client.chat(request)
+            try:
+                return self._validated_plan(
+                    response.content, goal_spec, runtime_context, execution_profile,
+                )
+            except PlanAgentError as exc:
+                will_retry = attempt < MAX_PLAN_ATTEMPTS
+                reason = str(exc)[:2000]
+                if on_invalid_plan is not None:
+                    on_invalid_plan(attempt, reason, will_retry)
+                if not will_retry:
+                    raise PlanAgentError(
+                        f"task planning failed after {attempt} attempts: {exc}"
+                    ) from exc
+                truncated = len(response.content) > 12000
+                request = replace(
+                    request,
+                    messages=[
+                        *request.messages,
+                        ChatMessage(role="assistant", content=response.content[:12000]),
+                        ChatMessage(role="user", content=(
+                            "The task plan failed runtime validation.\n"
+                            f"Validation error: {reason}\n"
+                            f"Previous response truncated: {truncated}.\n"
+                            "Return a complete corrected JSON object with a non-empty tasks "
+                            "array, using the original output shape. Preserve the original "
+                            "GoalSpec, project guidance, acceptance and permission boundaries; "
+                            "do not weaken requirements to pass validation. Do not return "
+                            "patches or commentary."
+                        )),
+                    ],
+                )
+                attempt += 1
+
+    def _validated_plan(
+        self, content: str, goal_spec: dict, runtime_context: dict, execution_profile: str,
+    ) -> dict:
+        raw_tasks = self._parse_tasks(content)
         planner = RequirementPlanner()
         if execution_profile == SESSION_AGENT and len(raw_tasks) != 1:
             raise PlanAgentError(
@@ -99,9 +142,9 @@ class PlanAgent:
         tasks = data.get("tasks") if isinstance(data, dict) else None
         if not isinstance(tasks, list) or not tasks:
             raise PlanAgentError("task plan response has no non-empty 'tasks' list")
-        raw_tasks = [task for task in tasks if isinstance(task, dict)]
-        if not raw_tasks:
-            raise PlanAgentError("task plan response 'tasks' contains no task objects")
+        if any(not isinstance(task, dict) for task in tasks):
+            raise PlanAgentError("task plan response 'tasks' must contain only task objects")
+        raw_tasks = tasks
         if len(raw_tasks) > MAX_PLAN_TASKS:
             raise PlanAgentError(f"model proposed {len(raw_tasks)} tasks; cap is {MAX_PLAN_TASKS}")
         return raw_tasks

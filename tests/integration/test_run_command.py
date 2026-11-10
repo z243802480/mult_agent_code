@@ -2092,7 +2092,9 @@ def test_run_command_compacts_once_when_near_budget(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     set_budget_policy(
         tmp_path,
-        max_model_calls=4,
+        # Reserve the extra invalid-plan correction; this case tests compaction,
+        # while the following case still uses a one-call budget to assert hard-stop.
+        max_model_calls=5,
         compaction_threshold=0.25,
         hard_stop_threshold=0.95,
     )

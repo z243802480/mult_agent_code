@@ -1,0 +1,209 @@
+"""Frozen S110 public-behavior oracle; keep outside the model workspace."""
+from copy import deepcopy
+from pathlib import Path
+import tempfile
+import unittest
+
+from tinydb import TinyDB, Query
+from tinydb.storages import JSONStorage, MemoryStorage
+
+
+class CountingMemory(MemoryStorage):
+    def __init__(self):
+        self.reads = self.writes = 0
+        super().__init__()
+
+    def read(self):
+        self.reads += 1
+        return super().read()
+
+    def write(self, data):
+        self.writes += 1
+        return super().write(data)
+
+
+class CountingJSON(JSONStorage):
+    def __init__(self, *args, **kwargs):
+        self.reads = self.writes = 0
+        super().__init__(*args, **kwargs)
+
+    def read(self):
+        self.reads += 1
+        return super().read()
+
+    def write(self, data):
+        self.writes += 1
+        return super().write(data)
+
+
+class MarkerError(RuntimeError):
+    pass
+
+
+class BatchConsistency(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.databases = []
+
+    def tearDown(self):
+        for db in self.databases:
+            db.close()
+        self.temp.cleanup()
+
+    def db(self, kind):
+        path = Path(self.temp.name) / f"data-{len(self.databases)}.json"
+        db = (TinyDB(storage=CountingMemory) if kind == "memory"
+              else TinyDB(path, storage=CountingJSON))
+        self.databases.append(db)
+        db.insert_multiple({"n": n, "nested": {"values": [n]}} for n in (1, 2, 3))
+        return db, path
+
+    def assert_rollback(self, db, path, action, error_type=MarkerError):
+        before = deepcopy(db.storage.read())
+        cached = deepcopy(db.search(Query().n >= 1))
+        disk = path.read_bytes() if path.exists() else None
+        writes = db.storage.writes
+        with self.assertRaises(error_type):
+            action()
+        self.assertEqual(db.storage.writes, writes)
+        self.assertEqual(db.storage.read(), before)
+        self.assertEqual(db.search(Query().n >= 1), cached)
+        if disk is not None:
+            self.assertEqual(path.read_bytes(), disk)
+
+    def test_single_pass_operations_reach_every_document(self):
+        for kind in ("memory", "json"):
+            with self.subTest(storage=kind):
+                db, _ = self.db(kind)
+                def increment(doc):
+                    doc["n"] += 10
+                result = db.update_multiple(iter([
+                    ({"flag": True}, lambda doc: True), (increment, lambda doc: True),
+                ]))
+                self.assertEqual(result, [1, 1, 2, 2, 3, 3])
+                self.assertEqual([d["n"] for d in db.all()], [11, 12, 13])
+                self.assertTrue(all(d["flag"] for d in db.all()))
+
+    def test_updater_error_rolls_back_nested_mutation(self):
+        for kind in ("memory", "json"):
+            with self.subTest(storage=kind):
+                db, path = self.db(kind)
+                def fail(doc):
+                    doc["nested"]["values"].append(99)
+                    if doc["n"] == 2:
+                        raise MarkerError("updater")
+                    doc["n"] += 10
+                self.assert_rollback(db, path, lambda: db.update_multiple([(fail, lambda d: True)]))
+
+    def test_condition_error_rolls_back_nested_mutation(self):
+        for kind in ("memory", "json"):
+            with self.subTest(storage=kind):
+                db, path = self.db(kind)
+                def condition(doc):
+                    doc["nested"]["values"].append(44)
+                    if doc["n"] == 2:
+                        raise MarkerError("condition")
+                    return True
+                self.assert_rollback(db, path, lambda: db.update_multiple([({"flag": True}, condition)]))
+
+    def test_input_generator_error_rolls_back(self):
+        for kind in ("memory", "json"):
+            with self.subTest(storage=kind):
+                db, path = self.db(kind)
+                def updates():
+                    yield ({"flag": True}, lambda doc: True)
+                    raise MarkerError("input iterator")
+                self.assert_rollback(db, path, lambda: db.update_multiple(updates()))
+
+    def test_invalid_pair_does_not_partially_update(self):
+        for kind in ("memory", "json"):
+            with self.subTest(storage=kind):
+                db, path = self.db(kind)
+                self.assert_rollback(db, path, lambda: db.update_multiple([
+                    ({"flag": True}, lambda doc: True), ({"bad": True},),
+                ]), (TypeError, ValueError))
+
+    def test_document_major_order_and_duplicate_ids(self):
+        for kind in ("memory", "json"):
+            with self.subTest(storage=kind):
+                db, _ = self.db(kind)
+                seen = []
+                def first(doc):
+                    seen.append((doc["n"], "first"))
+                def second(doc):
+                    seen.append((doc["n"], "second"))
+                result = db.update_multiple([(first, lambda d: True), (second, lambda d: True)])
+                self.assertEqual(seen, [(n, op) for n in (1, 2, 3) for op in ("first", "second")])
+                self.assertEqual(result, [1, 1, 2, 2, 3, 3])
+
+    def test_later_conditions_see_earlier_changes(self):
+        for kind in ("memory", "json"):
+            with self.subTest(storage=kind):
+                db, _ = self.db(kind)
+                result = db.update_multiple([
+                    ({"ready": True}, lambda d: d["n"] != 2),
+                    ({"done": True}, lambda d: d.get("ready", False)),
+                ])
+                self.assertEqual(result, [1, 1, 3, 3])
+                self.assertEqual([d.get("done", False) for d in db.all()], [True, False, True])
+
+    def test_success_has_one_write_and_refreshes_queries(self):
+        for kind in ("memory", "json"):
+            with self.subTest(storage=kind):
+                db, _ = self.db(kind)
+                query = Query().n == 1
+                self.assertEqual(len(db.search(query)), 1)
+                writes = db.storage.writes
+                db.update_multiple([({"n": 8}, lambda d: d["n"] == 1)])
+                self.assertEqual(db.storage.writes - writes, 1)
+                self.assertEqual(db.search(query), [])
+                self.assertEqual(len(db.search(Query().n == 8)), 1)
+
+    def test_failure_keeps_cached_query_usable_without_a_read(self):
+        for kind in ("memory", "json"):
+            with self.subTest(storage=kind):
+                db, _ = self.db(kind)
+                query = Query().n == 1
+                expected = deepcopy(db.search(query))
+                def fail(doc):
+                    doc["nested"]["values"].append(88)
+                    raise MarkerError("cache rollback")
+                with self.assertRaises(MarkerError):
+                    db.update_multiple([(fail, lambda d: True)])
+                reads = db.storage.reads
+                self.assertEqual(db.search(query), expected)
+                self.assertEqual(db.storage.reads, reads)
+
+    def test_other_tables_and_ids_survive(self):
+        for kind in ("memory", "json"):
+            with self.subTest(storage=kind):
+                db, _ = self.db(kind)
+                other = db.table("other")
+                other.insert({"keep": [1, 2]})
+                before = deepcopy(other.all())
+                db.update_multiple([({"flag": True}, lambda d: True)])
+                self.assertEqual(other.all(), before)
+                self.assertEqual([d.doc_id for d in db.all()], [1, 2, 3])
+
+    def test_empty_and_unmatched_batches(self):
+        for kind in ("memory", "json"):
+            with self.subTest(storage=kind):
+                db, _ = self.db(kind)
+                before = deepcopy(db.all())
+                self.assertEqual(db.update_multiple(iter([])), [])
+                self.assertEqual(db.update_multiple(iter([({"flag": True}, lambda d: False)])), [])
+                self.assertEqual(db.all(), before)
+
+    def test_json_values_persist_after_reopen(self):
+        db, path = self.db("json")
+        result = db.update_multiple(iter([({"flag": True}, lambda d: True)]))
+        self.assertEqual(result, [1, 2, 3])
+        db.close()
+        reopened = TinyDB(path)
+        self.databases.append(reopened)
+        self.assertEqual([d.doc_id for d in reopened.all()], [1, 2, 3])
+        self.assertTrue(all(d["flag"] for d in reopened.all()))
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

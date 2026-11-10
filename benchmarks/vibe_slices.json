@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S109",
+  "active_slice": "S110",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1118,6 +1118,19 @@
         "exact code CI"
       ],
       "reference_brief": "benchmarks/reference_briefs/S109-readonly-diagnostic-contracts.md"
+    },
+    {
+      "id": "S110",
+      "name": "规划错误有界反馈与独立实跑",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S109"
+      ],
+      "user_demo": "规划错误有一次受预算约束的模型纠正；无参考解答暴露的真实目标按固定行为验收",
+      "green_checks": [
+        "pytest tests/unit/test_plan_agent_recovery.py tests/integration/test_plan_command.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S110-plan-recovery-and-independent-evaluation.md"
     }
   ]
 }

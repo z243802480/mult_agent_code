@@ -21,3 +21,9 @@ Keep it outside autonomous repair workspaces; normal CI reuses it through a unit
 `tool_batch_runtime_oracle.py.txt` is the S109 extension of the frozen batch oracle,
 including the actual runtime wrapper and persisted adapter/alias evidence. It also stays
 outside the model workspace; it is an evaluation fixture, not a new runtime command.
+
+S110 uses a separate upstream repository rather than repairing this harness's own code.
+`isolated_repository_protocol.md` defines registration, reference exposure and verdict rules;
+`tinydb_batch_contract.md` fixes the TinyDB commit, allowed edits and public semantics.
+`tinydb_batch_oracle.py.txt` stays outside the target. No upstream source, generated solution,
+credentials, or raw runtime ledger is checked into this fixture directory.

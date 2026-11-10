@@ -442,3 +442,43 @@ def test_plan_command_falls_back_to_template_and_discloses(tmp_path: Path) -> No
         for event in user_progress
         if isinstance(event.get("data"), dict)
     )
+
+
+@pytest.mark.parametrize("recovers", [True, False])
+def test_plan_command_records_invalid_plan_and_original_model_accounting(
+    tmp_path: Path, recovers: bool,
+) -> None:
+    class RecoveringClient(TaskPlanningClient):
+        def chat(self, request: ChatRequest) -> ChatResponse:
+            invalid_count = 1 if recovers else 2
+            if request.purpose == "task_planning" and len(self.task_plan_requests) < invalid_count:
+                self.task_plan_requests.append(request)
+                return ChatResponse("invalid plan JSON", "stop", TokenUsage(10, 20, 30),
+                                    "fake", "fake-model", {})
+            return super().chat(request)
+
+    InitCommand(tmp_path).run()
+    client = RecoveringClient()
+    result = PlanCommand(tmp_path, "做一个密码测试工具", model_client=client).run()
+    run_dir = result.task_plan_path.parent
+    events = [json.loads(line) for line in (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    invalid = [e for e in events if e["type"] == "task_plan_model_validation_failed"]
+    assert len(client.task_plan_requests) == 2
+    assert len(invalid) == (1 if recovers else 2)
+    assert invalid[0]["data"]["will_retry"] is True
+    if not recovers:
+        assert invalid[-1]["data"]["will_retry"] is False
+    types = {e["type"] for e in events}
+    assert ("task_plan_model_recovered" in types) is recovers
+    assert ("task_plan_model_fallback" in types) is not recovers
+    progress = [json.loads(line) for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()]
+    source = "model" if recovers else "template"
+    assert any(e.get("data", {}).get("plan_source") == source for e in progress)
+    assert any(e["title"] == "模型计划校验失败" and e["display_level"] == "inspector"
+               for e in progress)
+    calls = [json.loads(line) for line in (run_dir / "model_calls.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len([c for c in calls if c["purpose"] == "task_planning"]) == 2
+    cost = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
+    assert cost["model_calls"] == len(calls)
+    plan = json.loads(result.task_plan_path.read_text(encoding="utf-8"))
+    assert plan["tasks"][0]["status"] == "ready"
