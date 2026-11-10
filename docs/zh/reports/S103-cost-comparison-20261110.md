@@ -43,3 +43,9 @@ smoke 脚本相关测试 **23/23**，文档契约 **23/23**，Ruff 通过。`375
 暂停边界/日志摘要更新已提交推送为 `ef30f47`。精确 SHA 的 [Verify 42779683568](https://github.com/z243802480/mult_agent_code/actions/runs/42779683568) 中 Python 3.11/3.13 成功，Studio 仍在浏览器安装失败。新增 annotation 经公开 checks API 提供了可核实根因：`ubuntu-latest` 已迁至 Ubuntu 26，而锁定的 Playwright 1.60.0 报 `Playwright does not support chromium on ubuntu26.04-x64`。此前不能读完整日志时未将其猜测为下载抖动。
 
 修复仅将 `studio-frontend` 的 runner 固定为 `ubuntu-24.04`；本机安装的 Playwright core 也包含该平台依赖定义。Python 矩阵继续 ubuntu-latest，浏览器安装和全部 UI 测试保留，不添加忽略失败。Release 复用 Verify，因此同一修复也覆盖它引用的 UI 闸。其余 workflow 未发现浏览器安装步骤，不扩散改动。修复提交推送后继续按精确 SHA 核对结果。
+
+## 最终验收与交接
+
+代码修复已提交推送为 `bda18c4`。完整 SHA `bda18c4ef61c231c99914d1ba2743f6c1081f0a2` 的 [Verify 42780620068](https://github.com/z243802480/mult_agent_code/actions/runs/42780620068) 三 job（Studio、Python 3.11、Python 3.13）均 success，浏览器安装及 UI 测试步骤实际执行通过；前两次失败仍作为定位证据保留。本文与状态索引的后续提交仅记录该已验证代码 SHA 的验收结果。
+
+S103 本刀收口：暂停边界修复、同题对照与精确提交的远端 CI 均有证据。没有把单次新版成功宣称为稳定降本，也没有把独立 provider 的额度失败当通过。下一步应先选择两版都能完成的固定任务，重复采样成功任务的耗时/调用数，再决定是否继续改提示或预算；较大仓库/数小时任务仍需独立验收。所有未跟踪验证目录、原 transcript 与本机路由均未入库。
