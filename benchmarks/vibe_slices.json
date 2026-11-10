@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S103",
+  "active_slice": "S104",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1019,6 +1019,22 @@
         "documentation contracts and exact commit CI"
       ],
       "reference_brief": "benchmarks/reference_briefs/S103-cost-comparison-and-smoke-boundary.md"
+    },
+    {
+      "id": "S104",
+      "name": "Paired successful-task cost sampling",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S103"
+      ],
+      "user_demo": "Six controlled real-model task samples with independent verification and honest cost comparisons",
+      "green_checks": [
+        "pre-registered paired order",
+        "unchanged independent tests and edge checks",
+        "goal and review costs separated",
+        "documentation contracts"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S104-successful-task-cost-sampling.md"
     }
   ]
 }

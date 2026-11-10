@@ -26,7 +26,7 @@
 | 原测试哈希 | 未变 | 未变 |
 | Review / 接受 | fail，未接受 | pass / 1.00，workflow_state=accepted |
 
-结论：新版在本次样本完成了任务，旧版在无工具动作后受阻。旧版较少调用和耗时是提前失败，不能解释为更高效率；新版仍不能从单次样本证明稳定成本下降。旧版显式 Review 遇 GLM 额度错误，因此只对 goal 耗时与独立产物判据做直接比较，不声称跨 provider 对照通过。
+结论：新版在本次样本完成了任务，旧版在工具批次执行前被权限门暂停。旧版较少调用和耗时是提前失败，不能解释为更高效率；新版仍不能从单次样本证明稳定成本下降。旧版显式 Review 遇 GLM 额度错误，因此只对 goal 耗时与独立产物判据做直接比较，不声称跨 provider 对照通过。
 
 证据位于 WSL `~/.cache/asteria-s103/`：两个 code 快照、两个 work 工作区（run 均为各工作区的 `run-20261110-0001`）、comparison.json、原始 goal/review/accept 日志。脚本初版读了不存在的 final summary completion 字段，因此 accepted 的汇总初值为 null；最终以实际 final_report_summary.workflow_state=accepted 和 accept 日志核对，不能把汇总空值误报为未接受。原始运行账本未改。
 
@@ -49,3 +49,5 @@ smoke 脚本相关测试 **23/23**，文档契约 **23/23**，Ruff 通过。`375
 代码修复已提交推送为 `bda18c4`。完整 SHA `bda18c4ef61c231c99914d1ba2743f6c1081f0a2` 的 [Verify 42780620068](https://github.com/z243802480/mult_agent_code/actions/runs/42780620068) 三 job（Studio、Python 3.11、Python 3.13）均 success，浏览器安装及 UI 测试步骤实际执行通过；前两次失败仍作为定位证据保留。本文与状态索引的后续提交仅记录该已验证代码 SHA 的验收结果。
 
 S103 本刀收口：暂停边界修复、同题对照与精确提交的远端 CI 均有证据。没有把单次新版成功宣称为稳定降本，也没有把独立 provider 的额度失败当通过。下一步应先选择两版都能完成的固定任务，重复采样成功任务的耗时/调用数，再决定是否继续改提示或预算；较大仓库/数小时任务仍需独立验收。所有未跟踪验证目录、原 transcript 与本机路由均未入库。
+
+S104 开工复核补充：旧版 task_execution_evidence.failure_type=policy_decision；decision-0001 原因是模型尝试 Git 命令并将输出重定向到工作区外 /tmp/test_amounts_baseline.diff，权限门正确拒绝。0 次工具调用不能解释为没有选择工具或无效 JSON 收尾，之前原因描述不完整，以此追加与原始 decision 账本为准。
