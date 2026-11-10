@@ -37,3 +37,9 @@ smoke 脚本相关测试 **23/23**，文档契约 **23/23**，Ruff 通过。`375
 公开 API 完整日志返回 403，公开步骤日志入口返回 404，能核实失败步骤但无法据此断言下载故障类型。为下一轮定位，浏览器安装步骤参照已有 Verify/UI 步骤将输出 tee 到日志、失败时把尾部加入 annotation，并保留真实退出码；没有增加跳过或软化失败。该修复与审核后的暂停护栏推送后，将按新提交精确 SHA 继续核对。
 
 当前 ACTIVE_SLICE=S103；GLM 配额、数小时/大型仓库统计、长期成本稳定性仍为未关闭项。本轮不增加题目特例或绕过权限，不把缺 key 的 proof 当通过。
+
+## 远端真实失败定位与修复
+
+暂停边界/日志摘要更新已提交推送为 `ef30f47`。精确 SHA 的 [Verify 42779683568](https://github.com/z243802480/mult_agent_code/actions/runs/42779683568) 中 Python 3.11/3.13 成功，Studio 仍在浏览器安装失败。新增 annotation 经公开 checks API 提供了可核实根因：`ubuntu-latest` 已迁至 Ubuntu 26，而锁定的 Playwright 1.60.0 报 `Playwright does not support chromium on ubuntu26.04-x64`。此前不能读完整日志时未将其猜测为下载抖动。
+
+修复仅将 `studio-frontend` 的 runner 固定为 `ubuntu-24.04`；本机安装的 Playwright core 也包含该平台依赖定义。Python 矩阵继续 ubuntu-latest，浏览器安装和全部 UI 测试保留，不添加忽略失败。Release 复用 Verify，因此同一修复也覆盖它引用的 UI 闸。其余 workflow 未发现浏览器安装步骤，不扩散改动。修复提交推送后继续按精确 SHA 核对结果。

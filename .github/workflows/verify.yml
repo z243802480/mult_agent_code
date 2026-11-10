@@ -39,7 +39,9 @@ jobs:
           exit "$result"
 
   studio-frontend:
-    runs-on: ubuntu-latest
+    # Playwright 1.60 does not support Ubuntu 26 (the current ubuntu-latest).
+    # Keep browser system dependencies on its supported image; do not skip UI checks.
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: studio
