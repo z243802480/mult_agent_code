@@ -260,7 +260,10 @@ class RequirementPlanner:
             if isinstance(raw.get("validation_commands"), list):
                 task["validation_commands"] = _model_string_list(raw["validation_commands"])
             task["completion_contract"] = completion_contract(task)
-            task["verification_policy"] = self._verification_policy(task, goal_spec)
+            verification_policy = self._verification_policy(task, goal_spec)
+            if isinstance(raw.get("validation_commands"), list):
+                verification_policy["command_source"] = "planner_task"
+            task["verification_policy"] = verification_policy
             if execution_profile == SESSION_AGENT:
                 task["execution_profile"] = SESSION_AGENT
                 self._widen_session_agent_write_surface(

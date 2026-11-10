@@ -301,7 +301,7 @@ def run_model_driven_turn(
                 )
 
         # 执行模型选的工具。失败不抛、不进 repair 分支——一律作为 observation 回灌，模型自己决定下一步。
-        observations = _execute(tool_runner, calls, task, context)
+        observations = execute_tool_calls(tool_runner, calls, task, context)
         all_observations.extend(observations)
         emit(TurnEvent(kind="tool_observation", iteration=iteration, observations=observations))
 
@@ -361,7 +361,7 @@ def _request_metadata(
     return metadata
 
 
-def _execute(
+def execute_tool_calls(
     tool_runner: ToolRunner,
     calls: list[dict],
     task: dict,

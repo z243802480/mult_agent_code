@@ -197,6 +197,12 @@
           "items": {
             "type": "string"
           }
+        },
+        "command_source": {
+          "type": "string",
+          "enum": [
+            "planner_task"
+          ]
         }
       }
     },

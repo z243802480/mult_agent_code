@@ -1997,6 +1997,51 @@ def test_run_command_does_not_replan_after_blocked_execution(tmp_path: Path) -> 
     assert "replan: completed" not in final_report
 
 
+def test_successful_task_progress_does_not_exhaust_recovery_retries(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create eight complete modules", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    path = run_dir / "task_plan.json"
+    board = json.loads(path.read_text(encoding="utf-8"))
+    original = board["tasks"][0]
+    tasks = []
+    for index in range(8):
+        item = dict(original)
+        filename = f"step_{index}.py"
+        item.update({
+            "task_id": f"task-{index + 1:04d}", "title": f"Implement {filename}",
+            "description": f"Create {filename} with answer() returning 42 and verify its behavior.",
+            "status": "ready", "depends_on": [], "task_kind": "implementation",
+            "expected_artifacts": [filename], "expected_changed_files": [filename],
+            "read_scope": ["AGENTS.md", filename], "write_scope": [filename],
+        })
+        tasks.append(item)
+    board["tasks"] = tasks
+    path.write_text(json.dumps(board), encoding="utf-8")
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy["budgets"].update({"max_replans_per_task": 1, "max_repair_attempts_per_task": 1})
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+
+    class CompleteEachTask:
+        def chat(self, request: ChatRequest) -> ChatResponse:
+            payload = json.loads(next(message.content for message in request.messages if message.role == "user"))
+            filename = payload["task"]["expected_changed_files"][0]
+            module = filename[:-3]
+            return spine_response(request, tool_calls=[
+                {"tool_name": "write_file", "args": {"path": filename, "content": "def answer():\n    return 42\n"}},
+                {"tool_name": "run_command", "args": {"command": f'python -c "from {module} import answer; assert answer() == 42"'}},
+            ])
+
+    steps = []
+    command = RunCommand(tmp_path, "create eight complete modules", execute_model_client=CompleteEachTask(), enable_research=False)
+    assert command._execute_until_no_ready(plan.run_id, steps, 1)
+    final = json.loads(path.read_text(encoding="utf-8"))["tasks"]
+    assert len(final) == 8 and all(task["status"] == "done" for task in final)
+    assert all((tmp_path / f"step_{i}.py").is_file() for i in range(8))
+    assert not any(step.name == "recover" for step in steps)
+
+
 def test_run_command_pauses_when_recovery_cycle_limit_reached(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     set_budget_policy(

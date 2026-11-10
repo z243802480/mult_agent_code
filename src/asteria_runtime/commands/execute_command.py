@@ -30,7 +30,13 @@ from asteria_runtime.core.worker_executor import (
 from asteria_runtime.core.model_driven_turn import (
     TurnControl,
     TurnEvent,
+    execute_tool_calls,
     run_model_driven_turn,
+)
+from asteria_runtime.core.task_verification import (
+    commands_needing_execution,
+    declared_commands,
+    declared_observations,
 )
 from asteria_runtime.core.task_progress_digest import (
     load_task_progress,
@@ -1417,6 +1423,33 @@ class ExecuteCommand:
         # ledger stores one-line action summaries only — never the file content that blew the budget.
         record_task_progress(context.run_dir, str(task.get("task_id") or ""), result.observations)
 
+        # Explicit task checks are the completion boundary. Preserve exploratory failures
+        # for the model/audit without making downstream checks a prerequisite of this slice.
+        if result.status != "paused" and declared_commands(task):
+            tool_name = next((name for name in ("run_tests", "run_command")
+                              if name in available_tools), None)
+            calls = [
+                {"tool_name": tool_name, "args": {"command": command},
+                 "reason": "declared task completion check"}
+                for command in commands_needing_execution(task, result.observations)
+                if tool_name is not None
+            ]
+            if calls:
+                pending = _approval_gate(calls)
+                if pending is not None:
+                    result.status = "paused"
+                    result.pending_decision = pending
+                else:
+                    checked = execute_tool_calls(tool_runner, calls, task, context)
+                    for observation in checked:
+                        observation.data["verification_origin"] = "task_contract"
+                    result.observations.extend(checked)
+                    record_task_progress(context.run_dir, str(task.get("task_id") or ""), checked)
+                    event = TurnEvent(kind="tool_observation", iteration=result.iterations,
+                                      observations=checked)
+                    result.events.append(event)
+                    self._record_model_driven_event(context, task, event)
+
         # 人审边界命中（ADR-0016：人审=显式边界）：脊梁在跑到需人批的工具批前整批停手，本轮无残留
         # 写入。复用 FSM 同一套 block/证据/进度落法（单一真源），把任务标 blocked 并留下 pending
         # DecisionPoint —— run 层据 pending_decisions 把整个 run 报成 paused。人批后 resume 重跑本任务，
@@ -1498,12 +1531,13 @@ class ExecuteCommand:
         # Judge verification on each command's LATEST outcome (red→green on the same command passes),
         # not the cumulative pass/fail of every call — else the repair loop's mandatory initial
         # failing test dooms a genuinely fixed task (ring_recovery benchmark, 2026-07-14).
-        verification_results = _latest_verification_per_command(
-            [
+        verification_results = (
+            declared_observations(task, observations) if declared_commands(task)
+            else _latest_verification_per_command([
                 obs
                 for obs in observations
                 if _is_verification_observation(obs, allow_readback=allow_readback)
-            ]
+            ])
         )
         # NB: allow_verified_noop defaults OFF here for the general case. It was tempting for repair
         # tasks (a real fix whose changed-files detection false-negatived), but real-stack validation
@@ -1996,6 +2030,8 @@ class ExecuteCommand:
                         "tool_name": obs.tool_name,
                         "ok": obs.ok,
                         "model_driven_turn": True,
+                        **({"verification_origin": obs.data["verification_origin"]}
+                           if obs.data.get("verification_origin") else {}),
                     },
                 )
                 # todo_write is not "a tool the model ran" — it IS the model re-planning out loud

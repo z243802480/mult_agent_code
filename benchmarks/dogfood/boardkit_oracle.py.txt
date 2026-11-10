@@ -1,0 +1,52 @@
+import copy, csv, io, json, tempfile
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from boardkit.errors import ConflictError
+from boardkit.formats import to_csv
+from boardkit.store import Store
+
+with tempfile.TemporaryDirectory() as directory:
+    path=Path(directory)/"oracle.db"
+    store=Store(path); expected={}
+    for i in range(65):
+        item=store.create(f"  Work,{i}  ",[" Red " if i%2 else "BLUE","common"])
+        expected[item["id"]]=copy.deepcopy(item)
+    for index,item_id in enumerate(sorted(expected)):
+        if index%3==0:
+            previous=copy.deepcopy(expected[item_id]); changed=store.update(item_id,previous["version"],status="done")
+            assert changed["version"]==previous["version"]+1 and changed["created_at"]==previous["created_at"]
+            expected[item_id]=changed
+            try: store.update(item_id,previous["version"],title="stale corruption")
+            except ConflictError: pass
+            else: raise AssertionError("stale update accepted")
+            assert store.get(item_id)==changed
+        if index%4==0:
+            current=expected[item_id]; updated=store.add_comment(item_id,"  Independent note  ",current["version"])
+            assert updated["comments"][-1]["text"]=="Independent note" and updated["version"]==current["version"]+1
+            expected[item_id]=updated
+        if index%7==0:
+            store.delete(item_id,expected[item_id]["version"]);expected.pop(item_id)
+    expected_items=[expected[k] for k in sorted(expected)]
+    assert Store(path).list(limit=100)=={"items":expected_items,"total":len(expected_items)}
+    for status in (None,"open","done"):
+        for tag in (None,"blue","red"):
+            filtered=[x for x in expected_items if (status is None or x["status"]==status) and (tag is None or tag in x["tags"])]
+            page=store.list(status=status,tag=tag,query="WORK",limit=7,offset=3)
+            assert page=={"items":filtered[3:10],"total":len(filtered)},(status,tag,page)
+    saved=store.export_snapshot(); before=copy.deepcopy(saved)
+    malformed=copy.deepcopy(saved);malformed["items"][-1]["title"]="";malformed["items"].append(copy.deepcopy(malformed["items"][0]))
+    try: store.import_snapshot(malformed)
+    except ValueError: pass
+    else: raise AssertionError("malformed snapshot accepted")
+    assert store.export_snapshot()==before
+    other=Store(Path(directory)/"roundtrip.db");other.import_snapshot(saved)
+    assert other.export_snapshot()==saved
+    assert other.create("after import")["id"]>max(expected)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        repeated=list(pool.map(lambda _:Store(path).create("stable",["X"],"oracle-idempotency"),range(16)))
+    assert len({x["id"] for x in repeated})==1
+    assert Store(path).create("stable",["x"],"oracle-idempotency")==repeated[0]
+    records=list(csv.DictReader(io.StringIO(to_csv(expected_items))))
+    assert len(records)==len(expected_items) and records[0]["title"]==expected_items[0]["title"]
+    assert list(records[0])==["id","title","status","tags","version"]
+print("Independent goal oracle passed: 65-record state machine, stale writes, comments, deletion, combined pagination, atomic invalid import, roundtrip, concurrent idempotency and CSV")

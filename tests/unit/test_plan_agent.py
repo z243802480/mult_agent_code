@@ -182,6 +182,7 @@ def test_model_task_context_and_slice_checks_survive_normalization(tmp_path: Pat
     assert goal == original
     assert first["validation_commands"] == ["python -m pytest tests/test_password.py -k score"]
     assert first["verification_policy"]["commands"] == first["validation_commands"]
+    assert first["verification_policy"]["command_source"] == "planner_task"
     assert final["validation_commands"] == goal["verification_strategy"]
     assert final["depends_on"] == [first["task_id"]]
     assert set(first["read_scope"]) >= {"AGENTS.md", "password.py", "README.md", "tests/test_password.py"}

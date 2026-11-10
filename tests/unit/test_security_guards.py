@@ -338,6 +338,25 @@ def test_shell_guard_allows_destructive_when_enabled() -> None:
     guard.validate("find . -delete")
 
 
+@pytest.mark.parametrize("command", [
+    'python -c "print(\'snapshot format passed\')"',
+    "python - <<'PY'\nprint('snapshot CSV format passed')\nPY",
+    "echo format",
+])
+def test_format_as_data_is_not_a_destructive_command(command: str) -> None:
+    ShellGuard(_base_permissions()).validate(command)
+
+
+@pytest.mark.parametrize("command", [
+    "format C:", "cmd /c format D:",
+    'cmd /c "format E:"', 'powershell -Command "Format-Volume -DriveLetter F"',
+    'python -c "import os; os.system(\'format C:\')"',
+])
+def test_actual_format_commands_remain_blocked(command: str) -> None:
+    with pytest.raises(ShellPolicyError):
+        ShellGuard(_base_permissions()).validate(command)
+
+
 def test_path_guard_blocks_asteria_state_dir(tmp_path: Path) -> None:
     (tmp_path / ".asteria").mkdir()
     (tmp_path / ".asteria" / "policies.json").write_text("{}", encoding="utf-8")

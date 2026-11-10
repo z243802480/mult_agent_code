@@ -3528,6 +3528,71 @@ def test_protocol_diagnostic_is_persisted_while_the_task_recovers(tmp_path: Path
     assert (tmp_path / "src" / "notes_tool.py").is_file()
 
 
+@pytest.mark.spine_default
+@pytest.mark.parametrize("declared,expected", [(True, "x"), (True, "wrong"), (False, "x")])
+def test_declared_task_checks_are_enforced_without_promoting_every_probe(
+    tmp_path: Path, declared: bool, expected: str,
+) -> None:
+    class ProbeClient(FakeModelDrivenClient):
+        def chat(self, request: ChatRequest) -> ChatResponse:
+            response = super().chat(request)
+            if self.calls == 1:
+                payload = json.loads(response.content)
+                payload["tool_calls"].append({"tool_name": "run_command", "args": {
+                    "command": 'python -c "raise RuntimeError(\'downstream probe\')"',
+                }})
+                return ChatResponse(
+                    content=json.dumps(payload), finish_reason="stop", usage=TokenUsage(1, 1, 2),
+                    model_provider="fake", model_name="stage-probe", raw_response={},
+                )
+            return response
+
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    path = run_dir / "task_plan.json"
+    board = json.loads(path.read_text(encoding="utf-8"))
+    task = board["tasks"][0]
+    command = f'python -c "from src.notes_tool import add_note; assert add_note([], \'x\') == [\'{expected}\']"'
+    task["validation_commands"] = [command]
+    if declared:
+        task["verification_policy"]["command_source"] = "planner_task"
+    path.write_text(json.dumps(board), encoding="utf-8")
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=ProbeClient()).run()
+    assert result.completed == int(declared and expected == "x")
+    assert result.blocked == int(not declared or expected != "x")
+    tools = [json.loads(row) for row in (run_dir / "tool_calls.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(row["status"] == "failure" and "downstream probe" in row["input_summary"] for row in tools)
+    if declared:
+        evidence = [json.loads(row) for row in (run_dir / "task_execution_evidence.jsonl").read_text(encoding="utf-8").splitlines()][-1]
+        checks = evidence["verification_results"]
+        assert len(checks) == 1
+        assert checks[0]["data"].get("requested_command", checks[0]["data"].get("command")) == command
+
+
+@pytest.mark.spine_default
+def test_declared_checks_keep_the_hard_approval_boundary(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    sentinel = tmp_path / "important.txt"
+    sentinel.write_text("keep", encoding="utf-8")
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    path = run_dir / "task_plan.json"
+    board = json.loads(path.read_text(encoding="utf-8"))
+    task = board["tasks"][0]
+    task["validation_commands"] = ["rm -rf important.txt"]
+    task["verification_policy"]["command_source"] = "planner_task"
+    path.write_text(json.dumps(board), encoding="utf-8")
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeModelDrivenClient()).run()
+    assert result.blocked == 1
+    decisions = [
+        json.loads(row) for file in (tmp_path / ".asteria").rglob("decisions.jsonl")
+        for row in file.read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(decision["status"] == "pending" for decision in decisions)
+    assert sentinel.read_text(encoding="utf-8") == "keep"
+
+
 class FakeModelDrivenVerifiesNeverDoneClient:
     """Writes the artifact + a passing verification, then NEVER emits done — so the loop runs until
     the round fuse trips (``budget_exhausted``) while the completion contract is already satisfied."""

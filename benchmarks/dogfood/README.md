@@ -9,3 +9,8 @@ model works; do not run this seed suite as a product regression check.
 only when issuing the separate merge/export request. The actual S106 follow-up requirement
 and the independent monthly-aggregation counterexample are recorded in the S106 report.
 Provider credentials, generated solutions and runtime ledgers are never part of these inputs.
+
+`boardkit_goal/` is the S107 complete-product seed with 53 frozen acceptance cases.
+`boardkit_oracle.py.txt` is its independent requirement oracle, stored outside the seed;
+do not copy it into the model workspace. Run it from the finished workspace with that
+workspace on PYTHONPATH. It is an evaluation fixture, not a runtime/maintainer command.

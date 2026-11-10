@@ -80,6 +80,12 @@ class FakeBrokenExecuteClient:
 def test_replan_command_creates_repair_task_from_task_failure_evidence(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
+    path = tmp_path / ".asteria" / "runs" / plan.run_id / "task_plan.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    command = 'python -c "from complete_module import answer; assert answer() == 42"'
+    data["tasks"][0]["validation_commands"] = [command]
+    data["tasks"][0]["verification_policy"]["command_source"] = "planner_task"
+    path.write_text(json.dumps(data), encoding="utf-8")
     ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()).run()
 
     result = ReplanCommand(tmp_path, run_id=plan.run_id).run()
@@ -99,6 +105,8 @@ def test_replan_command_creates_repair_task_from_task_failure_evidence(tmp_path:
     assert not repair_task["title"].startswith(("Add ", "Repair ", "Modify "))
     assert repair_task["replan"]["source_evidence_id"] == "task-execution-0001"
     assert repair_task["expected_changed_files"] == ["complete_module.py"]
+    assert repair_task["validation_commands"] == [command]
+    assert repair_task["verification_policy"]["command_source"] == "planner_task"
     assert "list_files" in repair_task["allowed_tools"]
     assert "Primary evidence: task-execution-0001" in repair_task["description"]
     # 直写脊梁没有候选工作区(FSM 候选隔离已随重塑退役),故修复描述不再引用 "Candidate workspace:"。
@@ -117,6 +125,53 @@ def test_replan_command_creates_repair_task_from_task_failure_evidence(tmp_path:
         for event in user_progress
     )
     assert any(event["title"] == "重规划完成" for event in user_progress)
+
+
+@pytest.mark.parametrize("recovery_expected", [41, 42])
+def test_readonly_verification_replan_can_correct_a_probe_without_write_authority(
+    tmp_path: Path, recovery_expected: int,
+) -> None:
+    class ProbeClient:
+        def __init__(self, expected: int) -> None:
+            self.expected = expected
+
+        def chat(self, request: ChatRequest) -> ChatResponse:
+            return spine_response(request, tool_calls=[{
+                "tool_name": "run_command",
+                "args": {"command": f'python -c "from complete_module import answer; assert answer() == {self.expected}"'},
+            }])
+
+    InitCommand(tmp_path).run()
+    original = "def answer():\n    return 42\n"
+    (tmp_path / "complete_module.py").write_text(original, encoding="utf-8")
+    plan = PlanCommand(tmp_path, "verify existing module", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    path = run_dir / "task_plan.json"
+    board = json.loads(path.read_text(encoding="utf-8"))
+    task = board["tasks"][0]
+    command = 'python -c "from complete_module import answer; assert answer() == 42"'
+    task.update({
+        "task_kind": "verification", "read_scope": ["AGENTS.md", "complete_module.py"],
+        "write_scope": [], "expected_changed_files": [], "parallel_safety": "readonly",
+        "allowed_tools": ["read_file", "run_command", "run_tests"],
+        "validation_commands": [command],
+        "completion_contract": {"requires_changed_artifact": False, "requires_verification": True, "allows_expected_failure": False},
+    })
+    path.write_text(json.dumps(board), encoding="utf-8")
+    first = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=ProbeClient(41)).run()
+    assert first.blocked == 1
+    assert ReplanCommand(tmp_path, run_id=plan.run_id).run().created_tasks == 1
+    repaired = json.loads(path.read_text(encoding="utf-8"))["tasks"][-1]
+    assert repaired["task_kind"] == "verification"
+    assert repaired["parallel_safety"] == "readonly" and repaired["write_scope"] == []
+    assert repaired["completion_contract"]["requires_changed_artifact"] is False
+    assert repaired["validation_commands"] == [command]
+    assert "self-authored" in repaired["description"]
+    assert "apply_patch" not in repaired["allowed_tools"]
+    second = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=ProbeClient(recovery_expected)).run()
+    assert second.completed == int(recovery_expected == 42)
+    assert second.blocked == int(recovery_expected != 42)
+    assert (tmp_path / "complete_module.py").read_text(encoding="utf-8") == original
 
 
 def test_replan_command_creates_decision_after_replan_limit(tmp_path: Path) -> None:

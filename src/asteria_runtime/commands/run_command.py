@@ -1304,6 +1304,10 @@ class RunCommand:
                 parallel_readonly=self.parallel_writes,
                 parallel_writes=self.parallel_writes,
             ).run()
+            if execute.completed > 0:
+                # A completed task is productive progress, not a recovery retry.
+                # Failed streaks remain bounded; global tool/model budgets still apply.
+                inner_cycles = 0
             progressed = progressed or execute.completed > 0 or execute.blocked > 0
             # 用户暂停:整个 run 立刻停手,**在任何自主环之前**。暂停不是失败——若让它往下走,任务
             # 会被当成"没做完"喂进 soft-fuse / goal-replan 环:引擎会去重新规划一个用户只是想暂停一下

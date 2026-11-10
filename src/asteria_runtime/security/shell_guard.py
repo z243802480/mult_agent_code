@@ -22,7 +22,6 @@ class ShellGuard:
         "clear-content",
         "set-content",
         "out-file",
-        "format",
         "shutdown",
         "reboot",
         "restart-computer",
@@ -31,6 +30,7 @@ class ShellGuard:
     # Command names (segment leaders) that are destructive beyond the classic delete verbs:
     # low-level wipes and space-zeroing utilities the whole-word denylist used to miss.
     DESTRUCTIVE_LEADERS = {
+        "format",
         "shred",
         "truncate",
         "dd",
@@ -44,6 +44,8 @@ class ShellGuard:
     # destructive call is a flag (find -delete), an interpreter payload (shutil.rmtree(...)),
     # or hidden inside a quoted wrapper arg (powershell -c "Remove-Item ...").
     DESTRUCTIVE_PATTERNS = (
+        r"\bformat(?:\.exe)?\s+[a-z]:",
+        r"\bformat-volume\b",
         r"\bfind\b.+\s-delete\b",
         r"\bfind\b.+-exec\b.+\b(rm|del|unlink|shred|rmdir)\b",
         r"\bshutil\.rmtree\b",
