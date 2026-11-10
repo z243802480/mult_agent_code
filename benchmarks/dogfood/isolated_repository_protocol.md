@@ -34,3 +34,11 @@ Use normal pause/cancel for a declared stop condition. A stopped, failed or keyl
 not a pass. The controller may finish external artifact inspection after a pause, but that
 does not change the run into an autonomous completion. One registered run per experiment;
 any later run needs a new record and an explicit account of changes between runs.
+
+For a registered pause/resume experiment, state the trigger before the goal call. After
+the normal pause has taken effect and its process exited, freeze a checkpoint of goal,
+tasks, existing evidence/cost and edited artifacts. Resume that same session in a fresh
+process without reissuing the goal or adding solution hints; record both process IDs,
+shared deadline/budget and continuity checks. The paused checkpoint is not a completed
+result. Qualify the whole experiment only after resume and final independent verification;
+do not treat the resumed leg as a fresh zero-cost goal or hide the control interruption.

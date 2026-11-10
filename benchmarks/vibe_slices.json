@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S110",
+  "active_slice": "S111",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1131,6 +1131,20 @@
         "pytest tests/unit/test_plan_agent_recovery.py tests/integration/test_plan_command.py -q"
       ],
       "reference_brief": "benchmarks/reference_briefs/S110-plan-recovery-and-independent-evaluation.md"
+    },
+    {
+      "id": "S111",
+      "name": "多文件真实目标与跨进程暂停续作",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S110"
+      ],
+      "user_demo": "同一真实多文件 goal 经正常暂停与新进程恢复，独立行为与原测试验收",
+      "green_checks": [
+        "pytest tests/unit/test_documentation_contracts.py -q",
+        "registered multifile goal and same-run pause/resume independent evidence"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S111-multifile-pause-resume.md"
     }
   ]
 }

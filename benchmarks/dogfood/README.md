@@ -27,3 +27,8 @@ S110 uses a separate upstream repository rather than repairing this harness's ow
 `tinydb_batch_contract.md` fixes the TinyDB commit, allowed edits and public semantics.
 `tinydb_batch_oracle.py.txt` stays outside the target. No upstream source, generated solution,
 credentials, or raw runtime ledger is checked into this fixture directory.
+
+S111 registers `tinydb_readonly_contract.md` and `tinydb_readonly_oracle.py.txt` for a
+fresh TinyDB multi-file goal with one planned pause and a new-process same-session resume.
+Keep its target separate from the S110 solution. The oracle checks the public contract;
+the external controller separately checks pause/resume and evidence/budget continuity.

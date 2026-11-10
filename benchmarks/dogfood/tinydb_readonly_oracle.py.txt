@@ -1,0 +1,311 @@
+"""S111 frozen public behavior checks; do not put in the target workspace."""
+from copy import deepcopy
+from pathlib import Path
+import tempfile
+import unittest
+
+import tinydb
+from tinydb import TinyDB, Query
+from tinydb.storages import MemoryStorage, JSONStorage
+
+
+class CountMemory(MemoryStorage):
+    def __init__(self):
+        super().__init__()
+        self.writes = 0
+
+    def write(self, data):
+        self.writes += 1
+        return super().write(data)
+
+
+class CountJSON(JSONStorage):
+    def __init__(self, *args, **kwargs):
+        self.writes = 0
+        super().__init__(*args, **kwargs)
+
+    def write(self, data):
+        self.writes += 1
+        return super().write(data)
+
+
+class SeenIterable:
+    def __init__(self, values, seen):
+        self.values, self.seen = values, seen
+
+    def __iter__(self):
+        self.seen.append('iterated')
+        return iter(self.values)
+
+
+class ReadOnlyHandles(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.handles = []
+        self.serial = 0
+
+    def tearDown(self):
+        for db in self.handles:
+            db.close()
+        self.temp.cleanup()
+
+    def error(self):
+        error = getattr(tinydb, 'ReadOnlyError', None)
+        self.assertIsInstance(error, type, 'ReadOnlyError must be publicly exported')
+        self.assertTrue(issubclass(error, PermissionError))
+        return error
+
+    def seeded(self, kind, **options):
+        self.serial += 1
+        path = Path(self.temp.name) / f'data-{self.serial}.json'
+        storage = CountMemory() if kind == 'memory' else None
+        writer = (TinyDB(storage=lambda: storage) if storage is not None
+                  else TinyDB(path, storage=CountJSON))
+        writer.insert_multiple([{'n': 1, 'nested': {'items': [1]}},
+                                {'n': 2, 'nested': {'items': [2]}}])
+        writer.table('named').insert({'n': 3, 'nested': {'items': [3]}})
+        writer.close()
+        reader = (TinyDB(storage=lambda: storage, read_only=True, **options)
+                  if storage is not None else TinyDB(path, storage=CountJSON,
+                                                    read_only=True, **options))
+        self.handles.append(reader)
+        return reader, path
+
+    def blocked(self, db, path, action, seen=None):
+        before = deepcopy(db.storage.read())
+        writes = db.storage.writes
+        disk = path.read_bytes() if path.exists() else None
+        with self.assertRaises(self.error()):
+            action()
+        self.assertEqual(db.storage.writes, writes)
+        self.assertEqual(db.storage.read(), before)
+        if disk is not None:
+            self.assertEqual(path.read_bytes(), disk)
+        if seen is not None:
+            self.assertEqual(seen, [], 'write refusal must precede callback/iterator execution')
+
+    def test_public_error_flag_and_immutable_property(self):
+        self.error()
+        for kind in ('memory', 'json'):
+            with self.subTest(storage=kind):
+                db, _ = self.seeded(kind)
+                self.assertIs(db.read_only, True)
+                with self.assertRaises(AttributeError):
+                    db.read_only = False
+
+    def test_explicit_false_preserves_writable_default(self):
+        db = TinyDB(storage=MemoryStorage, read_only=False)
+        self.handles.append(db)
+        self.assertIs(db.read_only, False)
+        doc_id = db.insert({'n': 1})
+        self.assertEqual(db.update({'n': 4}, doc_ids=[doc_id]), [doc_id])
+        self.assertEqual(db.get(doc_id=doc_id)['n'], 4)
+        db.remove(doc_ids=[doc_id])
+        self.assertEqual(len(db), 0)
+
+    def test_json_context_and_read_operations(self):
+        db, _ = self.seeded('json')
+        with db:
+            self.assertEqual(len(db), 2)
+            self.assertEqual(db.count(Query().n >= 1), 2)
+            self.assertTrue(db.contains(doc_id=1))
+            self.assertEqual(db.tables(), {'_default', 'named'})
+            self.assertEqual(db.get(doc_id=2).doc_id, 2)
+            self.assertEqual([d.doc_id for d in db], [1, 2])
+            self.assertEqual(db.table('named').get(doc_id=1)['n'], 3)
+
+    def test_missing_json_creates_neither_file_nor_parent(self):
+        path = Path(self.temp.name) / 'absent-parent' / 'data.json'
+        with self.assertRaises(FileNotFoundError):
+            handle = TinyDB(path, read_only=True, create_dirs=True)
+            self.handles.append(handle)
+        self.assertFalse(path.exists())
+        self.assertFalse(path.parent.exists())
+
+    def test_conflicting_write_mode_does_not_change_bytes(self):
+        self.error()
+        for mode in ('r+', 'w', 'a+'):
+            with self.subTest(mode=mode):
+                self.serial += 1
+                path = Path(self.temp.name) / f'conflict-{self.serial}.json'
+                with TinyDB(path) as writer:
+                    writer.insert({'n': 1})
+                before = path.read_bytes()
+                try:
+                    db = TinyDB(path, read_only=True, access_mode=mode)
+                except (self.error(), ValueError):
+                    pass
+                else:
+                    self.handles.append(db)
+                    self.assertEqual(db.all(), [{'n': 1}])
+                self.assertEqual(path.read_bytes(), before)
+
+    def test_custom_storage_factory_receives_no_database_option(self):
+        store = CountMemory()
+        store.write({'_default': {'1': {'n': 7}}})
+        calls = []
+        def factory():
+            calls.append('opened')
+            return store
+        db = TinyDB(storage=factory, read_only=True)
+        self.handles.append(db)
+        self.assertEqual(calls, ['opened'])
+        self.assertEqual(db.get(doc_id=1)['n'], 7)
+
+    def mutation_cases(self, table, seen):
+        def condition(doc):
+            seen.append('condition')
+            return True
+        def update(doc):
+            seen.append('update')
+            doc['nested']['items'].append(99)
+        return [
+            ('insert', lambda: table.insert({'n': 10})),
+            ('insert_multiple', lambda: table.insert_multiple(SeenIterable([{'n': 10}], seen))),
+            ('update', lambda: table.update(update, condition)),
+            ('update_multiple', lambda: table.update_multiple(SeenIterable([(update, condition)], seen))),
+            ('upsert', lambda: table.upsert({'n': 10}, condition)),
+            ('remove', lambda: table.remove(condition)),
+            ('remove_ids', lambda: table.remove(doc_ids=SeenIterable([1], seen))),
+            ('truncate', table.truncate),
+        ]
+
+    def test_default_table_mutators_refuse_before_user_code(self):
+        for kind in ('memory', 'json'):
+            db, path = self.seeded(kind)
+            seen = []
+            for name, action in self.mutation_cases(db, seen):
+                with self.subTest(storage=kind, operation=name):
+                    self.blocked(db, path, action, seen)
+
+    def test_named_table_mutators_refuse_before_user_code(self):
+        for kind in ('memory', 'json'):
+            db, path = self.seeded(kind)
+            seen = []
+            for name, action in self.mutation_cases(db.table('named'), seen):
+                with self.subTest(storage=kind, operation=name):
+                    self.blocked(db, path, action, seen)
+
+    def test_empty_and_unmatched_write_attempts_still_refused(self):
+        for kind in ('memory', 'json'):
+            db, path = self.seeded(kind)
+            seen = []
+            def no_match(doc):
+                seen.append('condition')
+                return False
+            cases = [lambda: db.insert_multiple(SeenIterable([], seen)),
+                     lambda: db.update_multiple(SeenIterable([], seen)),
+                     lambda: db.update({}, no_match), lambda: db.remove(no_match),
+                     lambda: db.drop_table('missing')]
+            for index, action in enumerate(cases):
+                with self.subTest(storage=kind, operation=index):
+                    self.blocked(db, path, action, seen)
+
+    def test_database_table_drops_refused(self):
+        for kind in ('memory', 'json'):
+            db, path = self.seeded(kind)
+            for name, action in [('one', lambda: db.drop_table('named')),
+                                 ('all', db.drop_tables)]:
+                with self.subTest(storage=kind, operation=name):
+                    self.blocked(db, path, action)
+
+    def test_persist_empty_absent_table_refused(self):
+        for kind in ('memory', 'json'):
+            with self.subTest(storage=kind):
+                db, path = self.seeded(kind)
+                self.blocked(db, path, lambda: db.table('absent', persist_empty=True))
+
+    def test_cached_table_cannot_weaken_parent_readonly(self):
+        for kind in ('memory', 'json'):
+            with self.subTest(storage=kind):
+                db, path = self.seeded(kind)
+                original = db.table('named')
+                try:
+                    candidate = db.table('named', read_only=False)
+                except self.error():
+                    candidate = original
+                self.blocked(db, path, lambda: candidate.insert({'n': 8}))
+                try:
+                    fresh = db.table('fresh', read_only=False)
+                except self.error():
+                    fresh = None
+                if fresh is not None:
+                    self.blocked(db, path, lambda: fresh.insert({'n': 8}))
+
+    def detached_reads(self, kind, read):
+        db, _ = self.seeded(kind)
+        before = deepcopy(db.storage.read())
+        result = read(db)
+        result['n'] = 999
+        result['nested']['items'].append(999)
+        again = read(db)
+        self.assertEqual(again['n'], 1)
+        self.assertEqual(again['nested']['items'], [1])
+        self.assertEqual(db.storage.read(), before)
+        self.assertEqual(db.all()[0]['nested']['items'], [1])
+
+    def test_all_results_are_detached(self):
+        for kind in ('memory', 'json'):
+            with self.subTest(storage=kind):
+                self.detached_reads(kind, lambda db: db.all()[0])
+
+    def test_get_results_are_detached(self):
+        for kind in ('memory', 'json'):
+            with self.subTest(storage=kind):
+                self.detached_reads(kind, lambda db: db.get(doc_id=1))
+
+    def test_cached_search_results_are_detached(self):
+        query = Query().n == 1
+        for kind in ('memory', 'json'):
+            with self.subTest(storage=kind):
+                self.detached_reads(kind, lambda db: db.search(query)[0])
+
+    def test_iteration_results_are_detached(self):
+        for kind in ('memory', 'json'):
+            with self.subTest(storage=kind):
+                self.detached_reads(kind, lambda db: next(iter(db)))
+
+    def test_query_input_cannot_mutate_storage_or_unrelated_reads(self):
+        for kind in ('memory', 'json'):
+            with self.subTest(storage=kind):
+                db, _ = self.seeded(kind)
+                before = deepcopy(db.storage.read())
+                def mutate(value):
+                    value['items'].append(77)
+                    return True
+                db.search(Query().nested.test(mutate))
+                self.assertEqual(db.storage.read(), before)
+                self.assertEqual(db.all()[0]['nested']['items'], [1])
+                self.assertEqual(db.search(Query().n == 1)[0]['nested']['items'], [1])
+
+    def test_read_operations_do_not_write(self):
+        for kind in ('memory', 'json'):
+            with self.subTest(storage=kind):
+                db, _ = self.seeded(kind)
+                before = db.storage.writes
+                db.all(); db.get(doc_id=1); db.search(Query().n == 1)
+                list(db); len(db); db.tables(); db.contains(doc_id=1); db.count(Query().n > 0)
+                db.table('named').all()
+                self.assertEqual(db.storage.writes, before)
+
+    def test_json_close_reopen_preserves_original_data_and_ids(self):
+        db, path = self.seeded('json')
+        before = path.read_bytes()
+        self.blocked(db, path, lambda: db.update({'n': 9}, doc_ids=[1]))
+        db.close()
+        with TinyDB(path) as fresh:
+            self.assertEqual([d.doc_id for d in fresh.all()], [1, 2])
+            self.assertEqual([d['n'] for d in fresh.all()], [1, 2])
+            self.assertEqual(fresh.table('named').get(doc_id=1)['n'], 3)
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_false_option_is_not_a_json_serializer_argument(self):
+        path = Path(self.temp.name) / 'writable.json'
+        with TinyDB(path, read_only=False, indent=2, ensure_ascii=False) as db:
+            db.insert({'text': 'value'})
+        with TinyDB(path) as db:
+            self.assertEqual(db.all(), [{'text': 'value'}])
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)
