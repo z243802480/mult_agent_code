@@ -216,6 +216,11 @@ class ToolExecutionGateway:
                     telemetry={"duration_ms": duration_ms},
                     file_changes=file_changes,
                 )
+                if tool_name == "read_file" and isinstance(args.get("path"), str):
+                    observation = replace(observation, data={
+                        **observation.data, "path": observation.data.get("path", args["path"]),
+                        "requested_path": args["path"],
+                    })
                 if model_tool_name != tool_name:
                     observation = replace(observation, data={**observation.data,
                                           "model_tool_name": model_tool_name})
@@ -304,6 +309,10 @@ class ToolExecutionGateway:
                     telemetry={"duration_ms": duration_ms},
                     file_changes=pre_file_changes,
                 )
+                if tool_name == "read_file" and isinstance(args.get("path"), str):
+                    observation = replace(observation, data={
+                        **observation.data, "path": args["path"], "requested_path": args["path"],
+                    })
                 if model_tool_name != tool_name:
                     observation = replace(observation, data={**observation.data,
                                           "model_tool_name": model_tool_name})

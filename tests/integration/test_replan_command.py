@@ -127,9 +127,10 @@ def test_replan_command_creates_repair_task_from_task_failure_evidence(tmp_path:
     assert any(event["title"] == "重规划完成" for event in user_progress)
 
 
+@pytest.mark.parametrize("kind", ["verification", "diagnostic"])
 @pytest.mark.parametrize("recovery_expected", [41, 42])
 def test_readonly_verification_replan_can_correct_a_probe_without_write_authority(
-    tmp_path: Path, recovery_expected: int,
+    tmp_path: Path, recovery_expected: int, kind: str,
 ) -> None:
     class ProbeClient:
         def __init__(self, expected: int) -> None:
@@ -151,21 +152,24 @@ def test_readonly_verification_replan_can_correct_a_probe_without_write_authorit
     task = board["tasks"][0]
     command = 'python -c "from complete_module import answer; assert answer() == 42"'
     task.update({
-        "task_kind": "verification", "read_scope": ["AGENTS.md", "complete_module.py"],
+        "task_kind": kind, "read_scope": ["AGENTS.md", "complete_module.py"],
         "write_scope": [], "expected_changed_files": [], "parallel_safety": "readonly",
         "allowed_tools": ["read_file", "run_command", "run_tests"],
         "validation_commands": [command],
         "completion_contract": {"requires_changed_artifact": False, "requires_verification": True, "allows_expected_failure": False},
     })
+    task["verification_policy"].update({"timeout_seconds": 77, "readback_paths": ["complete_module.py"]})
     path.write_text(json.dumps(board), encoding="utf-8")
     first = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=ProbeClient(41)).run()
     assert first.blocked == 1
     assert ReplanCommand(tmp_path, run_id=plan.run_id).run().created_tasks == 1
     repaired = json.loads(path.read_text(encoding="utf-8"))["tasks"][-1]
-    assert repaired["task_kind"] == "verification"
+    assert repaired["task_kind"] == kind
     assert repaired["parallel_safety"] == "readonly" and repaired["write_scope"] == []
     assert repaired["completion_contract"]["requires_changed_artifact"] is False
     assert repaired["validation_commands"] == [command]
+    assert repaired["verification_policy"]["timeout_seconds"] == 77
+    assert repaired["verification_policy"]["readback_paths"] == ["complete_module.py"]
     assert "self-authored" in repaired["description"]
     assert "apply_patch" not in repaired["allowed_tools"]
     second = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=ProbeClient(recovery_expected)).run()

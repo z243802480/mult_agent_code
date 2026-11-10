@@ -403,6 +403,8 @@ def execute_tool_calls(
                 "unexecuted_tools": [str(c.get("tool_name") or "tool") for c in exc.skipped_calls]}
         if name in {"run_command", "run_tests", "run_pytest"} and args.get("command"):
             data["requested_command"] = args["command"]
+        if name == "read_file" and isinstance(args.get("path"), str):
+            data.update(path=args["path"], requested_path=args["path"])
         if exc.failed_call.get("model_tool_name"):
             data["model_tool_name"] = exc.failed_call["model_tool_name"]
         suffix = (f"; {len(exc.skipped_calls)} subsequent call(s) not executed."

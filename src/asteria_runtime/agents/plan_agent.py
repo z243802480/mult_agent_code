@@ -123,12 +123,20 @@ You must:
 - Include read_scope for each task's necessary context: specifications, existing code,
   and immutable tests. A discovery task does not make its files readable to later tasks.
   Keep these read dependencies separate from expected_changed_files.
+  Use exact paths from the workspace or project guidance. Do not turn guessed conventional
+  paths into required evidence; discover unknown paths inside the task before relying on them.
 - Give each task validation_commands that can pass after THAT task and its dependencies.
   Do not require a partial implementation to pass tests for downstream features. Keep
   tightly coupled changes together, or put complete goal verification in a final task
   depending on all implementation work. Preserve the user's full acceptance at that stage.
   Use actual available commands, never placeholders. If verification is by file evidence,
-  use an empty command list and describe that evidence in the acceptance criteria.
+  use an empty command list. For readonly diagnostic/verification tasks, explicitly list the
+  required concrete files in verification_policy.readback_paths; those files must actually be
+  read. A readback proves inspection, not that an implementation defect is fixed. Keep transient
+  code exploration inside the implementation task unless a separate diagnostic has a real result.
+  Include required project guidance paths in read_scope as well as the files being investigated.
+  For long test suites, declare a positive verification_policy.timeout_seconds based on the
+  project's observed runtime. Tool timeout_seconds is available; defaults are not infinite.
 - Treat unverified commands in GoalSpec as suggestions, not requirements. For document/content
   checks, specify the observable content and use file tools; only prescribe a shell command when
   it is known to be available on the host OS or in the project.
@@ -156,8 +164,19 @@ You must:
         execution_profile: str,
     ) -> str:
         workspace_files = self._workspace_file_paths(runtime_context)
+        guidance = runtime_context.get("root_guidance") or {}
+        guidance_block = ""
+        if isinstance(guidance, dict) and isinstance(guidance.get("content"), str):
+            content = guidance["content"]
+            if content:
+                guidance_block = "\nProject guidance from the existing workspace context:\n" + json.dumps(
+                    {"path": guidance.get("path"), "content": content[:4000],
+                     "truncated": bool(guidance.get("truncated")) or len(content) > 4000},
+                    ensure_ascii=False,
+                ) + "\n"
         return f"""GoalSpec:
 {json.dumps(goal_spec, ensure_ascii=False, indent=2)}
+{guidance_block}
 
 Execution profile: {execution_profile}
 Execution environment: {json.dumps(command_execution_context(), ensure_ascii=False)}
@@ -178,6 +197,7 @@ Return this exact JSON shape:
       "expected_changed_files": ["src/tool.py"],
       "read_scope": ["README.md", "src/tool.py", "tests/test_tool.py"],
       "validation_commands": ["a known available command checking this slice"],
+      "verification_policy": {{"readback_paths": []}},
       "depends_on": []
     }}
   ]

@@ -223,3 +223,65 @@ def test_legacy_model_plan_keeps_goal_verification_fallback() -> None:
     for task in _agent(_plan_payload()).generate(goal)["tasks"]:
         assert task["validation_commands"] == goal["verification_strategy"]
         assert task["verification_policy"]["commands"] == goal["verification_strategy"]
+
+
+def test_model_declares_readback_evidence_and_timeout_without_write_grant(tmp_path: Path):
+    from asteria_runtime.storage.json_store import JsonStore
+    payload = {"tasks": [{**_plan_payload()["tasks"][0], "task_kind": "diagnostic",
+                           "expected_changed_files": [], "expected_artifacts": [],
+                           "read_scope": ["README.md"],
+                           "verification_policy": {"readback_paths": ["README.md"], "timeout_seconds": 600}}]}
+    goal = {"normalized_goal": "Inspect existing code", "verification_strategy": ["future full suite"]}
+    task = _agent(payload).generate(goal)["tasks"][0]
+    assert task["validation_commands"] == []
+    assert task["verification_policy"]["readback_paths"] == ["README.md"]
+    assert task["verification_policy"]["timeout_seconds"] == 600
+    assert task["verification_policy"]["command_source"] == "planner_task"
+    assert task["write_scope"] == []
+    store = JsonStore(SchemaValidator(Path("schemas")))
+    store.write(tmp_path / "task.json", task, "task")
+    assert store.read(tmp_path / "task.json", "task")["verification_policy"] == task["verification_policy"]
+    from asteria_runtime.core.runtime_context import RuntimeContext
+    from asteria_runtime.core.runtime_profile_builder import RuntimeProfileBuilder
+    from asteria_runtime.commands.execute_command import ExecuteCommand
+    validator = SchemaValidator(Path("schemas"))
+    mount = RuntimeProfileBuilder(validator).build_and_record(
+        context=RuntimeContext(root=tmp_path, run_id=None, policy={}, validator=validator),
+        task=task, worker_id="readonly-check", runtime_context={},
+    )
+    assert mount.runtime_context["task_contract"]["verification_policy"] == task["verification_policy"]
+    _, prompt = ExecuteCommand(tmp_path)._model_driven_prompts(task, goal, {}, task["allowed_tools"], {})
+    assert json.loads(prompt)["task_contract"]["verification_policy"] == task["verification_policy"]
+
+
+@pytest.mark.parametrize("timeout", [0, -1, True, "600"])
+def test_model_invalid_contract_timeout_is_rejected_by_task_schema(timeout):
+    payload = _plan_payload()
+    payload["tasks"][0]["verification_policy"] = {"timeout_seconds": timeout}
+    with pytest.raises(PlanAgentError, match="schema validation"):
+        _agent(payload).generate({"normalized_goal": "Implement password scoring"})
+
+
+def test_planning_receives_existing_guidance_paths_without_scanning_or_guessing():
+    client = FakeTaskPlanClient(_plan_payload())
+    PlanAgent(client, SchemaValidator(Path("schemas"))).generate(
+        {"normalized_goal": "Improve this project"},
+        runtime_context={"root_guidance": {"path": "AGENTS.md", "content":
+            "Read docs/engineering/actual-plan.md and refs/current-stage.md before acting.",
+            "truncated": False}, "workspace_files": []},
+    )
+    prompt = client.requests[0].messages[1].content
+    assert "docs/engineering/actual-plan.md" in prompt
+    assert "refs/current-stage.md" in prompt
+    assert "Project guidance from the existing workspace context" in prompt
+    assert "Do not turn guessed" in client.requests[0].messages[0].content
+
+
+def test_planning_guidance_has_an_explicit_bound_and_truncation_marker():
+    client = FakeTaskPlanClient(_plan_payload())
+    PlanAgent(client, SchemaValidator(Path("schemas"))).generate(
+        {"normalized_goal": "Improve this project"},
+        runtime_context={"root_guidance": {"path": "AGENTS.md", "content": "x" * 4100 + "UNSEEN_TAIL"}},
+    )
+    prompt = client.requests[0].messages[1].content
+    assert '"truncated": true' in prompt and "UNSEEN_TAIL" not in prompt

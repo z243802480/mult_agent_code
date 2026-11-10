@@ -84,3 +84,36 @@ def test_read_offset_limit_pages(tmp_path: Path) -> None:
     assert r.ok
     assert r.data["content"] == "L50\nL51\nL52"
     assert r.data["line_start"] == 50 and r.data["line_end"] == 52
+
+
+def test_file_larger_than_byte_limit_is_read_as_a_bounded_window(tmp_path):
+    (tmp_path / "large.txt").write_text("".join(f"line-{i:04d}\n" for i in range(10000)), encoding="utf-8")
+    reader = ReadFileTool(max_bytes=64)
+    result = reader.run(_ctx(tmp_path), "large.txt")
+    assert result.ok and len(result.data["content"].encode("utf-8")) <= 64
+    assert result.data["total_lines"] is None and result.data["has_more"]
+    page = reader.run(_ctx(tmp_path), "large.txt", offset=9000, limit=2)
+    assert page.ok and page.data["content"] == "line-8999\nline-9000\n"
+    assert page.data["line_start"] == 9000 and page.data["line_end"] == 9001
+
+
+def test_giant_multibyte_line_stays_bounded_and_can_be_skipped(tmp_path):
+    (tmp_path / "long.txt").write_text("界" * 100000 + "\nlast line\n", encoding="utf-8")
+    reader = ReadFileTool(max_bytes=32)
+    result = reader.run(_ctx(tmp_path), "long.txt")
+    assert result.ok and result.data["content"] == "界" * 10
+    assert len(result.data["content"].encode("utf-8")) <= 32
+    assert result.data["byte_truncated"] and result.data["has_more"]
+    last = reader.run(_ctx(tmp_path), "long.txt", offset=2, limit=1)
+    assert last.ok and last.data["content"] == "last line\n"
+    assert not last.data["has_more"]
+
+
+def test_large_window_still_obeys_protected_paths(tmp_path):
+    import pytest
+    from asteria_runtime.security.path_guard import PathPolicyError
+    (tmp_path / ".env").write_text("x" * 100, encoding="utf-8")
+    context = _ctx(tmp_path)
+    context.policy["protected_paths"] = [".env"]
+    with pytest.raises(PathPolicyError):
+        ReadFileTool(max_bytes=10).run(context, ".env", offset=1, limit=1)

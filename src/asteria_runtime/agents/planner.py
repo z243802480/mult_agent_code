@@ -259,10 +259,21 @@ class RequirementPlanner:
                 ))
             if isinstance(raw.get("validation_commands"), list):
                 task["validation_commands"] = _model_string_list(raw["validation_commands"])
+            elif (kind in {"diagnostic", "verification"}
+                  and isinstance(raw.get("verification_policy"), dict)
+                  and isinstance(raw["verification_policy"].get("readback_paths"), list)):
+                task["validation_commands"] = []
             task["completion_contract"] = completion_contract(task)
             verification_policy = self._verification_policy(task, goal_spec)
             if isinstance(raw.get("validation_commands"), list):
                 verification_policy["command_source"] = "planner_task"
+            raw_policy = raw.get("verification_policy")
+            if isinstance(raw_policy, dict):
+                for key in ("readback_paths", "timeout_seconds"):
+                    if key in raw_policy:
+                        verification_policy[key] = raw_policy[key]
+                if isinstance(raw_policy.get("readback_paths"), list):
+                    verification_policy["command_source"] = "planner_task"
             task["verification_policy"] = verification_policy
             if execution_profile == SESSION_AGENT:
                 task["execution_profile"] = SESSION_AGENT

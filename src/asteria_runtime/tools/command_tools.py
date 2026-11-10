@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import math
 import subprocess
 import sys
 
@@ -35,7 +36,11 @@ class RunCommandTool:
         permissions = context.policy["permissions"]
         protected_paths = context.policy.get("protected_paths")
         ShellGuard(permissions, protected_paths).validate(command)
-        timeout = timeout_seconds or self.default_timeout_seconds
+        timeout = self.default_timeout_seconds if timeout_seconds is None else timeout_seconds
+        if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+                or not math.isfinite(timeout) or timeout <= 0):
+            return ToolResult(ok=False, summary="timeout_seconds must be a finite positive number",
+                              error="invalid_timeout", data={"requested_command": command})
 
         # ADR-0030 S-B: when the policy opts into sandbox_shell, the command runs inside an
         # AppContainer that denies network egress and confines writes to the workspace at the OS

@@ -203,6 +203,17 @@
           "enum": [
             "planner_task"
           ]
+        },
+        "readback_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1
         }
       }
     },

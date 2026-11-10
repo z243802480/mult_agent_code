@@ -35,8 +35,10 @@ from asteria_runtime.core.model_driven_turn import (
 )
 from asteria_runtime.core.task_verification import (
     commands_needing_execution,
-    declared_commands,
     declared_observations,
+    declared_readbacks,
+    has_declared_checks,
+    readbacks_needing_execution,
 )
 from asteria_runtime.core.task_progress_digest import (
     load_task_progress,
@@ -1432,15 +1434,23 @@ class ExecuteCommand:
         # Explicit task checks are the completion boundary. Preserve exploratory failures
         # for the model/audit without making downstream checks a prerequisite of this slice.
         if (result.status != "paused" and result.stop_reason != "budget_hard_stop"
-                and declared_commands(task)):
+                and has_declared_checks(task)):
             tool_name = next((name for name in ("run_tests", "run_command")
                               if name in available_tools), None)
             calls = [
-                {"tool_name": tool_name, "args": {"command": command},
+                {"tool_name": tool_name, "args": {"command": command,
+                 **({"timeout_seconds": task["verification_policy"]["timeout_seconds"]}
+                    if "timeout_seconds" in task["verification_policy"] else {})},
                  "reason": "declared task completion check"}
                 for command in commands_needing_execution(task, result.observations)
                 if tool_name is not None
             ]
+            readbacks = (declared_readbacks(task) if calls else readbacks_needing_execution(
+                task, result.observations, context.root,
+            ))
+            if "read_file" in available_tools:
+                calls.extend({"tool_name": "read_file", "args": {"path": path},
+                              "reason": "declared task file evidence"} for path in readbacks)
             if calls:
                 pending = _approval_gate(calls)
                 if pending is not None:
@@ -1539,7 +1549,7 @@ class ExecuteCommand:
         # not the cumulative pass/fail of every call — else the repair loop's mandatory initial
         # failing test dooms a genuinely fixed task (ring_recovery benchmark, 2026-07-14).
         verification_results = (
-            declared_observations(task, observations) if declared_commands(task)
+            declared_observations(task, observations, context.root) if has_declared_checks(task)
             else _latest_verification_per_command([
                 obs
                 for obs in observations
@@ -1852,6 +1862,7 @@ class ExecuteCommand:
                 "write_scope": task.get("write_scope", []),
                 "expected_artifacts": task.get("expected_artifacts", []),
                 "validation_commands": task.get("validation_commands", []),
+                "verification_policy": dict(task.get("verification_policy") or {}),
                 "acceptance": task.get("acceptance", []),
             },
             "memory_protocol": memory_protocol,

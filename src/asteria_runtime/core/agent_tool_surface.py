@@ -138,7 +138,8 @@ class ModelToolSurfaceAdapter:
                 "execute",
                 "ask" if self.allow_shell else "deny",
                 "run_command",
-                {"command": "bounded non-destructive command", "summary": "expected outcome"},
+                {"command": "bounded non-destructive command", "summary": "expected outcome",
+                 "timeout_seconds": "optional positive seconds; default 60; allow enough time for the actual command"},
                 ["Use dedicated read/search/edit/test tools before shell fallbacks."],
             ),
             self._tool(
@@ -146,7 +147,8 @@ class ModelToolSurfaceAdapter:
                 "verify",
                 "ask" if self.allow_shell else "deny",
                 ["run_tests", "run_command"],
-                {"command": "test command or configured test suite"},
+                {"command": "test command or configured test suite",
+                 "timeout_seconds": "optional positive seconds; default 120; use the suite's observed runtime"},
                 ["Verification output is summarized; raw stdout remains evidence/Inspector."],
             ),
             self._tool(

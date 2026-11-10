@@ -214,6 +214,7 @@ class RuntimeProfileBuilder:
             "write_scope": write_scope(task),
             "context_requirements": context_requirements(task),
             "validation_commands": validation_commands(task),
+            "verification_policy": dict(task.get("verification_policy") or {}),
             "failure_policy": failure_policy(task),
             "parallel_safety": parallel_safety(task),
         }

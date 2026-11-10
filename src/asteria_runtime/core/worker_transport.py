@@ -107,7 +107,9 @@ def tool_definitions_for(
                 "description": "Read a workspace file.",
                 "parameters": {
                     "type": "object",
-                    "properties": {"path": {"type": "string"}},
+                    "properties": {"path": {"type": "string"},
+                                   "offset": {"type": "integer", "minimum": 1},
+                                   "limit": {"type": "integer", "minimum": 1}},
                     "required": ["path"],
                 },
             },
@@ -125,6 +127,8 @@ def tool_definitions_for(
                             "type": "array",
                             "items": {"type": "integer"},
                         },
+                        "timeout_seconds": {"type": "integer", "minimum": 1,
+                                            "description": "Optional command deadline in seconds; default 60."},
                     },
                     "required": ["command"],
                 },
@@ -139,6 +143,8 @@ def tool_definitions_for(
                     "type": "object",
                     "properties": {
                         "command": {"type": "string"},
+                        "timeout_seconds": {"type": "integer", "minimum": 1,
+                                            "description": "Optional test deadline in seconds; default 120."},
                     },
                     "required": ["command"],
                 },

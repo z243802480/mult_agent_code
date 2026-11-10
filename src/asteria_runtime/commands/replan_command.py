@@ -389,7 +389,8 @@ class ReplanCommand:
                 + "\n".join(f"- {note}" for note in product_notes)
             )
         expected_changed_files = self._expected_changed_files(source_task, contract_check)
-        verification_only = task_kind(source_task) == "verification" and not write_scope(source_task)
+        readonly_recovery = (task_kind(source_task) in {"verification", "diagnostic"}
+                             and not write_scope(source_task))
         task = {
             "schema_version": "0.1.0",
             "task_id": task_id,
@@ -402,7 +403,7 @@ class ReplanCommand:
             "acceptance": self._acceptance(evidence, violations, product_notes),
             "allowed_tools": self._repair_allowed_tools(source_task),
             "expected_artifacts": expected_artifacts,
-            "task_kind": "verification" if verification_only else "implementation",
+            "task_kind": task_kind(source_task) if readonly_recovery else "implementation",
             "expected_changed_files": expected_changed_files,
             "assigned_agent_id": None,
             "created_at": now_iso(),
@@ -428,12 +429,12 @@ class ReplanCommand:
             task["read_scope"] = [str(item) for item in source_task["read_scope"]]
         if isinstance(source_task.get("validation_commands"), list):
             task["validation_commands"] = list(source_task["validation_commands"])
-        if verification_only:
+        if readonly_recovery:
             task["write_scope"] = []
             task["expected_changed_files"] = []
             task["parallel_safety"] = "readonly"
             task["description"] += (
-                "\nVerification-only recovery: reproduce the failure and reconcile its expected "
+                "\nReadonly recovery: reproduce the failure and reconcile its expected "
                 "result with the user's specification and original acceptance. A self-authored "
                 "check may contain a wrong assumption; diagnose that before changing behavior. "
                 "Rerun the original acceptance unchanged and explain any corrected check. "
@@ -441,14 +442,20 @@ class ReplanCommand:
                 "If a real implementation defect requires writes, report that need explicitly."
             )
             task["acceptance"].append("Original acceptance is rerun unchanged and passes")
-        task["completion_contract"] = completion_contract(task)
+        task["completion_contract"] = (dict(completion_contract(source_task)) if readonly_recovery
+                                       else completion_contract(task))
         task["verification_policy"] = {
             "required": True,
-            "allow_expected_failure": False,
+            "allow_expected_failure": bool(task["completion_contract"].get("allows_expected_failure")),
             "commands": list(task.get("validation_commands", [])),
         }
         if (source_task.get("verification_policy") or {}).get("command_source") == "planner_task":
             task["verification_policy"]["command_source"] = "planner_task"
+        source_policy = source_task.get("verification_policy") or {}
+        for key in ("readback_paths", "timeout_seconds"):
+            if key in source_policy:
+                value = source_policy[key]
+                task["verification_policy"][key] = list(value) if isinstance(value, list) else value
         # Narrow verified-noop carve-out (extends the verified-only window): the flag may fire only
         # when NO violation shows the artifact was PROVEN wrong. Two families qualify:
         #   - the source never verified it ("required verification was not provided") — unproven,

@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S108",
+  "active_slice": "S109",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1101,6 +1101,23 @@
         "review accept and exact code CI"
       ],
       "reference_brief": "benchmarks/reference_briefs/S108-real-repository-tool-batch-fidelity.md"
+    },
+    {
+      "id": "S109",
+      "name": "Readonly diagnostic evidence and bounded validation timeouts",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S108"
+      ],
+      "user_demo": "A readonly diagnostic has explicit real evidence and recovers without acquiring write authority",
+      "green_checks": [
+        "required readback failure and missing evidence stay blocked",
+        "readonly diagnostic replan preserves scopes",
+        "verification timeouts reach existing tools",
+        "frozen real goal independently verified or honestly failed",
+        "exact code CI"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S109-readonly-diagnostic-contracts.md"
     }
   ]
 }

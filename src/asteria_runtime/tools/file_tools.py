@@ -36,14 +36,7 @@ class ReadFileTool:
             return ToolResult(ok=False, summary=f"Not a file: {path}", error="not_a_file")
         size = resolved.stat().st_size
         if size > self.max_bytes:
-            return ToolResult(
-                ok=False,
-                summary=(
-                    f"File too large: {path} ({size} bytes). Read a window with offset/limit."
-                ),
-                error="file_too_large",
-                data={"size": size, "max_bytes": self.max_bytes},
-            )
+            return self._large_window(context, resolved, encoding, offset, limit, size)
         raw = resolved.read_text(encoding=encoding)
         rel = resolved.relative_to(context.root).as_posix()
         all_lines = raw.splitlines()
@@ -82,6 +75,48 @@ class ReadFileTool:
                 "line_end": end,
                 "total_lines": total,
             },
+        )
+
+    def _large_window(
+        self, context: RuntimeContext, resolved: Path, encoding: str,
+        offset: int | None, limit: int | None, size: int,
+    ) -> ToolResult:
+        start = max(1, int(offset) if offset else 1)
+        count = max(1, int(limit) if limit is not None else self.DEFAULT_WINDOW)
+        pieces: list[str] = []
+        used = 0
+        byte_truncated = False
+        with resolved.open("r", encoding=encoding) as handle:
+            # Skip long lines in bounded chunks too, rather than materializing a giant line.
+            for _ in range(start - 1):
+                chunk = handle.readline(self.max_bytes + 1)
+                while chunk and not chunk.endswith("\n"):
+                    chunk = handle.readline(self.max_bytes + 1)
+                if not chunk:
+                    break
+            for _ in range(count):
+                line = handle.readline(self.max_bytes + 1)
+                if not line:
+                    break
+                encoded = line.encode(encoding)
+                remaining = self.max_bytes - used
+                if len(encoded) > remaining:
+                    pieces.append(encoded[:remaining].decode(encoding, errors="ignore"))
+                    byte_truncated = True
+                    break
+                pieces.append(line)
+                used += len(encoded)
+                if used >= self.max_bytes:
+                    break
+            has_more = byte_truncated or bool(handle.read(1))
+        content = "".join(pieces)
+        end = start + len(content.splitlines()) - 1
+        rel = resolved.relative_to(context.root).as_posix()
+        return ToolResult(
+            ok=True, summary=f"Read file: {rel} (lines {start}-{end}; bounded window)",
+            data={"path": rel, "content": content, "size": size,
+                  "line_start": start, "line_end": end, "total_lines": None,
+                  "has_more": has_more, "byte_truncated": byte_truncated},
         )
 
 

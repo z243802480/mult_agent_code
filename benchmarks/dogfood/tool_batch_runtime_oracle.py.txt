@@ -1,0 +1,54 @@
+"""S109 independent extension of the frozen S108 batch oracle."""
+from pathlib import Path
+import json
+import runpy
+import unittest
+
+namespace = runpy.run_path(str(Path(__file__).with_name("tool_batch_oracle.py.txt")))
+
+
+class RuntimeBatchFidelity(namespace["BatchFidelity"]):
+    def test_actual_wrapper_does_not_launch_expert_after_prior_denial(self):
+        from asteria_runtime.commands.execute_command import _SubagentAwareToolRunner
+        from asteria_runtime.core.model_driven_turn import execute_tool_calls
+        from asteria_runtime.tools.base import ToolResult
+        spawned = []
+        def spawn(args):
+            spawned.append(args)
+            return ToolResult(ok=True, summary="launched")
+        runner = _SubagentAwareToolRunner(self.gateway, spawn)
+        observations = execute_tool_calls(runner, [
+            self.call(), self.call("write_file", "denied.txt"),
+            {"tool_name": "spawn_subagent", "args": {"task": "must not launch"}},
+        ], self.task, self.context)
+        self.check_prefix_failure(observations, "write_file")
+        self.assertEqual(spawned, [])
+
+    def test_alias_provenance_is_preserved_in_model_and_disk_evidence(self):
+        from asteria_runtime.core.model_driven_turn import execute_tool_calls
+        observations = execute_tool_calls(self.gateway, [
+            {"tool_name": "grep", "args": {"path": ".", "pattern": "x"}},
+        ], self.task, self.context)
+        self.assertEqual(observations[0].tool_name, "search_text")
+        self.assertEqual(observations[0].data.get("model_tool_name"), "grep")
+        rows = [json.loads(line) for line in (self.root / "tool_observations.jsonl").read_text().splitlines()]
+        self.assertEqual(rows[-1]["observation"]["data"].get("model_tool_name"), "grep")
+
+    def test_unexpected_mcp_failure_is_persisted_with_its_actual_name(self):
+        from asteria_runtime.core.model_driven_turn import execute_tool_calls
+        from asteria_runtime.core.tool_execution_gateway import ToolExecutionGateway
+        class BrokenAdapter:
+            def invoke_tool(self, **kwargs):
+                raise RuntimeError("unexpected adapter exception")
+        gateway = ToolExecutionGateway(self.registry, self.gateway.permission_policy,
+                                       mcp_adapter=BrokenAdapter())
+        observations = execute_tool_calls(gateway, [self.call(),
+            {"tool_name": "mcp__demo__echo", "args": {}}], self.task, self.context)
+        self.check_prefix_failure(observations, "mcp__demo__echo")
+        rows = [json.loads(line) for line in (self.root / "tool_observations.jsonl").read_text().splitlines()]
+        self.assertEqual([(r["tool_name"], r["ok"]) for r in rows],
+                         [("read_file", True), ("mcp__demo__echo", False)])
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

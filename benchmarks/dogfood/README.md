@@ -17,3 +17,7 @@ workspace on PYTHONPATH. It is an evaluation fixture, not a runtime/maintainer c
 
 `tool_batch_oracle.py.txt` freezes S108 behavioral checks against the real repository.
 Keep it outside autonomous repair workspaces; normal CI reuses it through a unit-test wrapper.
+
+`tool_batch_runtime_oracle.py.txt` is the S109 extension of the frozen batch oracle,
+including the actual runtime wrapper and persisted adapter/alias evidence. It also stays
+outside the model workspace; it is an evaluation fixture, not a new runtime command.
