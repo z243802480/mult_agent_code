@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from time import perf_counter
 from typing import Any
 
@@ -16,6 +16,7 @@ from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.runtime_hooks import RuntimeHookManager
 from asteria_runtime.core.runtime_policy import ToolPermissionPolicy
 from asteria_runtime.core.task_contract import allows_expected_failure
+from asteria_runtime.core.tool_batch_result import ToolBatchError
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.utils.time import now_iso
@@ -31,6 +32,32 @@ class ToolExecutionGateway:
     skill_adapter: Any = None
 
     def run_tool_calls(
+        self,
+        calls: list[dict],
+        task: dict,
+        context: RuntimeContext,
+        stop_on_failure: bool = True,
+        stop_verification_on_fatal: bool = False,
+    ) -> list[Any]:
+        if stop_on_failure:
+            return self._run_tool_calls(calls, task, context, True, stop_verification_on_fatal)
+        results: list[Any] = []
+        runtime_names = self.registry.names() if self.registry is not None else []
+        for index, raw_call in enumerate(calls):
+            call = raw_call
+            try:
+                call = adapt_model_tool_call(raw_call, runtime_names)
+                current = self._run_tool_calls([call], task, context, False,
+                                               stop_verification_on_fatal)
+                results.extend(current)
+            except Exception as exc:
+                raise ToolBatchError(results, call, exc, calls[index + 1:]) from exc
+            if (stop_verification_on_fatal and current
+                    and self._fatal_verification_failure(current[-1])):
+                break
+        return results
+
+    def _run_tool_calls(
         self,
         calls: list[dict],
         task: dict,
@@ -61,7 +88,11 @@ class ToolExecutionGateway:
                 # (mcp_invocations.jsonl + user_progress), so we deliberately skip the local-tool
                 # decide_tool / allowed-set / permission machinery here and only attach the
                 # observation so the agent loop feeds the result back like any other tool result.
-                mcp_result = self._run_mcp_call(tool_name, args, task, context, tool_call_id, started)
+                try:
+                    mcp_result = self._run_mcp_call(tool_name, args, task, context, tool_call_id, started)
+                except Exception as exc:
+                    self._record_adapter_exception(context, task, tool_name, tool_call_id, started, exc)
+                    raise
                 results.append(mcp_result)
                 if stop_on_failure and not getattr(mcp_result, "ok", False):
                     raise RuntimeError(
@@ -73,9 +104,13 @@ class ToolExecutionGateway:
                 # SkillAdapter.invoke runs its OWN capability gate (decide_skill), budget, and
                 # evidence (skill_invocations.jsonl + artifacts + user_progress), so we skip the
                 # local-tool machinery and only attach the observation for loop feedback.
-                skill_result = self._run_skill_call(
-                    tool_name, args, task, context, tool_call_id, started
-                )
+                try:
+                    skill_result = self._run_skill_call(
+                        tool_name, args, task, context, tool_call_id, started
+                    )
+                except Exception as exc:
+                    self._record_adapter_exception(context, task, tool_name, tool_call_id, started, exc)
+                    raise
                 results.append(skill_result)
                 if stop_on_failure and not getattr(skill_result, "ok", False):
                     raise RuntimeError(
@@ -181,6 +216,9 @@ class ToolExecutionGateway:
                     telemetry={"duration_ms": duration_ms},
                     file_changes=file_changes,
                 )
+                if model_tool_name != tool_name:
+                    observation = replace(observation, data={**observation.data,
+                                          "model_tool_name": model_tool_name})
                 setattr(result, "harness_observation", observation)
                 self._record_tool_progress(
                     context,
@@ -266,6 +304,9 @@ class ToolExecutionGateway:
                     telemetry={"duration_ms": duration_ms},
                     file_changes=pre_file_changes,
                 )
+                if model_tool_name != tool_name:
+                    observation = replace(observation, data={**observation.data,
+                                          "model_tool_name": model_tool_name})
                 self._record_tool_progress(
                     context,
                     task,
@@ -367,6 +408,19 @@ class ToolExecutionGateway:
                 )
                 raise
         return results
+
+    def _record_adapter_exception(
+        self, context: RuntimeContext, task: dict, tool_name: str, tool_call_id: str,
+        started: float, exc: Exception,
+    ) -> None:
+        observation = observation_from_exception(
+            tool_name=tool_name, exc=exc,
+            telemetry={"duration_ms": int((perf_counter() - started) * 1000)},
+        )
+        self._record_harness_observation(
+            context, task, tool_call_id, observation,
+            parent_event_id=None, capability_decision={},
+        )
 
     def _run_mcp_call(
         self,

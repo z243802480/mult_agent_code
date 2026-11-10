@@ -395,6 +395,13 @@ class BudgetController:
             "highest_ratio": highest_ratio,
         }
 
+    def cost_hard_stop_reached(self) -> bool:
+        pressure = self.pressure(self.policy, self.cost_report())
+        threshold = float((self.policy.get("context") or {}).get("hard_stop_threshold", 0.9))
+        # Context retains its existing compaction/recovery path; cost usage cannot shrink.
+        return any(ratio >= threshold for axis, ratio in pressure["ratios"].items()
+                   if axis != "context_window")
+
     def _check_limit(self, label: str, value: int, policy_key: str) -> None:
         limit = int(self.budgets[policy_key])
         if value > limit:

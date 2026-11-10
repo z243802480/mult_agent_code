@@ -71,6 +71,7 @@ class LocalExecutor:
         context: Any,
         on_event: Callable[[TurnEvent], None] | None = None,
     ) -> SubagentOutcome:
+        budget = getattr(context, "budget", None)
         result = run_model_driven_turn(
             model_client=model_client,
             tool_runner=tool_runner,
@@ -84,6 +85,7 @@ class LocalExecutor:
             transport="json",
             on_event=on_event,
             call_attribution=request.call_attribution,
+            budget_exhausted=budget.cost_hard_stop_reached if budget is not None else None,
         )
         # Surface what the child actually changed so the LEAD's completion contract can credit the
         # delegated artifacts (shared-workspace skeleton). Same artifact_refs extraction the lead
@@ -98,12 +100,16 @@ class LocalExecutor:
         return SubagentOutcome(
             ok=result.status == "completed",
             status=result.status,
-            summary=result.final_message or "subagent finished",
+            summary=result.final_message or (
+                "Subagent stopped at shared budget boundary"
+                if result.stop_reason == "budget_hard_stop" else "subagent finished"
+            ),
             iterations=result.iterations,
             data={
                 "role": request.role,
                 "backend": self.backend_kind,
                 "changed_files": child_changed,
+                **({"stop_reason": result.stop_reason} if result.stop_reason else {}),
             },
         )
 

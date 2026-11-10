@@ -14,3 +14,6 @@ Provider credentials, generated solutions and runtime ledgers are never part of 
 `boardkit_oracle.py.txt` is its independent requirement oracle, stored outside the seed;
 do not copy it into the model workspace. Run it from the finished workspace with that
 workspace on PYTHONPATH. It is an evaluation fixture, not a runtime/maintainer command.
+
+`tool_batch_oracle.py.txt` freezes S108 behavioral checks against the real repository.
+Keep it outside autonomous repair workspaces; normal CI reuses it through a unit-test wrapper.

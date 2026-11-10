@@ -477,17 +477,12 @@ class ExecuteCommand:
         """Per-task turn fuse for the model-driven loop (ADR-0016): a runaway backstop, NOT a
         cognitive round ceiling.
 
-        The former derivation ``max_rounds_per_task(≤8) + 4`` (default 6) was inherited from the
-        retired FSM's per-task *round* concept and is far too tight for a read-heavy edit: the model
-        reads several files to understand the code, and the fuse trips before it can write. When the
-        fuse trips the task is marked ``budget_exhausted`` → replanned, and the replan re-reads
-        everything from scratch (dogfood residual②, run-20260718 — the model spent its whole budget
-        navigating instead of editing). The fuse is a boundary, not cognition, so the real governors
-        stay the goal-level cost budget (``max_model_calls``/``max_tool_calls_per_goal``) and the
-        ``loop_quality_guard`` repeated-tool window; this only stops a *single* task turn from
-        spinning forever. Default headroom is generous (16) so read-then-edit finishes in one turn;
-        override with ``agent_loop.max_turn_iterations`` (e.g. tests force a quick fuse with a small
-        value, prod could widen it further)."""
+        S108 reproduced repeated navigation with the former default of 16: automatic continuation
+        kept action summaries but discarded the conversation before the edit. Align the default
+        with the existing goal model-call budget instead of repeatedly resetting within that budget.
+        The shared BudgetController still enforces actual usage across tasks and attempts; this
+        does not grant another budget. Explicit max_turn_iterations remains a separate short fuse.
+        """
         raw_agent_loop = policy.get("agent_loop")
         agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
         override = agent_loop.get("max_turn_iterations")
@@ -496,7 +491,17 @@ class ExecuteCommand:
                 return max(1, int(override))
             except (TypeError, ValueError):
                 pass
-        return max(self._agent_loop_max_rounds(policy) + 4, 16)
+        try:
+            limit = int(resolve_budget_limits(policy).get("max_model_calls_per_goal", 200))
+        except (TypeError, ValueError):
+            limit = 200
+        return max(1, limit)
+
+    @staticmethod
+    def _task_budget_hard_stop(context: RuntimeContext) -> bool:
+        if context.budget is None:
+            return False
+        return context.budget.cost_hard_stop_reached()
 
     def _auto_repair_enabled(self, policy: dict) -> bool:
         # Default bound to the permission mode (set-and-forget): auto/reviewed_auto → on so a
@@ -1397,6 +1402,7 @@ class ExecuteCommand:
                 if context.run_id
                 else None
             ),
+            budget_exhausted=lambda: self._task_budget_hard_stop(context),
             # 中途 steer（ADR-0029 ①）：与 pause 同一投递语义——外部进程（Studio / CLI）把用户指令写进
             # run 目录，运行中的 loop 只在回合边界读并清、经 messages.append(role="user") 注入。回调注入，
             # 循环不碰文件系统。flag 默认关时不注入 → 逐字节同今日（steer.request 不被读，前端排队照旧）。
@@ -1425,7 +1431,8 @@ class ExecuteCommand:
 
         # Explicit task checks are the completion boundary. Preserve exploratory failures
         # for the model/audit without making downstream checks a prerequisite of this slice.
-        if result.status != "paused" and declared_commands(task):
+        if (result.status != "paused" and result.stop_reason != "budget_hard_stop"
+                and declared_commands(task)):
             tool_name = next((name for name in ("run_tests", "run_command")
                               if name in available_tools), None)
             calls = [
@@ -1573,6 +1580,10 @@ class ExecuteCommand:
             status = "done"
             exit_reason = "completed"
             summary = result.final_message or "模型驱动循环已完成并通过完成契约。"
+        elif result.stop_reason == "budget_hard_stop":
+            status = "blocked"
+            exit_reason = "budget_hard_stop"
+            summary = "目标预算已到硬停止边界，保留当前证据，等待预算决策后续作。"
         elif result.status == "budget_exhausted":
             status = "blocked"
             exit_reason = "max_rounds"
@@ -2897,36 +2908,42 @@ class _SubagentAwareToolRunner:
         stop_on_failure: bool = True,
         stop_verification_on_fatal: bool = False,
     ) -> list[Any]:
-        # Collect the batch's spawn_subagent calls so they can fan out concurrently (ADR-0023),
-        # while non-spawn tools still run serially through the frozen gateway (permissions / sandbox
-        # / evidence intact). Results are reassembled into the model's original call order.
-        spawn_indices = [
-            index
-            for index, call in enumerate(calls)
-            if str(call.get("tool_name") or "") == "spawn_subagent"
-        ]
-        spawn_results: dict[int, Any] = {}
-        if spawn_indices:
-            spawn_args = [calls[index].get("args") or {} for index in spawn_indices]
-            batched = (
-                self._spawn_batch(spawn_args)
-                if self._spawn_batch is not None
-                else [self._spawn(args) for args in spawn_args]
-            )
-            spawn_results = dict(zip(spawn_indices, batched))
+        from asteria_runtime.core.tool_batch_result import ToolBatchError
 
         results: list[Any] = []
-        for index, call in enumerate(calls):
-            if index in spawn_results:
-                results.append(spawn_results[index])
-            else:
-                results.extend(
-                    self._gateway.run_tool_calls(
-                        [call],
-                        task,
-                        context,
-                        stop_on_failure=stop_on_failure,
+        index = 0
+        while index < len(calls):
+            spawning = calls[index].get("tool_name") == "spawn_subagent"
+            end = index + 1
+            while end < len(calls) and (calls[end].get("tool_name") == "spawn_subagent") == spawning:
+                end += 1
+            group = calls[index:end]
+            try:
+                if spawning:
+                    # Keep adjacent expert fan-out, but never launch it ahead of earlier local
+                    # calls: a permission failure must leave subsequent side effects unexecuted.
+                    args = [call.get("args") or {} for call in group]
+                    current = (self._spawn_batch(args) if self._spawn_batch is not None
+                               else [self._spawn(arg) for arg in args])
+                else:
+                    current = self._gateway.run_tool_calls(
+                        group, task, context, stop_on_failure=stop_on_failure,
                         stop_verification_on_fatal=stop_verification_on_fatal,
                     )
-                )
+            except ToolBatchError as exc:
+                raise ToolBatchError(results + exc.results, exc.failed_call, exc.cause,
+                                     exc.skipped_calls + calls[end:]) from exc
+            except Exception as exc:
+                if stop_on_failure:
+                    raise
+                # A spawn callback may have launched children before failing. Report the batch
+                # outcome as unknown, rather than claiming its first child failed or never ran.
+                failed = group[0] if len(group) == 1 else {
+                    "tool_name": "spawn_subagent_batch" if spawning else "tool_batch",
+                }
+                raise ToolBatchError(results, failed, exc, calls[end:]) from exc
+            results.extend(current)
+            if len(current) < len(group):
+                break  # The gateway honored stop_verification_on_fatal.
+            index = end
         return results

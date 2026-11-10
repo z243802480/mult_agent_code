@@ -1,0 +1,133 @@
+"""S108 held-out behavioral checks. Run from the target repository root."""
+import json
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, str(Path.cwd() / "src"))
+sys.path.insert(1, str(Path.cwd()))
+from asteria_runtime.core.model_driven_turn import execute_tool_calls, run_model_driven_turn
+from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.runtime_policy import ToolPermissionPolicy
+from asteria_runtime.core.tool_execution_gateway import ToolExecutionGateway
+from asteria_runtime.storage.schema_validator import SchemaValidator
+from tests.unit.test_model_driven_turn import FakeModelClient, _json_resp
+from tests.unit.test_tool_execution_gateway import FakeRegistry
+
+
+class Registry(FakeRegistry):
+    def __init__(self):
+        self.seen = []
+
+    def call(self, name, context, **kwargs):
+        self.seen.append((name, kwargs.get("path"), kwargs.get("command")))
+        if kwargs.get("path") == "budget.txt":
+            from asteria_runtime.core.budget import BudgetExceededError
+            raise BudgetExceededError("controlled tool budget exhausted")
+        if kwargs.get("path") == "raise.txt":
+            raise RuntimeError("controlled implementation exception")
+        if kwargs.get("path") == "fail.txt":
+            from asteria_runtime.tools.base import ToolResult
+            return ToolResult(ok=False, summary="controlled result failure", error="probe")
+        return super().call(name, context, **kwargs)
+
+
+class BatchFidelity(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="s108-oracle-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        validator = SchemaValidator(Path.cwd() / "schemas")
+        self.context = RuntimeContext(root=self.root, run_id="run-1", policy={"protected_paths": []},
+                                      validator=validator, run_dir_override=self.root)
+        self.registry = Registry()
+        self.gateway = ToolExecutionGateway(self.registry, ToolPermissionPolicy(self.root, validator))
+        self.task = {"task_id": "task-0001", "allowed_tools": ["read_file", "search_text"]}
+
+    def call(self, name="read_file", path="first.txt"):
+        return {"tool_name": name, "args": {"path": path}}
+
+    def check_prefix_failure(self, observations, name):
+        self.assertGreaterEqual(len(observations), 2, "completed prefix and failing call must both survive")
+        self.assertEqual((observations[0].tool_name, observations[0].ok), ("read_file", True))
+        self.assertEqual((observations[1].tool_name, observations[1].ok), (name, False))
+        self.assertTrue(all(not o.ok for o in observations[2:]), "unexecuted suffix must never look successful")
+
+    def test_permission_failure_preserves_prefix_and_stops_suffix(self):
+        observations = execute_tool_calls(self.gateway, [self.call(), self.call("write_file", "denied.txt"),
+                                         self.call(path="suffix.txt")], self.task, self.context)
+        self.check_prefix_failure(observations, "write_file")
+        self.assertEqual(self.registry.seen, [("read_file", "first.txt", None)])
+        report = str(observations).lower()
+        self.assertTrue(any(word in report for word in ("not executed", "not_executed", "not run", "unexecuted", "skipped")), "aborted suffix must be explicitly described")
+        evidence = [json.loads(line) for line in (self.root / "tool_observations.jsonl").read_text().splitlines()]
+        self.assertEqual([(r["tool_name"], r["ok"]) for r in evidence], [("read_file", True), ("write_file", False)])
+
+    def test_same_tool_exception_keeps_first_success_and_exactly_once(self):
+        observations = execute_tool_calls(self.gateway, [self.call(), self.call(path="raise.txt"),
+                                         self.call(path="suffix.txt")], self.task, self.context)
+        self.check_prefix_failure(observations, "read_file")
+        self.assertEqual(self.registry.seen.count(("read_file", "first.txt", None)), 1)
+        self.assertIn("controlled implementation exception", str(observations[1]))
+
+    def test_budget_exception_stops_suffix_and_keeps_prefix(self):
+        observations = execute_tool_calls(self.gateway, [self.call(), self.call(path="budget.txt"),
+                                         self.call(path="suffix.txt")], self.task, self.context)
+        self.check_prefix_failure(observations, "read_file")
+        self.assertEqual([p for _, p, _ in self.registry.seen], ["first.txt", "budget.txt"])
+        self.assertIn("budget", str(observations[1]).lower())
+
+    def test_returned_failure_does_not_erase_other_results(self):
+        observations = execute_tool_calls(self.gateway, [self.call(), self.call(path="fail.txt"),
+                                         self.call(path="last.txt")], self.task, self.context)
+        self.assertEqual([o.ok for o in observations], [True, False, True])
+        self.assertEqual([p for _, p, _ in self.registry.seen], ["first.txt", "fail.txt", "last.txt"])
+
+    def test_all_success_and_aliases_keep_runtime_names(self):
+        calls = [self.call(), {"tool_name": "grep", "args": {"path": ".", "pattern": "x"}}]
+        observations = execute_tool_calls(self.gateway, calls, self.task, self.context)
+        self.assertEqual([(o.tool_name, o.ok) for o in observations], [("read_file", True), ("search_text", True)])
+        self.assertEqual(len(self.registry.seen), 2)
+
+    def test_default_gateway_still_raises_permission_denial(self):
+        with self.assertRaises(PermissionError):
+            self.gateway.run_tool_calls([self.call("write_file", "denied.txt")], self.task, self.context)
+        self.assertFalse(self.registry.seen)
+
+    def test_mcp_exception_keeps_local_prefix(self):
+        class ExplodingMcp:
+            def invoke_tool(self, **kwargs):
+                raise RuntimeError("MCP transport broke")
+        gateway = ToolExecutionGateway(self.registry, self.gateway.permission_policy, mcp_adapter=ExplodingMcp())
+        observations = execute_tool_calls(gateway, [self.call(), {"tool_name": "mcp__demo__echo", "args": {}},
+                                         self.call(path="suffix.txt")], self.task, self.context)
+        self.check_prefix_failure(observations, "mcp__demo__echo")
+        self.assertIn("MCP transport broke", str(observations[1]))
+
+    def test_skill_exception_keeps_local_prefix(self):
+        class ExplodingSkill:
+            def invoke(self, **kwargs):
+                raise RuntimeError("skill adapter broke")
+        gateway = ToolExecutionGateway(self.registry, self.gateway.permission_policy, skill_adapter=ExplodingSkill())
+        observations = execute_tool_calls(gateway, [self.call(), {"tool_name": "skill__demo", "args": {}},
+                                         self.call(path="suffix.txt")], self.task, self.context)
+        self.check_prefix_failure(observations, "skill__demo")
+        self.assertIn("skill adapter broke", str(observations[1]))
+
+    def test_next_model_request_sees_real_prefix_and_failing_tool(self):
+        calls = [self.call(), self.call("write_file", "denied.txt"), self.call(path="suffix.txt")]
+        model = FakeModelClient([_json_resp("batch", calls), _json_resp("stop", [], done=True)])
+        result = run_model_driven_turn(model_client=model, tool_runner=self.gateway, task=self.task,
+                                      context=self.context, available_tools=["read_file", "write_file"],
+                                      system_prompt="system", user_prompt="test batch feedback", transport="json")
+        self.check_prefix_failure(result.observations, "write_file")
+        feedback = "\n".join(m.content for m in model.requests[1].messages if m.role == "user")
+        self.assertIn("read_file ok:", feedback)
+        self.assertIn("write_file", feedback)
+        self.assertEqual(self.registry.seen, [("read_file", "first.txt", None)])
+
+
+if __name__ == "__main__":
+    print("TARGET MODULE:", sys.modules["asteria_runtime.core.model_driven_turn"].__file__)
+    unittest.main(verbosity=2)

@@ -3670,6 +3670,10 @@ def test_model_driven_run_records_task_progress_digest(tmp_path: Path) -> None:
     """residual② persistence half: a task turn writes a compact on-disk ledger of what it did, so a
     later replan/resume of the same task continues instead of re-reading from scratch."""
     InitCommand(tmp_path).run()
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy.setdefault("agent_loop", {})["max_turn_iterations"] = 3
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
 
     client = FakeModelDrivenVerifiesNeverDoneClient()

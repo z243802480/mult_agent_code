@@ -24,7 +24,7 @@ codex-rs `tasks/regular.rs::run_turn` 与 Anthropic tool-use 规范循环——
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Protocol
 
 from asteria_runtime.core.agent_harness import (
@@ -33,6 +33,7 @@ from asteria_runtime.core.agent_harness import (
     observation_from_tool_result,
 )
 from asteria_runtime.core.worker_transport import extract_tool_calls, tool_definitions_for
+from asteria_runtime.core.tool_batch_result import ToolBatchError
 from asteria_runtime.models.base import ChatMessage, ChatRequest
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 
@@ -102,6 +103,7 @@ class ModelDrivenTurnResult:
     # 人审边界命中时（ADR-0016：人审=显式边界）携带待人批的 DecisionPoint，供上层落 decisions.jsonl
     # 并把整个 run 报成 paused。非暂停路径恒为 None。
     pending_decision: Any = None
+    stop_reason: str = ""
 
 
 def run_model_driven_turn(
@@ -126,6 +128,7 @@ def run_model_driven_turn(
     hook: Callable[[str, dict], TurnControl] | None = None,
     approval_gate: Callable[[list[dict]], Any] | None = None,
     pause_requested: Callable[[], bool] | None = None,
+    budget_exhausted: Callable[[], bool] | None = None,
     take_steer: Callable[[], list[str]] | None = None,
     call_attribution: dict[str, Any] | None = None,
 ) -> ModelDrivenTurnResult:
@@ -168,6 +171,14 @@ def run_model_driven_turn(
 
     nudged = False
     consecutive_invalid_turns = 0
+
+    def budget_stop(iterations: int) -> ModelDrivenTurnResult:
+        emit(TurnEvent(kind="fuse", iteration=iterations, text="budget_hard_stop"))
+        return ModelDrivenTurnResult(
+            status="budget_exhausted", final_message="", iterations=iterations,
+            events=events, observations=all_observations, stop_reason="budget_hard_stop",
+        )
+
     for iteration in range(1, max_iterations + 1):
         # 用户暂停边界（与人审边界同一条通路）：只在**回合起点**检查——上一批工具已经跑完、下一次
         # 模型调用还没发出。所以暂停不会把一批工具劈成两半，workspace 无残留写入，run 可 resume。
@@ -182,6 +193,8 @@ def run_model_driven_turn(
                 observations=all_observations,
                 pending_decision=None,  # 用户暂停 ≠ 待人批决策
             )
+        if budget_exhausted is not None and budget_exhausted():
+            return budget_stop(iteration - 1)
         # 用户中途转向（steer, ADR-0029 ①）：把用户在运行中说的话，作为一条 user-turn 上下文喂给模型
         # 下一次输入——与下面 turn_start hook 完全同一条注入通路（messages.append role="user"）。
         # ADR-0016：注入的是**用户原话**，模型自己决定怎么采纳（认知归模型）；harness 只在**回合边界**
@@ -217,6 +230,9 @@ def run_model_driven_turn(
             ),
         )
         response = model_client.chat(request)
+        # Usage is known after the response. Stop before executing its proposed tool batch.
+        if budget_exhausted is not None and budget_exhausted():
+            return budget_stop(iteration)
         narration, calls, protocol_error = _read_turn(response, transport)
         if protocol_error:
             # Plain prose is not a model decision in the JSON transport: it contains neither a
@@ -368,15 +384,44 @@ def execute_tool_calls(
     context: Any,
 ) -> list[ToolObservation]:
     """执行一批工具调用，把每个结果（含失败）转成 observation。工具层自身报错也化为 observation。"""
+    def project(result: Any, call: dict) -> ToolObservation:
+        observed = getattr(result, "harness_observation", None)
+        if isinstance(observed, ToolObservation):
+            return observed
+        return observation_from_tool_result(
+            tool_name=str(call.get("tool_name") or "tool"), result=result,
+        )
+
     try:
         results = tool_runner.run_tool_calls(calls, task, context, stop_on_failure=False)
+    except ToolBatchError as exc:
+        observations = [project(result, call) for call, result in zip(calls, exc.results)]
+        name = str(exc.failed_call.get("tool_name") or "tool")
+        failure = observation_from_exception(tool_name=name, exc=exc.cause)
+        args = exc.failed_call.get("args") or {}
+        data = {**failure.data, "failed_call_index": len(exc.results),
+                "unexecuted_tools": [str(c.get("tool_name") or "tool") for c in exc.skipped_calls]}
+        if name in {"run_command", "run_tests", "run_pytest"} and args.get("command"):
+            data["requested_command"] = args["command"]
+        if exc.failed_call.get("model_tool_name"):
+            data["model_tool_name"] = exc.failed_call["model_tool_name"]
+        suffix = (f"; {len(exc.skipped_calls)} subsequent call(s) not executed."
+                  if exc.skipped_calls else "")
+        observations.append(replace(failure, data=data, summary=failure.summary + suffix))
+        return observations
     except Exception as exc:  # 工具网关自身异常同样只是 observation，绝不触发独立 repair 路径
-        tool_name = str((calls[0] if calls else {}).get("tool_name") or "tool")
+        tool_name = str(calls[0].get("tool_name") or "tool") if len(calls) == 1 else "tool_batch"
         return [observation_from_exception(tool_name=tool_name, exc=exc)]
-    observations: list[ToolObservation] = []
+    observations = []
     for call, result in zip(calls, results):
-        tool_name = str(call.get("tool_name") or "tool")
-        observations.append(observation_from_tool_result(tool_name=tool_name, result=result))
+        observations.append(project(result, call))
+    if len(results) != len(calls):
+        observations.append(observation_from_exception(
+            tool_name="tool_batch", exc=RuntimeError(
+                f"Tool runner returned {len(results)} results for {len(calls)} calls; "
+                "unmatched outcomes are unknown. Inspect evidence before retrying side effects."
+            ),
+        ))
     return observations
 
 

@@ -1338,6 +1338,15 @@ class RunCommand:
                 # (真机跑出来的:ExecuteCommand.run 被调了两次,第一次 paused、第二次 done。)
                 self._user_paused = True
                 return progressed
+            loop_summary = latest_agent_loop_run_summary(
+                self.root / ".asteria" / "runs" / run_id, self.validator,
+            )
+            if (isinstance(loop_summary, dict)
+                    and loop_summary.get("exit_reason") == "budget_hard_stop"
+                    and loop_summary.get("task_id") in {item.task_id for item in execute.executed_tasks}):
+                # Reuse the existing budget DecisionPoint; do not feed a cost boundary into repair.
+                if self._budget_guard(run_id, steps, "task-turn"):
+                    return progressed
             steps.append(
                 RunStepSummary(
                     "execute",
