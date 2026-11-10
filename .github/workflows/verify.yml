@@ -101,7 +101,15 @@ jobs:
           exit "$result"
 
       - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
+        run: |
+          set +e
+          npx playwright install --with-deps chromium 2>&1 | tee playwright-install.log
+          result=${PIPESTATUS[0]}
+          set -e
+          if [ "$result" -ne 0 ]; then
+            python -c "from pathlib import Path; s=Path('playwright-install.log').read_text(errors='replace')[-3500:]; print('::error title=Playwright install failure tail::'+s.replace('%','%25').replace(chr(13),'%0D').replace(chr(10),'%0A'))"
+          fi
+          exit "$result"
 
       # The UI specs are hermetic: each boots its own Studio server against a seeded temp workspace.
       # They used to be un-runnable in CI (one keyed off the developer's local .asteria/runs), which

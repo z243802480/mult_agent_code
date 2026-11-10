@@ -935,6 +935,16 @@ def run_agent_run_with_retries(args: argparse.Namespace, result: SmokeResult) ->
         last_record = record
         if record.returncode == 0:
             return record
+        run_id = current_run_id(result.workspace)
+        run_path = result.workspace / ".asteria" / "runs" / str(run_id) / "run.json"
+        if (
+            run_id
+            and run_path.exists()
+            and json.loads(run_path.read_text(encoding="utf-8")).get("status") == "paused"
+        ):
+            # A recorded approval/budget pause takes precedence over transport words
+            # elsewhere in the log. Re-running a goal cannot resolve that boundary.
+            return record
         if attempt >= attempts or not is_transient_provider_failure(record):
             return record
     if last_record is None:

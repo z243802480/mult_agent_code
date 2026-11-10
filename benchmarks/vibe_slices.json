@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S102",
+  "active_slice": "S103",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1003,6 +1003,22 @@
         "documentation contracts"
       ],
       "reference_brief": "benchmarks/reference_briefs/S102-cross-file-dogfood.md"
+    },
+    {
+      "id": "S103",
+      "name": "Fixed-task cost comparison and smoke pause boundary",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S102"
+      ],
+      "user_demo": "Policy pauses are not blindly retried; compare identical real tasks and verify pushed commit CI",
+      "green_checks": [
+        "policy pause no-retry regression",
+        "same-task provider/tool/time evidence",
+        "unchanged independent tests",
+        "documentation contracts and exact commit CI"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S103-cost-comparison-and-smoke-boundary.md"
     }
   ]
 }

@@ -653,6 +653,52 @@ def test_real_model_smoke_treats_stream_deadline_as_transient() -> None:
     assert is_transient_provider_failure(record)
 
 
+@pytest.mark.parametrize("returncode", [0, 1])
+@pytest.mark.parametrize("transport_noise", [False, True])
+def test_real_model_smoke_does_not_retry_policy_pause(
+    tmp_path, monkeypatch, returncode, transport_noise
+) -> None:
+    run_dir = tmp_path / ".asteria" / "runs" / "run-20261110-0001"
+    run_dir.mkdir(parents=True)
+    (run_dir / "run.json").write_text(
+        json.dumps({"run_id": run_dir.name, "status": "paused"}), encoding="utf-8"
+    )
+    record = CommandRecord(
+        name="run",
+        command=["asteria", "/run"],
+        returncode=returncode,
+        stdout="",
+        stderr="Run status is 'paused'."
+        + (" Earlier request timed out." if transport_noise else ""),
+    )
+
+    assert is_transient_provider_failure(record) is transport_noise
+    calls = []
+
+    def run(*args, **kwargs):
+        calls.append(kwargs["name"])
+        return record
+
+    monkeypatch.setattr(smoke_runtime, "run_command", run)
+    args = argparse.Namespace(
+        run_attempts=3,
+        goal="guarded goal",
+        python=sys.executable,
+        max_iterations=3,
+        max_tasks_per_iteration=1,
+        no_research=True,
+    )
+    result = SmokeResult(
+        workspace=tmp_path,
+        run_id=None,
+        expected_file=tmp_path / "result.txt",
+        final_report=None,
+        transcript=tmp_path / "transcript.json",
+    )
+    assert smoke_runtime.run_agent_run_with_retries(args, result) is record
+    assert calls == ["run"]
+
+
 def test_real_model_gate_requires_model_check_call_ok() -> None:
     assert model_check_ok(
         GateCommand(
