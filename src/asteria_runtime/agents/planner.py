@@ -251,6 +251,14 @@ class RequirementPlanner:
                 "quality": self._quality_assessment(requirement, artifacts),
                 "notes": notes,
             }
+            if isinstance(raw.get("read_scope"), list):
+                # Carry model-declared context through the existing read boundary, while
+                # retaining the task's own artifacts and project guidance. No write grant.
+                task["read_scope"] = list(dict.fromkeys(
+                    [*read_scope(task), *_model_string_list(raw["read_scope"])]
+                ))
+            if isinstance(raw.get("validation_commands"), list):
+                task["validation_commands"] = _model_string_list(raw["validation_commands"])
             task["completion_contract"] = completion_contract(task)
             task["verification_policy"] = self._verification_policy(task, goal_spec)
             if execution_profile == SESSION_AGENT:
@@ -1252,9 +1260,12 @@ class RequirementPlanner:
 
     def _verification_policy(self, task: dict, goal_spec: dict) -> dict:
         contract = completion_contract(task)
+        source = task.get("validation_commands")
+        if not isinstance(source, list):
+            source = goal_spec.get("verification_strategy", [])
         commands = [
             str(item)
-            for item in goal_spec.get("verification_strategy", [])
+            for item in source
             if isinstance(item, str) and item.strip()
         ]
         return {

@@ -120,6 +120,15 @@ You must:
   slice, its behavior, and its target artifact.
 - Write 1-6 acceptance criteria per task that a tool or reviewer can check — name files,
   tests, or commands. Never "works correctly" without an observable check.
+- Include read_scope for each task's necessary context: specifications, existing code,
+  and immutable tests. A discovery task does not make its files readable to later tasks.
+  Keep these read dependencies separate from expected_changed_files.
+- Give each task validation_commands that can pass after THAT task and its dependencies.
+  Do not require a partial implementation to pass tests for downstream features. Keep
+  tightly coupled changes together, or put complete goal verification in a final task
+  depending on all implementation work. Preserve the user's full acceptance at that stage.
+  Use actual available commands, never placeholders. If verification is by file evidence,
+  use an empty command list and describe that evidence in the acceptance criteria.
 - Treat unverified commands in GoalSpec as suggestions, not requirements. For document/content
   checks, specify the observable content and use file tools; only prescribe a shell command when
   it is known to be available on the host OS or in the project.
@@ -167,6 +176,8 @@ Return this exact JSON shape:
       "acceptance": ["observable criterion naming a file, test, or command"],
       "expected_artifacts": ["src/tool.py"],
       "expected_changed_files": ["src/tool.py"],
+      "read_scope": ["README.md", "src/tool.py", "tests/test_tool.py"],
+      "validation_commands": ["a known available command checking this slice"],
       "depends_on": []
     }}
   ]

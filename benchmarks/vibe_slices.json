@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S106",
+  "active_slice": "S107",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1067,6 +1067,23 @@
         "exact code CI"
       ],
       "reference_brief": "benchmarks/reference_briefs/S106-long-task-protocol-recovery.md"
+    },
+    {
+      "id": "S107",
+      "name": "Task contract propagation and autonomous full-goal dogfood",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S106"
+      ],
+      "user_demo": "The model completes a multi-module product goal with scoped context, stage checks and independent acceptance",
+      "green_checks": [
+        "model-owned read context and local checks survive normalization",
+        "read dependencies never become write permissions",
+        "frozen full-goal run with no solution intervention",
+        "complete independent tests and requirement oracle",
+        "exact code CI"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S107-task-contract-long-goal.md"
     }
   ]
 }

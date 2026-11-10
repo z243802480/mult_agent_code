@@ -161,3 +161,64 @@ def test_plan_agent_surfaces_schema_failures_as_plan_agent_error() -> None:
     agent = PlanAgent(FakeTaskPlanClient(_plan_payload()), _RejectingValidator())  # type: ignore[arg-type]
     with pytest.raises(PlanAgentError, match="schema validation"):
         agent.generate(goal_spec)
+
+
+def test_model_task_context_and_slice_checks_survive_normalization(tmp_path: Path) -> None:
+    from copy import deepcopy
+
+    from asteria_runtime.core.runtime_context import RuntimeContext
+    from asteria_runtime.core.runtime_profile_builder import RuntimeProfileBuilder
+    from asteria_runtime.storage.json_store import JsonStore
+
+    payload = _plan_payload()
+    payload["tasks"][0]["read_scope"] = ["README.md", "tests/test_password.py"]
+    payload["tasks"][0]["validation_commands"] = ["python -m pytest tests/test_password.py -k score"]
+    payload["tasks"][1]["read_scope"] = ["README.md", "password.py"]
+    payload["tasks"][1]["validation_commands"] = ["python -m pytest tests/ -q"]
+    goal = {"normalized_goal": "Implement and verify password scoring", "verification_strategy": ["python -m pytest tests/ -q"]}
+    original = deepcopy(goal)
+    first, final = _agent(payload).generate(goal)["tasks"]
+
+    assert goal == original
+    assert first["validation_commands"] == ["python -m pytest tests/test_password.py -k score"]
+    assert first["verification_policy"]["commands"] == first["validation_commands"]
+    assert final["validation_commands"] == goal["verification_strategy"]
+    assert final["depends_on"] == [first["task_id"]]
+    assert set(first["read_scope"]) >= {"AGENTS.md", "password.py", "README.md", "tests/test_password.py"}
+    assert "README.md" not in first["write_scope"]
+    assert "tests/test_password.py" not in first["write_scope"]
+
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    storage = JsonStore(validator)
+    storage.write(tmp_path / "task.json", first, "task")
+    persisted = storage.read(tmp_path / "task.json", "task")
+    mount = RuntimeProfileBuilder(validator).build_and_record(
+        context=RuntimeContext(root=tmp_path, run_id=None, policy={}, validator=validator),
+        task=persisted, worker_id="worker-slice", runtime_context={},
+    )
+    contract = mount.runtime_context["task_contract"]
+    assert contract["read_scope"] == first["read_scope"]
+    assert contract["validation_commands"] == first["validation_commands"]
+    assert contract["write_scope"] == first["write_scope"]
+
+
+def test_declared_read_context_stays_readonly_and_protected(tmp_path: Path) -> None:
+    from asteria_runtime.core.runtime_policy import ToolPermissionDenied, ToolPermissionPolicy
+    from asteria_runtime.security.path_guard import PathGuard, PathPolicyError
+
+    payload = _plan_payload()
+    payload["tasks"][0]["read_scope"] = ["README.md", ".env"]
+    task = _agent(payload).generate({"normalized_goal": "Implement password scoring"})["tasks"][0]
+    policy = ToolPermissionPolicy(tmp_path, SchemaValidator(Path.cwd() / "schemas"))
+    policy.enforce_tool_permission_profile(task, "read_file", {"path": "README.md"})
+    with pytest.raises(ToolPermissionDenied, match="denied write path"):
+        policy.enforce_tool_permission_profile(task, "write_file", {"path": "README.md", "content": "overwrite"})
+    with pytest.raises(PathPolicyError, match="protected"):
+        PathGuard(tmp_path, [".env"]).resolve_for_read(".env")
+
+
+def test_legacy_model_plan_keeps_goal_verification_fallback() -> None:
+    goal = {"normalized_goal": "Implement password scoring", "verification_strategy": ["python -m pytest tests/ -q"]}
+    for task in _agent(_plan_payload()).generate(goal)["tasks"]:
+        assert task["validation_commands"] == goal["verification_strategy"]
+        assert task["verification_policy"]["commands"] == goal["verification_strategy"]
