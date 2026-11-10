@@ -19,7 +19,7 @@ from asteria_runtime.core.budget import (
 from asteria_runtime.core.candidate_execution_gateway import CandidateExecutionGateway
 from asteria_runtime.core.context_budget import slim_workspace_files
 from asteria_runtime.core.context_loader import ContextLoader
-from asteria_runtime.core.context_prompt_view import context_prompt_view
+from asteria_runtime.core.context_prompt_view import execution_prompt_view
 from asteria_runtime.core.execution_environment import command_execution_context
 from asteria_runtime.core.expert_registry import expert_roles, resolve_expert
 from asteria_runtime.core.worker_executor import (
@@ -1809,7 +1809,9 @@ class ExecuteCommand:
             "project": project_config,
             "execution_environment": command_execution_context(self.root),
             "tool_contracts": tool_definitions_for(available_tools),
-            "runtime_context": context_prompt_view(runtime_context),
+            "runtime_context": execution_prompt_view(
+                runtime_context, project_guidance=project_guidance
+            ),
             "available_tools": available_tools,
             "allowed_tools": task.get("allowed_tools", []),
             "methodology_skills": self._methodology_skills(runtime_context),

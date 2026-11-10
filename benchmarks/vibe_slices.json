@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S104",
+  "active_slice": "S105",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1035,6 +1035,22 @@
         "documentation contracts"
       ],
       "reference_brief": "benchmarks/reference_briefs/S104-successful-task-cost-sampling.md"
+    },
+    {
+      "id": "S105",
+      "name": "Execution context composition and safe deduplication",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S104"
+      ],
+      "user_demo": "Smaller execution input with guidance, permissions, tool contracts and verification preserved",
+      "green_checks": [
+        "captured prompt composition measured",
+        "source context and unknown extensions preserved",
+        "real task independently verified",
+        "regressions and exact commit CI"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S105-execution-context-dedup.md"
     }
   ]
 }
