@@ -5,6 +5,11 @@ from pathlib import Path
 
 from asteria_runtime.core.policy_config import load_policy_config, merge_policy_defaults
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.evaluation.verification_evidence import (
+    discarded_task_ids,
+    final_round_verification,
+    verification_item_kind,
+)
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
@@ -129,55 +134,28 @@ class CorrectnessEvalCommand:
         return self._grade(signals)
 
     def _signals(self, run_dir: Path) -> dict:
-        # Grade the contract-judged FINAL verification round per task (S101 run-20261106-0001,
-        # 2026-11-06): the latest task_execution_evidence row per task carries exactly the
-        # verification_results that check_completion_contract consumed when it decided
-        # done/blocked. Grading every distinct command ever attempted instead pinned a
-        # contract-green run at 0.68 forever — 17 abandoned one-shot exploration probes (env
-        # detection, findstr trials, a denied path) counted as permanent verification failures
-        # no resume round could ever repair. Single-sources with
-        # execute_command._latest_verification_per_command / review_command's deterministic
-        # checks. Legacy runs without evidence verification_results fall back to the
-        # distinct-command history grading below. (--rerun is untouched: re-executing each
-        # recorded command against the CURRENT workspace is its own independent audit.)
         evidence = self.jsonl.read_all(run_dir / "task_execution_evidence.jsonl", None)
-        final_round: list[dict] = []
-        latest_by_task: dict[str, dict] = {}
-        for row in evidence:
-            task_id = str(row.get("task_id") or "")
-            latest_by_task[task_id] = row
-        for row in latest_by_task.values():
-            results = row.get("verification_results")
-            if isinstance(results, list):
-                final_round.extend(item for item in results if isinstance(item, dict))
-        # Commands only: a readback (read_file) proves presence, not correctness — grading it
-        # would let a code task that never ran any command grade as verified (the pre-existing
-        # rule below keeps "no executable verification → unproven" honest). Readbacks stay in
-        # review_command's verification_pass_rate, which always counted them.
-        final_round = [
-            item
-            for item in final_round
-            if item.get("requested_command")
-            or (item.get("data") or {}).get("requested_command")
-            or (item.get("data") or {}).get("command")
-        ]
-        if final_round:
-            passed = [item for item in final_round if item.get("ok") is True]
-            tasks = self._plan_tasks(run_dir)
-            active = [t for t in tasks if t.get("status") != "discarded"]
-            done = [t for t in active if t.get("status") == "done"]
-            blocked = [t for t in active if t.get("status") == "blocked"]
-            return {
-                "command_verification_call_count": len(final_round),
-                "command_verification_pass_count": len(passed),
-                "command_verification_pass_rate": len(passed) / len(final_round),
-                "task_completion_rate": (len(done) / len(active) if active else 0.0),
-                "blocked_task_count": len(blocked),
-            }
+        tasks = self._plan_tasks(run_dir)
+        discarded_ids = discarded_task_ids(tasks)
+        final_round = final_round_verification(evidence, discarded_ids=discarded_ids)
+        if final_round is not None:
+            # A readback or an explicitly empty final round cannot prove code correctness.
+            # Only runs without recorded final-round lists use the legacy history below.
+            command_results = [
+                item for item in final_round if verification_item_kind(item) == "command"
+            ]
+            return self._verification_signals(
+                tasks, len(command_results), sum(item.get("ok") is True for item in command_results)
+            )
         # Read without schema validation: these rows were validated on write, and a graded
         # read-only signal must not crash on a legacy/edge record — it only needs name + status.
         tool_calls = self.jsonl.read_all(run_dir / "tool_calls.jsonl", None)
-        command_calls = [c for c in tool_calls if c.get("tool_name") in VERIFICATION_TOOLS]
+        command_calls = [
+            c
+            for c in tool_calls
+            if c.get("tool_name") in VERIFICATION_TOOLS
+            and str(c.get("task_id") or "") not in discarded_ids
+        ]
         # Grade each DISTINCT verification command on its LATEST outcome, not the cumulative pass/fail
         # of every call. A repair loop necessarily runs the failing test first, then fixes and re-runs
         # it passing; counting that mandatory initial red as a permanent failure understates the pass
@@ -189,21 +167,20 @@ class CorrectnessEvalCommand:
         for call in command_calls:
             latest_by_command[(call.get("tool_name"), call.get("input_summary"))] = call
         graded_calls = list(latest_by_command.values())
-        passed = [c for c in graded_calls if c.get("status") == "success"]
+        return self._verification_signals(
+            tasks, len(graded_calls), sum(c.get("status") == "success" for c in graded_calls)
+        )
 
-        tasks = self._plan_tasks(run_dir)
-        active = [t for t in tasks if t.get("status") != "discarded"]
-        done = [t for t in active if t.get("status") == "done"]
-        blocked = [t for t in active if t.get("status") == "blocked"]
-
+    @staticmethod
+    def _verification_signals(tasks: list[dict], count: int, passed: int) -> dict:
+        active = [task for task in tasks if task.get("status") != "discarded"]
+        done = sum(task.get("status") == "done" for task in active)
         return {
-            "command_verification_call_count": len(graded_calls),
-            "command_verification_pass_count": len(passed),
-            "command_verification_pass_rate": (
-                len(passed) / len(graded_calls) if graded_calls else 0.0
-            ),
-            "task_completion_rate": (len(done) / len(active) if active else 0.0),
-            "blocked_task_count": len(blocked),
+            "command_verification_call_count": count,
+            "command_verification_pass_count": passed,
+            "command_verification_pass_rate": passed / count if count else 0.0,
+            "task_completion_rate": done / len(active) if active else 0.0,
+            "blocked_task_count": sum(task.get("status") == "blocked" for task in active),
         }
 
     def _plan_tasks(self, run_dir: Path) -> list[dict]:

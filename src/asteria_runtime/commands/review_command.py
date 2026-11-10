@@ -28,6 +28,11 @@ from asteria_runtime.core.execution_profile import (
 from asteria_runtime.core.run_config import effective_policy_for_run, load_run_config
 from asteria_runtime.core.runtime_evidence import RuntimeEvidenceReader
 from asteria_runtime.core.context_slimming import slim_review_context
+from asteria_runtime.evaluation.verification_evidence import (
+    discarded_task_ids,
+    final_round_verification,
+    verification_item_kind,
+)
 from asteria_runtime.models.base import ModelClient
 from asteria_runtime.models.factory import create_model_client
 from asteria_runtime.models.metered import MeteredModelClient
@@ -183,18 +188,6 @@ def _latest_verification_rows(rows: list[dict]) -> list[dict]:
     return result
 
 
-def _verification_item_kind(item: dict) -> str:
-    """Classify a final-round verification observation: command run vs artifact readback."""
-    data = item.get("data")
-    if not isinstance(data, dict):
-        data = {}
-    if item.get("requested_command") or data.get("requested_command") or data.get("command"):
-        return "command"
-    if data.get("path"):
-        return "readback"
-    return "other"
-
-
 _VERIFICATION_GAP_MARKERS = (
     "incomplete",
     "did not pass",
@@ -218,31 +211,6 @@ def _model_asserts_verification_gap(reason: str) -> bool:
     if "verif" not in lowered:
         return False
     return any(marker in lowered for marker in _VERIFICATION_GAP_MARKERS)
-
-
-def _final_round_verification(execution_evidence: list[dict]) -> list[dict]:
-    """The verification observations the completion contract actually judged.
-
-    The latest ``task_execution_evidence`` row per task carries that task's FINAL round
-    ``verification_results`` — the exact set ``check_completion_contract`` consumed when it
-    decided done/blocked. Grading review on THIS set single-sources verification semantics
-    with the completion gate (RA7b-4): the gate is the deterministic authority on
-    "verified", so review must not re-litigate it from raw attempt history (S101
-    run-20261106-0001: 17 abandoned one-shot exploration probes — env detection, findstr
-    trials, a denied path — permanently capped the historical pass rate at 0.68 on a run
-    whose contract-judged final state was fully green, and ``resume`` can never repair
-    already-recorded history). Earlier blocked rounds of the same task are superseded by
-    its latest row; tasks are append-only and chronological."""
-    latest_by_task: dict[str, dict] = {}
-    for row in execution_evidence:
-        task_id = str(row.get("task_id") or "")
-        latest_by_task[task_id] = row
-    collected: list[dict] = []
-    for row in latest_by_task.values():
-        results = row.get("verification_results")
-        if isinstance(results, list):
-            collected.extend(item for item in results if isinstance(item, dict))
-    return collected
 
 
 class ReviewCommand:
@@ -865,20 +833,19 @@ class ReviewCommand:
         runtime_summary = runtime_os_evidence.get("summary") or {}
         tasks = task_plan.get("tasks", [])
         active_tasks = [task for task in tasks if task["status"] != "discarded"]
-        discarded_task_ids = {
-            str(task.get("task_id") or "") for task in tasks if task.get("status") == "discarded"
-        }
+        discarded_ids = discarded_task_ids(tasks)
         done = [task for task in active_tasks if task["status"] == "done"]
         blocked = [task for task in active_tasks if task["status"] == "blocked"]
-        # Verification fields grade the contract-judged FINAL round per task (see
-        # _final_round_verification) — not raw attempt history, which penalizes mandatory
-        # red→green repair iterations and abandoned exploration probes forever.
-        final_verification = _final_round_verification(execution_evidence)
+        # Score the same retained final rounds as CorrectnessEval; full history stays
+        # available in the trajectory for audit and model review.
+        final_verification = final_round_verification(
+            execution_evidence, discarded_ids=discarded_ids
+        ) or []
         final_command_verification = [
-            item for item in final_verification if _verification_item_kind(item) == "command"
+            item for item in final_verification if verification_item_kind(item) == "command"
         ]
         final_readbacks = [
-            item for item in final_verification if _verification_item_kind(item) == "readback"
+            item for item in final_verification if verification_item_kind(item) == "readback"
         ]
         passed_verification = [item for item in final_verification if item.get("ok") is True]
         passed_command_verification = [
@@ -899,7 +866,7 @@ class ReviewCommand:
             "unrecovered_failed_worker_result_count": self._unrecovered_failed_worker_count(
                 worker_results,
                 execution_evidence,
-                discarded_task_ids=discarded_task_ids,
+                discarded_task_ids=discarded_ids,
                 all_active_tasks_done=len(done) == len(active_tasks) and bool(active_tasks),
             ),
             "merge_gate_block_count": len(

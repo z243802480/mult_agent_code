@@ -142,6 +142,27 @@ def test_search_tool_finds_text(tmp_path: Path) -> None:
     assert result.data["matches"][0]["line"] == 2
 
 
+def test_search_preserves_matches_and_reports_unreadable_files(tmp_path: Path, monkeypatch) -> None:
+    ctx = context(tmp_path)
+    (tmp_path / "good.txt").write_text("needle", encoding="utf-8")
+    (tmp_path / "locked.log").write_text("needle", encoding="utf-8")
+    original = Path.read_text
+
+    def read(path, *args, **kwargs):
+        if path.name == "locked.log":
+            raise PermissionError("file is held open")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read)
+    result = SearchTextTool().run(ctx, pattern="needle")
+
+    assert result.ok
+    assert [row["path"] for row in result.data["matches"]] == ["good.txt"]
+    assert result.data["unreadable_files"] == ["locked.log"]
+    assert result.data["scanned_files"] == 1
+    assert result.warnings == ["Search incomplete: could not read locked.log"]
+
+
 def test_read_only_tools_do_not_exhaust_risk_weighted_tool_budget(tmp_path: Path) -> None:
     ctx = context(tmp_path, max_tool_calls=2)
     tools = registry()

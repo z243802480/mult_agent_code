@@ -22,6 +22,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { testRuntimeEnv } from "./test-runtime-env.mjs";
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const studioDir = path.resolve(scriptsDir, "..");
@@ -147,7 +148,7 @@ function runOne(file) {
     cwd: studioDir,
     encoding: "utf8",
     timeout: 120000,
-    env: process.env,
+    env: testRuntimeEnv(),
   });
   const ms = Date.now() - started;
   if (res.status === 0) return { file, ok: true, ms };

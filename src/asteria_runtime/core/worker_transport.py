@@ -54,6 +54,24 @@ def tool_definitions_for(
     extra_specs: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     specs = {
+        "diff_workspace": {
+            "type": "function",
+            "function": {
+                "name": "diff_workspace",
+                "description": (
+                    "Compare one current file to its original text. Requires path and original; "
+                    "this does not discover workspace changes or require Git."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "original": {"type": "string"},
+                    },
+                    "required": ["path", "original"],
+                },
+            },
+        },
         "write_file": {
             "type": "function",
             "function": {

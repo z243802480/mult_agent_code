@@ -593,12 +593,33 @@ def test_review_command_excludes_discarded_replan_history_from_completion_rate(
     task_plan["tasks"].insert(0, original)
     task_plan_path.write_text(json.dumps(task_plan), encoding="utf-8")
 
+    # S102: a discarded task's terminal failed verification was still counted even
+    # after its replacement completed, permanently routing review back to resume.
+    evidence_path = run_dir / "task_execution_evidence.jsonl"
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8").splitlines()[-1])
+    evidence.update(
+        evidence_id="discarded-evidence",
+        task_id="task-0000",
+        status="blocked",
+        contract_check={"ok": False, "violations": ["verification did not pass"]},
+        verification_results=[
+            {"ok": False, "tool_name": "run_command", "data": {"command": "git diff"}}
+        ],
+    )
+    with evidence_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(evidence) + "\n")
+
     result = ReviewCommand(tmp_path, run_id=plan.run_id, model_client=FakeReviewClient()).run()
 
     assert result.status == "pass"
     eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
     assert eval_report["goal_eval"]["requirement_coverage"] == 1.0
     assert eval_report["outcome_eval"]["run_success"]
+    from asteria_runtime.commands.correctness_eval_command import CorrectnessEvalCommand
+
+    signal = CorrectnessEvalCommand(tmp_path).score_signal(run_dir)
+    assert signal is not None
+    assert signal["score"] == 1.0
 
 
 def test_review_command_includes_collaboration_summary_in_markdown_report(

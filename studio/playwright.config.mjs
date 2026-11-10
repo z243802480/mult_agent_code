@@ -1,4 +1,7 @@
 import { defineConfig } from "@playwright/test";
+import { testRuntimeEnv } from "./scripts/test-runtime-env.mjs";
+
+process.env.PYTHONPATH = testRuntimeEnv().PYTHONPATH;
 
 // The UI specs had no config at all, so `npx playwright test <path>` resolved differently depending
 // on the working directory (and could even pull a second, mismatched @playwright/test through npx —

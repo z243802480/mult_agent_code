@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S101",
+  "active_slice": "S102",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -987,6 +987,22 @@
         "documentation contracts"
       ],
       "reference_brief": "benchmarks/reference_briefs/S101-static-page-dogfood.md"
+    },
+    {
+      "id": "S102",
+      "name": "Linux cross-file repair real user task",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S101"
+      ],
+      "user_demo": "Repair two Python modules through goal, independent verification, review and accept",
+      "green_checks": [
+        "unchanged existing tests turn green",
+        "independent boundary checks",
+        "provider and tool evidence recorded honestly",
+        "documentation contracts"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S102-cross-file-dogfood.md"
     }
   ]
 }

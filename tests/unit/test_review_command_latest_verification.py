@@ -5,11 +5,40 @@ closes: an append-only ledger makes every historical red permanent, so cumulativ
 routed contract-green runs into an unfalsifiable resume loop."""
 
 from asteria_runtime.commands.review_command import (
-    _final_round_verification,
+    ReviewCommand,
     _latest_verification_rows,
-    _verification_item_kind,
     _verification_row_key,
 )
+
+from asteria_runtime.evaluation.verification_evidence import (
+    final_round_verification,
+    verification_item_kind,
+)
+
+
+def test_review_keeps_active_and_unattributed_verification_failures(tmp_path) -> None:
+    command = ReviewCommand(tmp_path)
+    evidence = [
+        {
+            "task_id": task_id,
+            "verification_results": [{"ok": False, "data": {"command": f"verify {task_id}"}}],
+        }
+        for task_id in ("old", "active", "unknown")
+    ]
+    checks = command._deterministic_checks(
+        {
+            "tasks": [
+                {"task_id": "active", "status": "blocked"},
+                {"task_id": "old", "status": "discarded"},
+            ]
+        },
+        {},
+        {"task_execution_evidence": evidence},
+    )
+
+    assert checks["blocked_task_count"] == 1
+    assert checks["command_verification_call_count"] == 2
+    assert checks["command_verification_pass_rate"] == 0
 
 
 def _call(tool_name: str, summary, status: str = "success", **extra) -> dict:
@@ -85,11 +114,11 @@ def test_final_round_verification_takes_latest_evidence_row_per_task() -> None:
             ],
         },
     ]
-    final = _final_round_verification(evidence)
+    final = final_round_verification(evidence)
     # task-0002's earlier blocked round is superseded by its done round.
     assert len(final) == 2
     assert all(item["ok"] for item in final)
-    assert [_verification_item_kind(item) for item in final] == ["readback", "command"]
+    assert [verification_item_kind(item) for item in final] == ["readback", "command"]
 
 
 def test_blocked_task_final_round_red_still_counts_as_red() -> None:
@@ -103,7 +132,7 @@ def test_blocked_task_final_round_red_still_counts_as_red() -> None:
             ],
         },
     ]
-    final = _final_round_verification(evidence)
-    kinds = [_verification_item_kind(item) for item in final]
+    final = final_round_verification(evidence)
+    kinds = [verification_item_kind(item) for item in final]
     assert kinds == ["command", "readback"]
     assert [item["ok"] for item in final] == [False, True]

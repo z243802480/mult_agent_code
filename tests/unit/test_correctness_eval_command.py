@@ -1,4 +1,7 @@
+import json
 from pathlib import Path
+
+import pytest
 
 from asteria_runtime.commands.correctness_eval_command import CorrectnessEvalCommand
 from asteria_runtime.commands.init_command import InitCommand
@@ -8,6 +11,27 @@ from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 SCHEMAS = Path("schemas")
+
+
+@pytest.mark.parametrize(
+    "final_results",
+    [[], [{"ok": True, "data": {"path": "result.py"}}], [{"ok": True, "data": "legacy"}]],
+    ids=["empty-round", "readback-only", "non-command-payload"],
+)
+def test_final_round_without_commands_does_not_inherit_historical_pass(
+    tmp_path: Path, final_results: list[dict]
+) -> None:
+    InitCommand(tmp_path).run()
+    run_id = _make_run(tmp_path, tool_calls=[("run_tests", "success")], tasks=["done"])
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    (run_dir / "task_execution_evidence.jsonl").write_text(
+        json.dumps({"task_id": "t0", "verification_results": final_results}) + "\n",
+        encoding="utf-8",
+    )
+    command = CorrectnessEvalCommand(tmp_path, run_id=run_id)
+
+    assert command.score_signal(run_dir) is None
+    assert command.run().report["overall"]["status"] == "fail"
 
 
 def _make_run(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from asteria_runtime.core.worker_transport import tool_definitions_for
+
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1750,6 +1752,14 @@ class ExecuteCommand:
             "- Work efficiently: put independent tool calls in one step (batch them), and prefer the "
             "specialized tools (read_file / search_text / find_files) over ad-hoc shell for reading "
             "and searching.\n"
+            "- Use the execution environment facts: if git_repository_detected is false, do not "
+            "use git status/diff as verification. Compare files to the original text with "
+            "diff_workspace(path, original) or read the changed files.\n"
+            "- Once required checks pass, repeat them only after a relevant code, input, or "
+            "environment change or to resolve a remaining uncertainty. An unavailable optional "
+            "inspection tool is not a failed product test; report its limitation and use an "
+            "available equivalent. Return actual failures as evidence and fix invalid commands "
+            "before retrying them.\n"
             "- When something fails, debug it — do not guess: reproduce the failure, find the true "
             "root cause from the ACTUAL error/output (not an unchecked hypothesis), then make the "
             "minimal fix and confirm it is resolved. A failure comes back as an observation, does "
@@ -1797,7 +1807,8 @@ class ExecuteCommand:
             },
             "memory_protocol": memory_protocol,
             "project": project_config,
-            "execution_environment": command_execution_context(),
+            "execution_environment": command_execution_context(self.root),
+            "tool_contracts": tool_definitions_for(available_tools),
             "runtime_context": context_prompt_view(runtime_context),
             "available_tools": available_tools,
             "allowed_tools": task.get("allowed_tools", []),

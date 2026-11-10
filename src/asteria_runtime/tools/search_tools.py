@@ -40,6 +40,7 @@ class SearchTextTool:
         needle = pattern if case_sensitive else pattern.lower()
         results: list[dict[str, object]] = []
         scanned = 0
+        unreadable: list[str] = []
         files = [root] if root.is_file() else root.rglob("*")
         for candidate in files:
             if len(results) >= self.max_results:
@@ -51,13 +52,16 @@ class SearchTextTool:
                 guard.resolve_for_read(rel)
             except (ValueError, PathPolicyError):
                 continue
-            if candidate.stat().st_size > self.max_file_bytes:
-                continue
-            scanned += 1
             try:
+                if candidate.stat().st_size > self.max_file_bytes:
+                    continue
                 lines = candidate.read_text(encoding="utf-8").splitlines()
             except UnicodeDecodeError:
                 continue
+            except OSError:
+                unreadable.append(rel)
+                continue
+            scanned += 1
             for line_number, line in enumerate(lines, start=1):
                 if compiled is not None:
                     matched = compiled.search(line) is not None
@@ -78,7 +82,12 @@ class SearchTextTool:
         return ToolResult(
             ok=True,
             summary=f"Found {len(results)} matches for {pattern!r}",
-            data={"matches": results, "scanned_files": scanned},
+            data={
+                "matches": results,
+                "scanned_files": scanned,
+                "unreadable_files": unreadable,
+            },
+            warnings=[f"Search incomplete: could not read {name}" for name in unreadable],
         )
 
 

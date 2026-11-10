@@ -44,3 +44,22 @@
 - 最终交互验证 = 模型自建的 headless Playwright 脚本 + 我方 preview 浏览器独立复测；没有人类手点全流程。
 - 本次仍是 Windows 单 OS 样本；Linux 与独立 provider 对照归 §16.2 第 14 行的后续采样。
 - run 账本在 `asteria-s101-closure-a46bb32f/.asteria/runs/run-20261106-0001/`（本机临时目录），含 prompt/工具/验证全量证据。
+
+## 2026-11-10 追加：Linux 采样环境探测
+
+本机 WSL Ubuntu 可启动（Linux、Python 3.12.3），仓库经 `/mnt/f/mult_agent_code` 可读。以 Linux Python 从源码导入 `process_fence.run_fenced`，在独立临时目录执行 `printf linux_fence_ok`，退出码 0、stdout 与预期相同。这只证明 POSIX 命令围栏的最小真实进程路径。
+
+首次探测时 Ubuntu 无 `pip`、`pytest`；普通 `python3 -m venv` 因缺 `ensurepip` 失败。该探测未形成 Linux 端 Asteria Goal→Accept 或独立 provider 样本。后续环境补齐与真跑结果见下一节；此环境缺口已解除。项目在 Linux 的必需依赖并不包含 pydantic/httpx，它们属于可选 future 依赖，缺少它们不能据此判定项目不可运行。
+
+## 2026-11-10 追加：本机 WSL Linux 真模型验收通过
+
+用户授权启动 WSL 并测试后，使用 Ubuntu/Python 3.12.3，在 Linux 用户缓存下建立隔离虚拟环境：`python3 -m venv --without-pip ~/.cache/asteria-s101/venv`，再由 PyPA 官方 `get-pip.py` 安装环境内 pip，并安装源码项目、pytest、pytest-asyncio。未安装系统或全局包。WSL 会话结束后 `/tmp` 的文件曾消失，故复用环境和工作区放在 Linux 用户缓存内。
+
+- Linux 回归命令：`~/.cache/asteria-s101/venv/bin/python -m pytest tests/unit/test_process_fence.py tests/unit/test_model_driven_turn.py tests/integration/test_tool_registry.py tests/unit/test_runtime_profiles.py tests/integration/test_execute_command.py -q`，在 `/mnt/f/mult_agent_code` 执行。结果 **96 passed, 1 skipped，82.76 秒**；跳过的是 Windows Job Object 专属子进程清理测试。
+- 路由：通过进程的 `ASTERIA_HOME` 使用本机既有路由配置，不复制配置或输出密钥。Linux `model-check --tier medium` 实际调用 MiniMax-M2.7 返回有效 JSON，`Call: ok / healthy`。cheap 配置虽仍为 fake，但该任务模型账本的 **12 次调用均为 minimax**，没有把占位调用计入真模型证据。
+- 用户任务：隔离工作区 `~/.cache/asteria-s101/workspace`，普通 `asteria goal --permission-level auto --model-strategy auto --no-research --max-iterations 3`。要求生成 Daylight 本地静态 HTML/CSS 页面，含标题、三个益处、入门区与页内链接，无 JavaScript/远端资源/持久化；明确结构检查不能证明浏览器布局。此样本与 Windows 的交互修复任务不同，不能据此声称同题跨 OS 对照成功率。
+- 运行 `run-20261110-0001`：规划 1 个任务，执行 1 completed/0 blocked，自动接受；12 次模型调用、12 次工具调用（todo_write 3、list_files 1、write_file 2、run_command 2、read_file 2、apply_patch 2）。期间一次 apply_patch 失败、后续成功修正，失败保留在账本。模型用真实 Python HTMLParser/文件断言检查内容、锚点、本地样式、响应式 CSS 与无脚本/外部资源，明确声明未证明浏览器布局。
+- 显式 `asteria review --root ~/.cache/asteria-s101/workspace`：**pass/1.00**，0 follow-up、0 DecisionPoint；随后 `asteria accept`：**accepted / completed / review pass**。Linux 用户任务已完整验收。
+- 独立检查：Windows Chrome 经 `file://wsl.localhost/Ubuntu/home/administrator/.cache/asteria-s101/workspace/index.html` 打开 Linux 产物；桌面渲染可读，所有页内链接目标存在；点击入门链接得到 `#getting-started`，375px 视口 `scrollWidth=360`，未横向溢出。浏览器在 Windows，不能记为 Linux 原生浏览器验证。截图仅在本机临时目录保留。
+
+账本与最终报告在上述工作区 `.asteria/runs/run-20261110-0001/`；本轮未改产品代码，也未包含工作区已有的 smoke 未提交改动及未跟踪验证目录。**Linux 运行样本已取得，独立 provider 对照仍未取得**。

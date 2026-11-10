@@ -589,7 +589,7 @@ def test_real_model_smoke_preserves_nonmatching_existing_expected_artifact(
     assert expected_file.read_text(encoding="utf-8") == "user content\n"
 
 
-def test_real_model_gate_runs_offline_when_explicitly_allowed(tmp_path: Path) -> None:
+def test_real_model_gate_does_not_claim_unused_strong_route_offline(tmp_path: Path) -> None:
     workspace = tmp_path / "gate-workspace"
     summary_path = tmp_path / "gate-summary.json"
     env = os.environ.copy()
@@ -612,16 +612,17 @@ def test_real_model_gate_runs_offline_when_explicitly_allowed(tmp_path: Path) ->
         env=env,
         text=True,
         capture_output=True,
-        check=True,
+        check=False,
     )
 
-    assert "Real model gate passed" in completed.stdout
+    assert completed.returncode == 1
     report = json.loads(summary_path.read_text(encoding="utf-8"))
-    assert report["ok"] is True
+    assert report["ok"] is False
+    assert report["failures"] == ["check failed: strong_route_used"]
     assert report["checks"]["strong_model_check"] is True
     assert report["checks"]["medium_model_check"] is True
     assert report["checks"]["smoke"] is True
-    assert report["checks"]["strong_route_used"] is True
+    assert report["checks"]["strong_route_used"] is False
     assert report["checks"]["medium_route_used"] is True
     assert report["model_call_summary"]["total_model_calls"] > 0
     assert report["routes"]["strong"]["provider"] == "fake"

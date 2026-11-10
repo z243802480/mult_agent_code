@@ -1196,7 +1196,14 @@ def _create_minimal_completed_run(root: Path) -> str:
             },
             "contract_check": {"ok": True},
             "tool_results": [{"tool": "run_command", "ok": True}],
-            "verification_results": [{"name": "workflow setup", "status": "pass"}],
+            "verification_results": [
+                {
+                    "name": "workflow setup",
+                    "status": "pass",
+                    "ok": True,
+                    "data": {"command": "pytest workflow", "returncode": 0},
+                }
+            ],
             "created_at": created_at,
         },
         "task_execution_evidence",
