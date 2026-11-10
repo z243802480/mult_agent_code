@@ -43,8 +43,8 @@ WSL Ubuntu / Python 3.12.3，既有本机路由，实际调用均为 MiniMax-M2.
 
 - 执行/规划/重规划/评审/context_package/runtime_profile/MCP 相关回归 90 passed；模型驱动循环/能力环境/专家注册与去重边界 48 passed（部分基础测试重叠，不相加）。最终保留 audit 策略/预算及自定义 section 的断言另行复验。
 - Ruff src/tests 通过；mypy ratchet 无新增（60 个既有错误，不改基线）；文档契约 23/23 与差异空白检查通过。
-- 精确提交的远端 Verify 等提交后核对，不以本地测试代替远端结果；keyed nightly 仍 NOT RUN。
+- 代码提交 dee309ae7ef7c4bc6da248c1c14519c78a3f2ce0 已推送；[Verify 42786745932](https://github.com/z243802480/mult_agent_code/actions/runs/42786745932) 的 Python 3.11、Python 3.13、Studio 三 job 全部 success，浏览器 UI 步骤实际执行通过。keyed nightly 仍 NOT RUN。本回执为后续仅文档更新，不改变已验证代码。
 
 原始证据只在本机：WSL `~/.cache/asteria-s105/`（撤回的探索版）、`~/.cache/asteria-s105-final/`（最终版 samples.json、prompt-measurement.json、运行和独立验收日志）；捕获请求在 `~/.cache/asteria-s105-probe-1zqm1dzm/requests.json` 和 `~/.cache/asteria-s105-probe-e_3i97s_/requests.json`。没有把凭据、运行目录或既有未跟踪验证目录放入仓库。
 
-ACTIVE_SLICE=S105，本刀最小实现与真实闭环完成。下一步在较实际的跨文件任务中检查工具格式契约和重复验证，先复现再决定是否修提示/工具反馈；本次 empty_patch 是候选证据，不据一次模型输出添加格式自动改写。独立 GLM 配额、大型仓库/数小时任务与广泛性能收益仍未验证。
+ACTIVE_SLICE=S105，本刀最小实现、真实闭环与精确代码 SHA 的远端验证均完成。下一步在较实际的跨文件任务中检查工具格式契约和重复验证，先复现再决定是否修提示/工具反馈；本次 empty_patch 是候选证据，不据一次模型输出添加格式自动改写。独立 GLM 配额、大型仓库/数小时任务与广泛性能收益仍未验证。
