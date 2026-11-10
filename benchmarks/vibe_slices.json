@@ -952,9 +952,7 @@
       "id": "S99",
       "name": "Beta doc-update dogfood and honest Review to Accept path",
       "phase": "Product dogfood",
-      "depends_on": [
-        "S98"
-      ],
+      "depends_on": ["S98"],
       "user_demo": "A real Studio doc-update goal reaches Review and Accept; the final action advances without reload",
       "green_checks": [
         "real-model isolated-workspace readback and Review/Accept evidence",
@@ -967,9 +965,7 @@
       "id": "S100",
       "name": "Model harness boundary audit and truthful command execution",
       "phase": "产品主路径 dogfood",
-      "depends_on": [
-        "S99"
-      ],
+      "depends_on": ["S99"],
       "user_demo": "Commands run as requested; failures return real exit status while models receive shell context",
       "green_checks": [
         "command gateway and model turn regressions",
@@ -982,9 +978,7 @@
       "id": "S101",
       "name": "Static landing page real beta task and follow-up friction",
       "phase": "产品主路径 dogfood",
-      "depends_on": [
-        "S100"
-      ],
+      "depends_on": ["S100"],
       "user_demo": "A real model creates a static page and browser verification checks its actual interaction",
       "green_checks": [
         "real model and tool evidence recorded without secrets",
