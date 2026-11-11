@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.core.agent_tool_surface import tool_surface_contract
+from asteria_runtime.tools.defaults import create_default_tool_registry
 
 
 MATRIX_CATALOG_PATH = Path("benchmarks") / "runtime_validation_matrix.json"
@@ -97,20 +98,7 @@ def _evaluate_case(
     details: dict[str, Any] = {}
     if evidence == "model_tool_surface_contract":
         contract = tool_surface_contract(
-            [
-                "find_files",
-                "read_file",
-                "list_files",
-                "search_text",
-                "write_file",
-                "apply_patch",
-                "run_command",
-                "run_tests",
-                "todo_read",
-                "todo_write",
-                "remember",
-                "recall_memory",
-            ],
+            create_default_tool_registry().names(),
             allow_shell=True,
         )
         surface = contract.get("model_facing_standard_surface")

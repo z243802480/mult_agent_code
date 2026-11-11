@@ -124,6 +124,19 @@ def test_runtime_validation_matrix_evidence_probe_records_all_required_cases(
     }
 
 
+def test_model_surface_uses_actual_registry_and_detects_missing_backends(tmp_path, monkeypatch):
+    import importlib
+    from asteria_runtime.tools.registry import ToolRegistry
+
+    module = importlib.import_module("asteria_runtime.core.runtime_validation_matrix")
+    complete = runtime_validation_matrix(tmp_path, {})
+    assert next(case for case in complete["cases"] if case["id"] == "model_tool_surface")["ok"]
+    monkeypatch.setattr(module, "create_default_tool_registry", ToolRegistry)
+    missing = runtime_validation_matrix(tmp_path, {})
+    case = next(case for case in missing["cases"] if case["id"] == "model_tool_surface")
+    assert not case["ok"] and case["gap_type"] == "implementation_missing"
+
+
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
     path.write_text(
         "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),

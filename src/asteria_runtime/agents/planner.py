@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 from asteria_runtime.core.edit_boundary import validate_edit_boundary
+from asteria_runtime.core.verification_revision import method_provenance
 from asteria_runtime.core.execution_profile import HARNESS, SESSION_AGENT
 from asteria_runtime.core.execution_preferences import apply_execution_preferences_to_task
 from asteria_runtime.core.fast_path_policy import classify_risk_tier
@@ -285,6 +286,12 @@ class RequirementPlanner:
                     runtime_context, kind,
                 )
             self._apply_runtime_contract(task, goal_spec)
+            if verification_policy.get("command_source") == "planner_task":
+                provenance = method_provenance(
+                    [str(c) for c in task["validation_commands"] or []], goal_spec, runtime_context,
+                )
+                if provenance is not None:
+                    verification_policy["method_provenance"] = provenance
             tasks.append(task)
         return tasks
 
@@ -1242,6 +1249,7 @@ class RequirementPlanner:
             "recall_memory",
             "run_command",
             "run_tests",
+            "revise_verification",
         ]
         if kind in {"diagnostic", "verification", "research", "decision"}:
             return readonly
@@ -1256,6 +1264,7 @@ class RequirementPlanner:
                 "apply_patch",
                 "restore_backup",
                 "run_command",
+                "revise_verification",
                 "todo_read",
                 "todo_write",
                 "remember",
@@ -1272,6 +1281,7 @@ class RequirementPlanner:
             "restore_backup",
             "run_command",
             "run_tests",
+            "revise_verification",
             "todo_read",
             "todo_write",
             "remember",

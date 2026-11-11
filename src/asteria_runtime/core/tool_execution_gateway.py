@@ -19,6 +19,7 @@ from asteria_runtime.core.runtime_policy import ToolPermissionPolicy
 from asteria_runtime.core.task_contract import allows_expected_failure
 from asteria_runtime.core.tool_batch_result import ToolBatchError
 from asteria_runtime.storage.jsonl_store import JsonlStore
+from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.tools.base import ToolResult, record_tool_call
 from asteria_runtime.utils.time import now_iso
@@ -215,6 +216,14 @@ class ToolExecutionGateway:
                     result.ok = True
                     result.error = None
                     result.summary = f"Diagnostic failure accepted: {result.summary}"
+                if tool_name == "revise_verification" and result.ok and context.run_dir is not None:
+                    # Execute holds this task dictionary through the turn and final gate.
+                    # Reload validated durable fields, never model-returned replacement criteria.
+                    board = JsonStore(context.validator).read(context.run_dir / "task_plan.json", "task_board")
+                    current = next(t for t in board["tasks"] if t["task_id"] == task["task_id"])
+                    context.validator.validate("task", current)
+                    for key in ("validation_commands", "verification_policy"):
+                        task[key] = current[key]
                 results.append(result)
                 if stop_on_failure and not result.ok:
                     raise RuntimeError(f"Tool failed: {tool_name}: {result.summary}")

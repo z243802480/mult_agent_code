@@ -20,6 +20,7 @@ class RuntimeContext:
     agent_dir_override: Path | None = None
     run_dir_override: Path | None = None
     tool_call_id: str | None = None
+    task_id: str | None = None
 
     @property
     def agent_dir(self) -> Path:

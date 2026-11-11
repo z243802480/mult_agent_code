@@ -151,6 +151,21 @@ def tool_definitions_for(
             },
         },
     }
+    specs["revise_verification"] = {
+        "type": "function",
+        "function": {
+            "name": "revise_verification",
+            "description": "Explicitly revise a defective planner method after failed and corrected "
+                           "executions. Keeps original failure, acceptance and user/project checks.",
+            "parameters": {
+                "type": "object",
+                "properties": {name: {"type": "string"} for name in (
+                    "original_command", "replacement_command", "reason", "coverage",
+                )},
+                "required": ["original_command", "replacement_command", "reason", "coverage"],
+            },
+        },
+    }
     native = [specs[name] for name in available_tools if name in specs]
     if extra_specs:
         native.extend(extra_specs)

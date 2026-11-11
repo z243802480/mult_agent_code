@@ -214,6 +214,83 @@
         "timeout_seconds": {
           "type": "integer",
           "minimum": 1
+        },
+        "method_provenance": {
+          "type": "object",
+          "required": [
+            "goal_sha256",
+            "guidance_sha256",
+            "revisable_commands",
+            "project_commands_sha256"
+          ],
+          "properties": {
+            "goal_sha256": {
+              "type": "string",
+              "minLength": 64
+            },
+            "guidance_sha256": {
+              "type": "string",
+              "minLength": 64
+            },
+            "revisable_commands": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "project_commands_sha256": {
+              "type": "string",
+              "minLength": 64
+            }
+          },
+          "additionalProperties": false
+        },
+        "method_revisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "original_command",
+              "replacement_command",
+              "reason",
+              "coverage",
+              "failed_observation_id",
+              "passed_observation_id",
+              "created_at"
+            ],
+            "properties": {
+              "original_command": {
+                "type": "string",
+                "minLength": 1
+              },
+              "replacement_command": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "coverage": {
+                "type": "string",
+                "minLength": 1
+              },
+              "failed_observation_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "passed_observation_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "created_at": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          }
         }
       }
     },

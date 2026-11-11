@@ -8,6 +8,7 @@ from asteria_runtime.tools.patch_tools import ApplyPatchTool, DiffWorkspaceTool
 from asteria_runtime.tools.registry import ToolRegistry
 from asteria_runtime.tools.search_tools import FindFilesTool, SearchTextTool
 from asteria_runtime.tools.todo_tools import TodoReadTool, TodoWriteTool
+from asteria_runtime.tools.verification_tools import ReviseVerificationTool
 
 
 def create_default_tool_registry() -> ToolRegistry:
@@ -26,4 +27,5 @@ def create_default_tool_registry() -> ToolRegistry:
     registry.register(RecallMemoryTool())
     registry.register(RunCommandTool())
     registry.register(RunTestsTool())
+    registry.register(ReviseVerificationTool())
     return registry

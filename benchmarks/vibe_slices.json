@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S129",
+  "active_slice": "S130",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1392,6 +1392,17 @@
       ],
       "reference_brief": "benchmarks/reference_briefs/S129-replan-edit-boundary.md",
       "status": "Engineering accepted: goal/parent edit ceiling intersection in repair plans and execution consumption.15new cases; Windows related72pass/1skip, WSL73; final Windowsfull1864, exact e0fffc1 CI43072934506 all jobs/UI green. Original joint failure unchanged; next S130."
+    },
+    {
+      "id": "S130",
+      "name": "模型自拟验证方法的证据化修订",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S127",
+        "S129"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S130-verification-method-revision.md",
+      "status": "In progress: provenance-bound method revision with execution evidence; preserve higher-level requirements and old failures."
     }
   ]
 }

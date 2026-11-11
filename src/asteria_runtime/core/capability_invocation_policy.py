@@ -28,6 +28,7 @@ class CapabilityInvocationPolicy:
         "run_command": "execute",
         "shell": "execute",
         "run_tests": "verify",
+        "revise_verification": "verify",
         "review_agent": "verify",
         "merge_gate": "verify",
     }

@@ -172,6 +172,20 @@ class ModelToolSurfaceAdapter:
                 ["Writes run-local model planning state; does not mutate task_plan.json."],
             ),
             self._tool(
+                "revise_verification",
+                "verify",
+                "allow",
+                "revise_verification",
+                {
+                    "original_command": "exact failed planner-proposed method",
+                    "replacement_command": "exact corrected command already executed successfully",
+                    "reason": "why the method is defective, not a reason to ignore artifact defects",
+                    "coverage": "how the replacement preserves the same claims and requirements",
+                },
+                ["Revises only an eligible current-task method with fresh execution evidence; "
+                 "preserves original failures, acceptance and user/project checks."],
+            ),
+            self._tool(
                 "remember",
                 "memory",
                 "allow",

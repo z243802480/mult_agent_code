@@ -484,7 +484,7 @@ class ReplanCommand:
         if (source_task.get("verification_policy") or {}).get("command_source") == "planner_task":
             task["verification_policy"]["command_source"] = "planner_task"
         source_policy = source_task.get("verification_policy") or {}
-        for key in ("readback_paths", "timeout_seconds"):
+        for key in ("readback_paths", "timeout_seconds", "method_provenance", "method_revisions"):
             if key in source_policy:
                 value = source_policy[key]
                 task["verification_policy"][key] = list(value) if isinstance(value, list) else value
@@ -531,7 +531,10 @@ class ReplanCommand:
                 + ("\nVerify-first repair: the source recorded changed artifacts. Recheck the "
                    "exact declared validation commands unchanged. If they pass, no new edit "
                    "is needed; if they fail, diagnose and repair the remaining defect. "
-                   "A different passing command cannot replace the declared checks."
+                   "A different passing command cannot silently replace the declared checks. "
+                   "If a planner-proposed method itself is defective, use revise_verification "
+                   "with fresh failure/replacement evidence and unchanged coverage. "
+                   "User/project requirements and checks remain mandatory."
                    if recheck_commands else
                    "\nVerify-first repair: nothing proved the artifact wrong — the only complaint "
                 "was that files went untouched or verification was skipped. First CHECK whether "

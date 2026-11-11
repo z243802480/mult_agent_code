@@ -26,7 +26,14 @@ ARTIFACT_VERIFICATION_GUIDANCE = """Verification coverage:
 - A shell exit status of zero describes that command, not every pipeline stage or the truth of
   a self-authored checker. Read the original output and propagate failures in executable checks.
   Once required checks and scoped claims are covered, summarize evidence and limitations;
-  repeat diagnostics only to resolve a specific remaining uncertainty or relevant change."""
+  repeat diagnostics only to resolve a specific remaining uncertainty or relevant change.
+- If your planner-proposed verification method is defective, keep the original failure and
+  execute a corrected method covering the same claims without workspace side effects. Use
+  revise_verification with both exact commands, a reason and unchanged coverage explanation.
+  This explicitly revises an eligible method; an unrelated green probe cannot replace it.
+  User/project checks, acceptance, edit boundaries and required coverage cannot be weakened.
+  Legacy or changed-authority contracts need a newly sourced plan; automatic repair does not
+  invent missing provenance or relabel failure."""
 
 VERIFICATION_SCOPE_NOTE = (
     "The verification pass rate describes executed checks, not artifact or requirement coverage."

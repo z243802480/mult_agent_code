@@ -239,6 +239,8 @@ You must:
 
 Execution profile: {execution_profile}
 Execution environment: {json.dumps(command_execution_context(), ensure_ascii=False)}
+Configured project commands (preserve applicable checks):
+{json.dumps(runtime_context.get("project_commands", {}), ensure_ascii=False)}
 Existing workspace files:
 {chr(10).join(workspace_files) if workspace_files else "(empty workspace)"}
 

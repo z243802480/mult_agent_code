@@ -239,6 +239,7 @@ class PlanCommand:
             {"from": "INIT", "to": "SPEC"},
         )
         runtime_context = ContextLoader(self.root, self.validator).load(run_id=run["run_id"])
+        runtime_context["project_commands"] = project_config["commands"]
         research_report = load_research_report(run_dir, self.validator)
         research_report_path = run_dir / "research_report.json"
         if research_report:
@@ -528,6 +529,11 @@ class PlanCommand:
             )
 
         try:
+            from asteria_runtime.core.verification_revision import load_method_authority
+
+            runtime_context["verification_authority"] = load_method_authority(
+                self.root, project_config["commands"],
+            )
             task_plan = PlanAgent(model_client, self.validator).generate(
                 goal_spec,
                 runtime_context=runtime_context,

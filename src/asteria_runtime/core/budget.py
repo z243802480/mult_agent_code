@@ -470,7 +470,7 @@ READ_ONLY_TOOLS = {
     "recall_memory",
 }
 VERIFICATION_TOOLS = {"run_tests"}
-STATE_TOOLS = {"todo_write", "remember"}
+STATE_TOOLS = {"todo_write", "remember", "revise_verification"}
 WRITE_TOOLS = {"write_file", "apply_patch", "restore_backup"}
 SHELL_TOOLS = {"run_command"}
 EXTERNAL_TOOLS = {"mcp", "skill"}

@@ -31,7 +31,8 @@ class ToolRegistry:
         agent_id: str | None = None,
         **kwargs: Any,
     ) -> ToolResult:
-        context = replace(context, tool_call_id=context.tool_call_id or new_tool_call_id())
+        context = replace(context, tool_call_id=context.tool_call_id or new_tool_call_id(),
+                          task_id=task_id)
         started_at = now_iso()
         if context.budget:
             try:
