@@ -35,3 +35,7 @@ S113 预检发现 execution_profile=harness，已有 assess_session_continuation
 
 - `cachetools_snapshot_contract_s118.md` SHA256 `96cb862b3ecdf7aff8a59ec0486f900d6b514230377c0431ff5fcd703afc17de`。
 - `cachetools_snapshot_oracle_s118.py.txt` SHA256 `86b9ff0bbf8b76aeb8b814b2277e436dd2f8d030716132e498713bc1d260057b`。
+
+## 收尾回执
+
+最终执行器 eb7679c / Verify 42987610282 三 job 全绿，Windows 完整 1716、WSL 最终相关 72 通过。真实 cache 快照续作 667.63 秒，新/旧 oracle 12/12、15/15 与 308 tests、旧任务/原目标/账本前缀/累计预算/旧 Review 归档与新鲜性过，新正式确定性 Review 1.00→Accept；新增 39 真模型与 110 工具。两次自动 replan 保留并核实：早期验证身份未闭合→验证通过后又索要新 diff→verify-first 不新增源码完成。下一步优先复现完成前验证反馈与恢复契约，不重跑原样本、吞旧失败或加模型专用放行；TinyDB 旧 harness 预检仍 NOT RUN。见 S118 报告和总计划第 31 项。
