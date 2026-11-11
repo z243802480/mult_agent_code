@@ -14,6 +14,7 @@ from asteria_runtime.core.session_continuation import (
 )
 from asteria_runtime.core.runtime_policy import ToolPermissionPolicy
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.session_result_service import SessionResultService
 from asteria_runtime.tools.file_tools import ReadFileTool
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.json_store import JsonStore
@@ -155,3 +156,24 @@ def test_follow_up_criteria_and_verification_do_not_reuse_the_previous_goal(tmp_
     assert tasks[-1]["expected_artifacts"] == ["implementation artifact"]
     assert tasks[-1]["verification_policy"] == {"required": True, "allow_expected_failure": False,
                                                "commands": []}
+
+
+def test_follow_up_archives_previous_review_without_claiming_new_work_passed(tmp_path: Path) -> None:
+    run_id = _write_accepted_session(tmp_path)
+    validator = SchemaValidator(Path(__file__).resolve().parents[2] / "schemas")
+    store = JsonStore(validator)
+    run_dir = tmp_path / ".asteria/runs" / run_id
+    report = {"schema_version": "0.1.0", "run_id": run_id,
+              "overall": {"status": "pass", "score": 1.0, "reason": "previous goal"},
+              **{key: {} for key in ("goal_eval", "artifact_eval", "outcome_eval", "trajectory_eval", "cost_eval")}}
+    store.write(run_dir / "eval_report.json", report, "eval_report")
+    old = (run_dir / "eval_report.json").read_bytes()
+    service = SessionResultService(tmp_path, validator)
+    assert service.latest_review_status(run_id) == "pass"
+    prepare_session_follow_up(tmp_path, run_id, "Add new behavior and tests.", validator=validator)
+    assert service.latest_review_status(run_id) == "unknown"
+    task_id = store.read(run_dir / "task_plan.json", "task_board")["tasks"][-1]["task_id"]
+    assert (run_dir / "continuations" / task_id / "eval_report.json").read_bytes() == old
+    report["overall"] = {"status": "partial", "score": 0.5, "reason": "new goal"}
+    store.write(run_dir / "eval_report.json", report, "eval_report")
+    assert service.latest_review_status(run_id) == "partial"

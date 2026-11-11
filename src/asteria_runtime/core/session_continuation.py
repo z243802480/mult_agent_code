@@ -112,6 +112,17 @@ def prepare_session_follow_up(
     follow_task["updated_at"] = now_iso()
     for stale in ("expected_changed_files", "assigned_agent_id"):
         follow_task.pop(stale, None)
+    # A prior review belongs to the previous instruction. Keep its bytes for audit,
+    # but remove it from the active result slots before the new task starts.
+    result_names = ("eval_report.json", "review_report.md", "final_report_summary.json", "final_report.md")
+    previous_results = [run_dir / name for name in result_names if (run_dir / name).exists()]
+    archived_results: list[str] = []
+    if previous_results:
+        archive_dir = run_dir / "continuations" / follow_task["task_id"]
+        archive_dir.mkdir(parents=True, exist_ok=False)
+        for path in previous_results:
+            path.rename(archive_dir / path.name)
+            archived_results.append(path.name)
     tasks.append(follow_task)
     task_plan["tasks"] = tasks
     task_plan["updated_at"] = now_iso()
@@ -138,7 +149,7 @@ def prepare_session_follow_up(
         "session_continuation_prepared",
         "SessionContinuation",
         goal[:240],
-        {"follow_up_goal": goal},
+        {"follow_up_goal": goal, "archived_result_files": archived_results},
     )
 
     memory = ActiveGoalMemory(root)
@@ -152,7 +163,7 @@ def prepare_session_follow_up(
         },
         task_plan=task_plan,
         run_status={"run_id": run_id, "current_phase": "EXECUTE", "status": "running"},
-        review_status=str(structured.get("review_status") or "pending"),
+        review_status="unknown",
         completion="continuation_requested",
         updated_by="session_continuation",
         update_reason="warm_follow_up",
