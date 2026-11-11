@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S125",
+  "active_slice": "S126",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1347,6 +1347,19 @@
         "fresh documentation goal with an explicit single-file edit boundary"
       ],
       "status": "Edit-boundary engineering verified; assisted warm document repair passes artifact/scope checks, but whole real run rejected for pre-existing cross-channel call/observation identity collision. Formal Review/Accept NOT RUN."
+    },
+    {
+      "id": "S126",
+      "name": "跨通道工具身份唯一性",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S125"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S126-cross-channel-tool-identity.md",
+      "green_checks": [
+        "pytest tests/unit/test_tool_call_identity.py tests/unit/test_tool_gate_attempt_ledger.py -q",
+        "fresh real skill/local identity and cost audit"
+      ]
     }
   ]
 }

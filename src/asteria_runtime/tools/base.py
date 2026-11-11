@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.tool_call_identity import new_tool_call_id
 from asteria_runtime.utils.time import now_iso
 
 
@@ -38,7 +39,7 @@ def record_tool_call(
     status = result.status or ("success" if result.ok else "failure")
     record = {
         "schema_version": "0.1.0",
-        "tool_call_id": "toolcall-0000",
+        "tool_call_id": getattr(context, "tool_call_id", None) or new_tool_call_id(),
         "run_id": context.run_id,
         "task_id": task_id,
         "agent_id": agent_id,
@@ -56,8 +57,6 @@ def record_tool_call(
         store = context.tool_call_store()
         if store is None:
             return
-        existing = store.read_all(path) if path.exists() else []
-        record["tool_call_id"] = f"toolcall-{len(existing) + 1:04d}"
         store.append(path, record, "tool_call")
 
     if context.event_logger:
@@ -68,6 +67,7 @@ def record_tool_call(
             result.summary,
             {
                 "tool_name": tool_name,
+                "tool_call_id": record["tool_call_id"],
                 "ok": result.ok,
                 "input_summary": input_summary,
                 "warnings": result.warnings,

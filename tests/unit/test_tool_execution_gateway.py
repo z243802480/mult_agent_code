@@ -154,7 +154,8 @@ def test_tool_gateway_records_user_progress_tool_events(tmp_path: Path) -> None:
     permission_event = events[0]
     assert permission_event["data"]["capability_decision"]["decision"] == "ask"
     assert permission_event["data"]["capability_decision"]["reason"]
-    assert events[1]["tool_call_id"] == "toolcall-0001"
+    call_id = events[1]["tool_call_id"]
+    assert call_id and all(event.get("tool_call_id") == call_id for event in events[1:])
     assert events[1]["data"]["turn_event"]["event_type"] == "turn_start"
     assert events[1]["data"]["capability_decision"]["decision"] == "ask"
     assert events[1]["title"] == "正在使用 command"

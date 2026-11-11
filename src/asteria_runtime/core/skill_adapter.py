@@ -10,6 +10,7 @@ from typing import Any, Protocol
 from asteria_runtime.core.budget import BudgetExceededError
 from asteria_runtime.core.capability_decision_recorder import CapabilityDecisionRecorder
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.tool_call_identity import new_tool_call_id
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.utils.time import now_iso
@@ -427,6 +428,7 @@ class SkillAdapter:
         record = {
             "schema_version": "0.1.0",
             "skill_invocation_id": invocation_id,
+            "tool_call_id": context.tool_call_id or new_tool_call_id(),
             "run_id": context.run_id,
             "task_id": str(task.get("task_id", "")),
             "skill_name": skill_name,

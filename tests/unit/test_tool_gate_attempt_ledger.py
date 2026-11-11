@@ -41,7 +41,7 @@ def test_denied_then_real_read_and_tool_failure_have_distinct_matching_ids(tmp_p
     calls = store.read_all(ctx.run_dir / "tool_calls.jsonl", "tool_call")
     observations = store.read_all(ctx.run_dir / "tool_observations.jsonl", "tool_observation")
     assert [row["status"] for row in calls] == ["denied", "success", "failure"]
-    expected = ["toolcall-0001", "toolcall-0002", "toolcall-0003"]
-    assert [row["tool_call_id"] for row in calls] == expected
+    expected = [row["tool_call_id"] for row in calls]
+    assert len(set(expected)) == 3
     assert [row["tool_call_id"] for row in observations] == expected
     assert ctx.budget.usage.tool_calls == 2  # Pre-registry refusal did not execute a tool.

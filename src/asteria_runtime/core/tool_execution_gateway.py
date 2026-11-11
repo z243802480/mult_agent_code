@@ -13,6 +13,7 @@ from asteria_runtime.core.agent_harness import (
 from asteria_runtime.core.agent_tool_surface import adapt_model_tool_call
 from asteria_runtime.core.capability_decision_recorder import CapabilityDecisionRecorder
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.tool_call_identity import new_tool_call_id
 from asteria_runtime.core.runtime_hooks import RuntimeHookManager
 from asteria_runtime.core.runtime_policy import ToolPermissionPolicy
 from asteria_runtime.core.task_contract import allows_expected_failure
@@ -82,6 +83,7 @@ class ToolExecutionGateway:
             tool_surface_adapter = call.get("tool_surface_adapter")
             args = call.get("args", {}) or {}
             tool_call_id = self._next_tool_call_id(context)
+            context = replace(context, tool_call_id=tool_call_id)
             started = perf_counter()
             if self.mcp_adapter is not None and tool_name.startswith("mcp__"):
                 # MCP tools route to the external protocol adapter, not the local registry.
@@ -154,6 +156,8 @@ class ToolExecutionGateway:
             )
             pre_file_changes = self._planned_file_changes(tool_name, args, context)
             registry_started = False
+            observation_recorded = False
+            result = None
             try:
                 if tool_name not in allowed:
                     raise PermissionError(f"Tool is not allowed for {task['task_id']}: {tool_name}")
@@ -212,6 +216,8 @@ class ToolExecutionGateway:
                     result.error = None
                     result.summary = f"Diagnostic failure accepted: {result.summary}"
                 results.append(result)
+                if stop_on_failure and not result.ok:
+                    raise RuntimeError(f"Tool failed: {tool_name}: {result.summary}")
                 duration_ms = int((perf_counter() - started) * 1000)
                 file_changes = self._result_file_changes(tool_name, result, pre_file_changes)
                 observation = observation_from_tool_result(
@@ -252,6 +258,7 @@ class ToolExecutionGateway:
                     parent_event_id=start_event.get("event_id") if start_event else None,
                     capability_decision=capability_decision,
                 )
+                observation_recorded = True
                 self._record_file_progress(
                     context,
                     task,
@@ -301,11 +308,11 @@ class ToolExecutionGateway:
                         "error": getattr(result, "error", None),
                     },
                 )
-                if stop_on_failure and not result.ok:
-                    raise RuntimeError(f"Tool failed: {tool_name}: {result.summary}")
                 if stop_verification_on_fatal and self._fatal_verification_failure(result):
                     break
             except Exception as exc:
+                if observation_recorded:
+                    raise
                 if not registry_started:
                     # The registry owns execution records. Local gates run before it,
                     # so record their refusal too: otherwise its ID is reused by the
@@ -323,6 +330,9 @@ class ToolExecutionGateway:
                     telemetry={"duration_ms": duration_ms},
                     file_changes=pre_file_changes,
                 )
+                if result is not None and not result.ok:
+                    returned = observation_from_tool_result(tool_name=tool_name, result=result)
+                    observation = replace(returned, data={**returned.data, "error_type": exc.__class__.__name__})
                 if tool_name == "read_file" and isinstance(args.get("path"), str):
                     observation = replace(observation, data={
                         **observation.data, "path": args["path"], "requested_path": args["path"],
@@ -691,6 +701,12 @@ class ToolExecutionGateway:
     ) -> None:
         if context.run_dir is None:
             return
+        ledger_name = (
+            "skill_invocations.jsonl" if observation.tool_name.startswith("skill__") else
+            "mcp_invocations.jsonl" if observation.tool_name.startswith("mcp__") else
+            "tool_calls.jsonl"
+        )
+        evidence = context.run_dir / ledger_name
         JsonlStore(context.validator).append(
             context.run_dir / "tool_observations.jsonl",
             {
@@ -705,7 +721,7 @@ class ToolExecutionGateway:
                 "summary": observation.summary,
                 "error_class": observation.data.get("error_type") if observation.data else None,
                 "artifact_refs": observation.artifact_refs,
-                "evidence_refs": [str(context.run_dir / "tool_calls.jsonl")],
+                "evidence_refs": [str(evidence)] if evidence.exists() else [],
                 "user_progress_event_id": user_progress_event_id,
                 "next_hint": (
                     "continue" if observation.ok else "diagnose_then_repair_replan_ask_or_stop"
@@ -832,10 +848,7 @@ class ToolExecutionGateway:
         }
 
     def _next_tool_call_id(self, context: RuntimeContext) -> str:
-        if context.run_dir is None:
-            return "toolcall-0000"
-        existing = JsonlStore(context.validator).read_all(context.run_dir / "tool_calls.jsonl")
-        return f"toolcall-{len(existing) + 1:04d}"
+        return new_tool_call_id()
 
     def _tool_start_summary(self, tool_name: str, args: dict[str, Any]) -> str:
         if tool_name in {"run_command", "run_tests"} and args.get("command"):

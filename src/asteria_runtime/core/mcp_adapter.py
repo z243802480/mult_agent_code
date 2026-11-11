@@ -13,6 +13,7 @@ from asteria_runtime.core.budget import BudgetExceededError
 from asteria_runtime.core.capability_decision_recorder import CapabilityDecisionRecorder
 from asteria_runtime.core.process_flags import NEW_PROCESS_GROUP_FLAGS
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.tool_call_identity import new_tool_call_id
 from asteria_runtime.security.env_sanitizer import sanitize_subprocess_env
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.user_progress_logger import UserProgressLogger
@@ -355,9 +356,12 @@ class McpAdapter:
                 "tools/call",
                 {"name": tool_name, "arguments": arguments or {}},
             )
+            tool_error = isinstance(payload, dict) and payload.get("isError") is True
             result = McpInvocationResult(
-                ok=True,
-                summary=f"MCP tool completed: {capability_name}",
+                ok=not tool_error,
+                summary=f"MCP tool {'failed' if tool_error else 'completed'}: {capability_name}",
+                error="MCP tool result reported isError=true" if tool_error else None,
+                status="tool_error" if tool_error else "success",
                 data={
                     "server": server_name,
                     "tool": tool_name,
@@ -482,6 +486,7 @@ class McpAdapter:
         record = {
             "schema_version": "0.1.0",
             "mcp_invocation_id": invocation_id,
+            "tool_call_id": context.tool_call_id or new_tool_call_id(),
             "run_id": context.run_id,
             "task_id": str(task.get("task_id", "")),
             "server_name": server_name,

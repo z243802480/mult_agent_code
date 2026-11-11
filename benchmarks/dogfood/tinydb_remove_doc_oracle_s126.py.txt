@@ -1,0 +1,29 @@
+"""Evaluator-only doctest checker for the explicitly requested example format."""
+import doctest
+from pathlib import Path
+
+
+def check(text, name, required=True):
+    test = doctest.DocTestParser().get_doctest(text, {}, name, name, 0)
+    result = doctest.DocTestRunner().run(test)
+    failures = result.failed + int(required and not test.examples)
+    print(name, 'attempted:', result.attempted, 'failed:', failures)
+    return failures
+
+
+def verify(root):
+    failures = 0
+    usage = (root / 'docs/usage.rst').read_text(encoding='utf8')
+    batch = usage.split('Batch Operations', 1)[1].split('\nQueries\n', 1)[0]
+    failures += check(batch, 'usage-batch')
+    api = (root / 'docs/api.rst').read_text(encoding='utf8').split('Batch API', 1)[1].split('``tinydb.database``', 1)[0]
+    failures += check(api, 'api-batch')
+    if 'Remove counts example' not in batch:
+        print('Missing requested subsection')
+        return failures + 1
+    failures += check(batch.split('Remove counts example', 1)[1], 'isolated-remove-example')
+    return failures
+
+
+if __name__ == '__main__':
+    raise SystemExit(bool(verify(Path.cwd())))

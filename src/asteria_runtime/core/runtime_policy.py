@@ -153,6 +153,7 @@ class ToolPermissionPolicy:
             budget=context.budget,
             agent_dir_override=context.asteria_dir,
             run_dir_override=context.run_dir,
+            tool_call_id=context.tool_call_id,
         )
 
     def shell_denial(self, policy: dict, command: str) -> str | None:

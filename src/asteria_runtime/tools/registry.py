@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import inspect
+from dataclasses import replace
 from typing import Any
 
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.tool_call_identity import new_tool_call_id
 from asteria_runtime.core.budget import BudgetExceededError
 from asteria_runtime.tools.base import Tool, ToolResult, record_tool_call
 from asteria_runtime.utils.time import now_iso
@@ -29,6 +31,7 @@ class ToolRegistry:
         agent_id: str | None = None,
         **kwargs: Any,
     ) -> ToolResult:
+        context = replace(context, tool_call_id=context.tool_call_id or new_tool_call_id())
         started_at = now_iso()
         if context.budget:
             try:
@@ -50,7 +53,8 @@ class ToolRegistry:
 
         sanitized_kwargs, dropped = self._sanitize_kwargs(self._tools[name], kwargs)
         try:
-            result = self._tools[name].run(context, **sanitized_kwargs)
+            # Nested registry calls belong to their own invocation, not the outer binding.
+            result = self._tools[name].run(replace(context, tool_call_id=None), **sanitized_kwargs)
             if dropped:
                 result.warnings.append(f"Ignored unsupported tool args: {', '.join(dropped)}")
         except PermissionError as exc:

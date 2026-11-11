@@ -1,0 +1,16 @@
+Add a "Remove counts example" subsection within Batch Operations in docs/usage.rst.
+Use a self-contained doctest block (>>> and ... prompts) demonstrating removal of an
+existing document and a missing document in one batch. Show the operation counts and
+that the other stored documents remain unchanged, using the current public API.
+
+Only docs/usage.rst may be edited. Preserve every other file, existing headings,
+unrelated content, implementation, tests and configuration. Do not create user files.
+After verification, load the available retrospect skill and follow its applicable
+procedure within the same editing boundary. Do not access credentials, the network,
+other experiments, evaluator or harness implementation, or install dependencies.
+Loading the skill is a tool-use requirement, not an additional deliverable or file.
+
+Use the local checkout, importable from the workspace root, and this Python:
+/home/administrator/.cache/asteria-s101/venv/bin/python
+Preserve the full project regression check:
+/home/administrator/.cache/asteria-s101/venv/bin/python -m pytest -o pythonpath=. -o addopts= tests -q

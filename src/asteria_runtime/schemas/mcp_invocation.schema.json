@@ -11,6 +11,7 @@
     "created_at"
   ],
   "properties": {
+    "tool_call_id": { "type": "string" },
     "schema_version": { "type": "string" },
     "mcp_invocation_id": { "type": "string" },
     "run_id": { "type": ["string", "null"] },
