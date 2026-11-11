@@ -56,6 +56,6 @@ Runtime 自身状态是 completed / ACCEPTED（自动接受），`review_status=
 
 ## 工程验证与后续
 
-Windows 相关 114 / WSL 相关 114 项通过；Ruff 通过，mypy ratchet 零新增（保留 60 既有错误，不更新 baseline）。Windows 完整 **1738 passed / 3 skipped / 42 deselected**（497.16 秒），离线 benchmarks 全过。精确提交的远端 Verify 待推送后登记。
+Windows 相关 114 / WSL 相关 114 项通过；Ruff 通过，mypy ratchet 零新增（保留 60 既有错误，不更新 baseline）。Windows 完整 **1738 passed / 3 skipped / 42 deselected**（497.16 秒），离线 benchmarks 全过。提示修正提交 `f5fd28d` 的 [Verify 43002254995](https://github.com/z243802480/mult_agent_code/actions/runs/43002254995) 三 job 全绿（Python 3.11、3.13、Studio），已核实精确 head SHA。后续文档回执不改变产品代码；该 Verify 不包含 keyed 真模型证明。
 
 下一项收敛条件产物与允许范围的规划语义：保留以上失败，先登记新目标与独立检查，再用新的普通会话验证；不要复跑本目标或把未执行的 counts 阶段补成通过。保留通用 prompt/结构化契约方向，不添加文件名/语言/provider 补丁。小时级连续运行、独立 provider、keyed CI 证明仍未完成，keyed proof 仍 NOT RUN。

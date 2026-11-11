@@ -40,3 +40,7 @@
 第一阶段功能检查全过，但多建了 `tinydb/_snapshot.py（仅在实现需要时）`，严格范围失败；因此第二阶段 NOT RUN，不做正式 Review/Accept、不重跑原目标刷绿。证据链为 GoalSpec 把可选实现写进 target_outputs → Planner 把说明拼进 expected_artifacts/expected_changed_files → 两次 pre_final 缺失产物反馈 → 模型创建该字面路径。
 
 本刀只纠正 GoalSpec/Planner 通用提示：允许修改的范围不等于必须交付，可选方案/条件保留在说明或约束，必需路径字段只放精确字面路径。保持现有缺失产物守卫和 Unicode/标点文件名支持，不按本次路径、语言、provider 或后缀改解析器，不放宽范围验收。以缺失/存在的合法 Unicode 路径回归保护守卫；另做隔离的有限真实规划诊断（原目标/旧 GoalSpec，最多两次请求），不执行工具、不改原实验、不算原样本通过。产品提示有改动则完整 Windows 检查、WSL 相关回归与精确生产 SHA 的 CI。
+
+## 收尾证据
+
+原目标严格失败、counts NOT RUN，见 [S120 报告](../../docs/zh/reports/S120-flat-package-real-session-20261111.md)。提示修正 `f5fd28d`：Windows 完整 1738 / WSL 相关 114，Ruff/类型与离线基准通过；[精确 Verify 43002254995](https://github.com/z243802480/mult_agent_code/actions/runs/43002254995) 三 job 全绿。规划诊断的 GoalSpec 残余不稳定已登记到总计划第 33 项，不冒充端到端治愈。
