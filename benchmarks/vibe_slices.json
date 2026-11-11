@@ -1240,7 +1240,7 @@
         "S117"
       ],
       "reference_brief": "benchmarks/reference_briefs/S118-complete-follow-up-lifecycle.md",
-      "user_demo": "TinyDB 新快照需求同会话续作，旧任务/预算保留、新判据及 Review 新鲜性独立验收",
+      "user_demo": "已验收 Cache 会话追加不可变快照需求，旧任务/预算保留、新判据与 Review 新鲜性独立验收",
       "green_checks": [
         "pytest tests/unit/test_session_continuation_warm.py tests/unit/test_documentation_contracts.py -q",
         "registered snapshot oracle and complete continuation lifecycle audit"

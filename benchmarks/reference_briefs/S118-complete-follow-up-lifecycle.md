@@ -26,3 +26,12 @@ flat 包写入误拒绝已复现 1 红 6 绿；冷/暖共享 observed_directory_
 
 - `tinydb_snapshot_contract.md` SHA256 `a37795d66e921b28c13830b8695730b44f581596fda8e22d5fe3b1d24463cd40`。
 - `tinydb_snapshot_oracle.py.txt` SHA256 `c5b8c81ff331c5fe0429c431d968d12d0cc698cbaf43b9df30cf70a7c6a7212f`。
+
+## 调用前目标调整（非失败重跑）
+
+S113 预检发现 execution_profile=harness，已有 assess_session_continuation 明确不支持；0 次新增模型调用、0 次任务准备，保留预检 NOT RUN，未迁移 profile 或放宽入口。TinyDB 公约/检查器作为未运行预登记保留。改用已独立验收且 profile=session_agent 的 S116 隔离副本，追加新的不可变检查快照 snapshot(deep=False) 需求（非 S117 peekmany 重跑）。使用独立 cache_snapshot 公约/oracle 重新冻结，不能沿用 TinyDB 的红/绿计数。flat 写范围工程修复仍只宣称确定性证据。
+
+新 cache 快照试验在任何模型调用前冻结：
+
+- `cachetools_snapshot_contract_s118.md` SHA256 `96cb862b3ecdf7aff8a59ec0486f900d6b514230377c0431ff5fcd703afc17de`。
+- `cachetools_snapshot_oracle_s118.py.txt` SHA256 `86b9ff0bbf8b76aeb8b814b2277e436dd2f8d030716132e498713bc1d260057b`。

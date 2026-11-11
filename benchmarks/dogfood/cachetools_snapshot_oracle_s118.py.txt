@@ -1,0 +1,223 @@
+"""S118 external snapshot checks: public behavior and caller-owned observations."""
+from collections.abc import Mapping
+from datetime import datetime, timedelta
+import unittest
+
+import cachetools
+
+
+FAMILY = ('Cache', 'FIFOCache', 'LFUCache', 'LRUCache', 'RRCache', 'TTLCache', 'TLRUCache')
+TIMED = ('TTLCache', 'TLRUCache')
+
+
+class Clock:
+    def __init__(self, now=0, step=0):
+        self.now, self.step, self.calls = now, step, 0
+
+    def __call__(self):
+        self.calls += 1
+        result = self.now
+        self.now += self.step
+        return result
+
+
+def make(kind, clock=None, maxsize=8, ttl=10, cls=None, **kwargs):
+    cls = cls or getattr(cachetools, kind)
+    if kind == 'TTLCache':
+        kwargs.update(timer=clock or Clock(), ttl=ttl)
+    elif kind == 'TLRUCache':
+        kwargs.setdefault('ttu', lambda k, v, now: now + ttl)
+        kwargs['timer'] = clock or Clock()
+    return cls(maxsize, **kwargs)
+
+
+def assert_members(case, result, expected):
+    case.assertIsInstance(result, Mapping)
+    case.assertEqual(len(result), len(expected))
+    case.assertEqual(set(result), set(expected))
+    for key, value in expected.items():
+        case.assertIs(result[key], value)
+
+
+def assert_immutable(case, result):
+    before = dict(result)
+    with case.assertRaises(TypeError):
+        result['injected'] = object()
+    if result:
+        with case.assertRaises(TypeError):
+            del result[next(iter(result))]
+    if hasattr(result, 'clear'):
+        try:
+            result.clear()
+        except (TypeError, AttributeError):
+            pass
+    assert_members(case, result, before)
+
+
+class Snapshots(unittest.TestCase):
+    def test_shallow_mapping_identity_and_immutability(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                c, a, b = make(kind), [], {}
+                c['a'], c['b'], c['none'] = a, b, None
+                result = c.snapshot()
+                assert_members(self, result, {'a': a, 'b': b, 'none': None})
+                assert_immutable(self, result)
+                a.append('shared')
+                self.assertEqual(result['a'], ['shared'])
+
+    def test_membership_independent_of_cache_and_other_snapshots(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                c, a, b = make(kind), object(), object()
+                c['a'] = a
+                first, second = c.snapshot(), c.snapshot()
+                self.assertIsNot(first, second)
+                del c['a']
+                c['b'] = b
+                assert_members(self, first, {'a': a})
+                assert_members(self, second, {'a': a})
+                assert_members(self, c.snapshot(), {'b': b})
+
+    def test_deep_nested_isolation_in_both_directions(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                c = make(kind)
+                original = {'nested': [1]}
+                c['a'] = original
+                result = c.snapshot(deep=True)
+                assert_immutable(self, result)
+                self.assertIsNot(result['a'], original)
+                result['a']['nested'].append(2)
+                self.assertEqual(original, {'nested': [1]})
+                original['nested'].append(3)
+                self.assertEqual(result['a'], {'nested': [1, 2]})
+
+    def test_deep_graph_preserves_aliases_and_cycles(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                c, shared, cycle = make(kind), [], []
+                cycle.append(cycle)
+                c['a'], c['b'], c['cycle'] = {'shared': shared}, shared, cycle
+                result = c.snapshot(deep=True)
+                self.assertIs(result['a']['shared'], result['b'])
+                self.assertIsNot(result['b'], shared)
+                self.assertIs(result['cycle'][0], result['cycle'])
+                self.assertIsNot(result['cycle'], cycle)
+
+    def test_keys_are_not_copied_even_in_deep_mode(self):
+        class Key:
+            def __deepcopy__(self, memo):
+                raise AssertionError('keys must not be deep-copied')
+
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                c, key, value = make(kind), Key(), []
+                c[key] = value
+                result = c.snapshot(deep=True)
+                self.assertIs(next(iter(result)), key)
+                self.assertEqual(result[key], [])
+                self.assertIsNot(result[key], value)
+
+    def test_deepcopy_exception_leaves_cache_untouched(self):
+        class Value:
+            def __deepcopy__(self, memo):
+                raise RuntimeError('deepcopy failure sentinel')
+
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                c, value = make(kind), Value()
+                c['a'] = value
+                with self.assertRaisesRegex(RuntimeError, 'deepcopy failure sentinel'):
+                    c.snapshot(deep=True)
+                self.assertIs(c.peek('a'), value)
+                self.assertEqual(c.currsize, 1)
+
+    def test_mapping_hooks_and_sizing_not_invoked(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                base = getattr(cachetools, kind)
+
+                class Guarded(base):
+                    def __getitem__(self, key):
+                        raise AssertionError('snapshot called item access')
+
+                    def __missing__(self, key):
+                        raise AssertionError('snapshot called missing hook')
+
+                calls, value = [], []
+                c = make(kind, cls=Guarded, getsizeof=lambda v: calls.append(v) or 1)
+                c['a'] = value
+                before = len(calls)
+                assert_members(self, c.snapshot(), {'a': value})
+                c.snapshot(deep=True)
+                self.assertEqual(len(calls), before)
+
+    def test_eviction_order_and_frequency_unchanged(self):
+        for kind in ('FIFOCache', 'LRUCache', 'LFUCache'):
+            with self.subTest(kind=kind):
+                c = make(kind, maxsize=2)
+                c['a'], c['b'] = object(), object()
+                if kind == 'LFUCache':
+                    c['b']
+                c.snapshot()
+                c.snapshot(deep=True)
+                c['c'] = object()
+                self.assertNotIn('a', c)
+                self.assertIn('b', c)
+
+    def test_random_choice_runs_only_on_real_eviction(self):
+        seen = []
+        c = make('RRCache', maxsize=2, choice=lambda keys: seen.append(tuple(keys)) or min(keys))
+        c['a'], c['b'] = object(), object()
+        c.snapshot()
+        c.snapshot(deep=True)
+        self.assertEqual(seen, [])
+        c['c'] = object()
+        self.assertEqual(len(seen), 1)
+
+    def test_one_time_sample_for_all_members(self):
+        for kind in TIMED:
+            with self.subTest(kind=kind):
+                clock, a, b = Clock(), [], {}
+                c = make(kind, clock=clock)
+                c['a'], c['b'] = a, b
+                clock.now, clock.step = 9, 2
+                before = clock.calls
+                result = c.snapshot()
+                self.assertLessEqual(clock.calls-before, 1)
+                assert_members(self, result, {'a': a, 'b': b})
+
+    def test_expiry_boundary_storage_and_old_snapshot(self):
+        for kind in TIMED:
+            with self.subTest(kind=kind):
+                clock, value = Clock(), []
+                c = make(kind, clock=clock)
+                c['a'] = value
+                old = c.snapshot()
+                clock.now = 10
+                before = clock.calls
+                assert_members(self, c.snapshot(deep=True), {})
+                self.assertLessEqual(clock.calls-before, 1)
+                assert_members(self, old, {'a': value})
+                expired = dict(c.expire(10))
+                assert_members(self, expired, {'a': value})
+
+    def test_datetime_timer_and_no_ttu_recomputation(self):
+        for kind in TIMED:
+            with self.subTest(kind=kind):
+                clock = Clock(datetime(2020, 1, 1), timedelta(0))
+                seen, value = [], []
+                kwargs = ({'ttu': lambda k, v, now: seen.append(k) or now + timedelta(seconds=10)}
+                          if kind == 'TLRUCache' else {})
+                c = make(kind, clock=clock, ttl=timedelta(seconds=10), **kwargs)
+                c['a'] = value
+                before = len(seen)
+                assert_members(self, c.snapshot(), {'a': value})
+                clock.now += timedelta(seconds=10)
+                assert_members(self, c.snapshot(), {})
+                self.assertEqual(len(seen), before)
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)
