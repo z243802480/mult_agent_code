@@ -28,10 +28,14 @@ def test_long_task_budget_stops_before_tools_and_creates_existing_decision(tmp_p
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
     run_dir = tmp_path / ".asteria/runs" / plan.run_id
+    planning_prefix = (run_dir / "model_calls.jsonl").read_bytes()
+    planning_calls = len(planning_prefix.splitlines())
     policy_path = tmp_path / ".asteria/policies.json"
     policy = json.loads(policy_path.read_text(encoding="utf-8"))
     policy["active_budget_profile"] = ""
-    policy["budgets"]["max_model_calls_per_goal"] = 4
+    # Keep four execution calls of headroom while retaining real planning expenditure.
+    # A stale zeroed report must no longer erase these durable earlier calls on resume.
+    policy["budgets"]["max_model_calls_per_goal"] = planning_calls + 4
     policy_path.write_text(json.dumps(policy), encoding="utf-8")
     cost_path = run_dir / "cost_report.json"
     report = json.loads(cost_path.read_text(encoding="utf-8"))
@@ -51,6 +55,8 @@ def test_long_task_budget_stops_before_tools_and_creates_existing_decision(tmp_p
     steps = []
     command._execute_until_no_ready(plan.run_id, steps, 1)
     assert client.calls == 4
+    assert (run_dir / "model_calls.jsonl").read_bytes().startswith(planning_prefix)
+    assert json.loads(cost_path.read_text(encoding="utf8"))["model_calls"] == planning_calls + 4
     assert not (tmp_path / "src/notes_tool.py").exists()
     assert not (tmp_path / "should-not-run.txt").exists()
     summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
