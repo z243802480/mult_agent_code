@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S111",
+  "active_slice": "S112",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -952,7 +952,9 @@
       "id": "S99",
       "name": "Beta doc-update dogfood and honest Review to Accept path",
       "phase": "Product dogfood",
-      "depends_on": ["S98"],
+      "depends_on": [
+        "S98"
+      ],
       "user_demo": "A real Studio doc-update goal reaches Review and Accept; the final action advances without reload",
       "green_checks": [
         "real-model isolated-workspace readback and Review/Accept evidence",
@@ -965,7 +967,9 @@
       "id": "S100",
       "name": "Model harness boundary audit and truthful command execution",
       "phase": "产品主路径 dogfood",
-      "depends_on": ["S99"],
+      "depends_on": [
+        "S99"
+      ],
       "user_demo": "Commands run as requested; failures return real exit status while models receive shell context",
       "green_checks": [
         "command gateway and model turn regressions",
@@ -978,7 +982,9 @@
       "id": "S101",
       "name": "Static landing page real beta task and follow-up friction",
       "phase": "产品主路径 dogfood",
-      "depends_on": ["S100"],
+      "depends_on": [
+        "S100"
+      ],
       "user_demo": "A real model creates a static page and browser verification checks its actual interaction",
       "green_checks": [
         "real model and tool evidence recorded without secrets",
@@ -1145,6 +1151,19 @@
         "registered multifile goal and same-run pause/resume independent evidence"
       ],
       "reference_brief": "benchmarks/reference_briefs/S111-multifile-pause-resume.md"
+    },
+    {
+      "id": "S112",
+      "name": "新版真实多文件与同会话续作",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S111"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S112-real-multifile-resume.md",
+      "user_demo": "干净上游多文件目标，正常暂停后新进程恢复同一 run，独立验证再 Review/Accept",
+      "green_checks": [
+        "pytest tests/unit/test_documentation_contracts.py -q"
+      ]
     }
   ]
 }
