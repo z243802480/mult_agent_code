@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S117",
+  "active_slice": "S118",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1230,6 +1230,20 @@
       "green_checks": [
         "pytest tests/unit/test_documentation_contracts.py tests/unit/test_session_continuation_warm.py -q",
         "registered follow-up oracle and cumulative ledger/read audit"
+      ]
+    },
+    {
+      "id": "S118",
+      "name": "完整续作生命周期的新自然目标",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S117"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S118-complete-follow-up-lifecycle.md",
+      "user_demo": "TinyDB 新快照需求同会话续作，旧任务/预算保留、新判据及 Review 新鲜性独立验收",
+      "green_checks": [
+        "pytest tests/unit/test_session_continuation_warm.py tests/unit/test_documentation_contracts.py -q",
+        "registered snapshot oracle and complete continuation lifecycle audit"
       ]
     }
   ]

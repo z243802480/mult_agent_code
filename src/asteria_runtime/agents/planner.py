@@ -6,6 +6,7 @@ from asteria_runtime.core.execution_profile import HARNESS, SESSION_AGENT
 from asteria_runtime.core.execution_preferences import apply_execution_preferences_to_task
 from asteria_runtime.core.fast_path_policy import classify_risk_tier
 from asteria_runtime.core.multi_agent_strategy import MultiAgentStrategyAdvisor
+from asteria_runtime.core.workspace_layout import observed_directory_write_scopes
 from asteria_runtime.core.task_contract import (
     completion_contract,
     context_requirements,
@@ -715,26 +716,14 @@ class RequirementPlanner:
         a project whose package dir is e.g. ``notes/`` stays write-denied under it. The
         planning context already lists real workspace files — trust the observed layout
         instead of a layout convention."""
-        skip = {
-            ".git",
-            ".asteria",
-            "secrets",
-            "node_modules",
-            "__pycache__",
-            ".venv",
-            "venv",
-            "dist",
-            "build",
-        }
         dirs: list[str] = []
         for path in self._existing_workspace_paths(runtime_context):
             normalized = str(path).replace("\\", "/").lstrip("/")
             if "/" not in normalized:
                 continue
             head = normalized.split("/", 1)[0]
-            if head and head not in skip and not head.startswith("."):
-                dirs.append(f"{head}/")
-        return list(dict.fromkeys(dirs))
+            dirs.append(head)
+        return observed_directory_write_scopes(dirs)
 
     def _session_agent_task_kind(self, requirements: list[dict], goal_spec: dict) -> str:
         for requirement in requirements:

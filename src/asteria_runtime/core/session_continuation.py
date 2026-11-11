@@ -8,6 +8,7 @@ from pathlib import Path
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.execution_profile import execution_profile_from_run_config
 from asteria_runtime.core.run_config import load_run_config
+from asteria_runtime.core.workspace_layout import observed_directory_write_scopes
 from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.run_store import RunStore
@@ -96,7 +97,10 @@ def prepare_session_follow_up(
     follow_task["title"] = goal[:120]
     follow_task["description"] = goal
     follow_task["summary"] = f"Session follow-up: {goal[:160]}"
-    follow_task["write_scope"] = ["implementation artifact"]
+    follow_task["write_scope"] = [
+        *observed_directory_write_scopes(child.name for child in root.iterdir() if child.is_dir()),
+        "implementation artifact",
+    ]
     # Match cold whole-session tasks: context may live outside source conventions.
     # Empty means no task-level read gate; PathGuard still enforces protected paths.
     follow_task["read_scope"] = []

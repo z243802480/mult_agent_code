@@ -79,7 +79,7 @@ def test_prepare_session_follow_up_requeues_task_without_new_run(tmp_path: Path)
     assert "quiet" in follow["description"].lower()
     # The new task must NOT inherit the prior goal's write scope — it gets an open implementation
     # scope so the model can create whatever files the new instruction needs.
-    assert follow["write_scope"] == ["implementation artifact"]
+    assert "implementation artifact" in follow["write_scope"]
 
     run = store.read(tmp_path / ".asteria" / "runs" / run_id / "run.json", "run")
     assert run["status"] == "running"
@@ -177,3 +177,20 @@ def test_follow_up_archives_previous_review_without_claiming_new_work_passed(tmp
     report["overall"] = {"status": "partial", "score": 0.5, "reason": "new goal"}
     store.write(run_dir / "eval_report.json", report, "eval_report")
     assert service.latest_review_status(run_id) == "partial"
+
+
+def test_follow_up_supports_observed_flat_package_without_granting_system_directories(tmp_path):
+    run_id = _write_accepted_session(tmp_path)
+    for name in ('tinydb', 'notes', 'secrets', '.private', 'node_modules', 'build'):
+        (tmp_path / name).mkdir()
+    validator = SchemaValidator(Path(__file__).resolve().parents[2] / "schemas")
+    prepare_session_follow_up(tmp_path, run_id, "Implement snapshot and add tests.", validator=validator)
+    task = JsonStore(validator).read(
+        tmp_path / '.asteria/runs' / run_id / 'task_plan.json', 'task_board')['tasks'][-1]
+    policy = ToolPermissionPolicy(tmp_path, validator)
+    for path in ('tinydb/database.py', 'notes/helper.py', 'tests/test_snapshot.py'):
+        policy.enforce_tool_permission_profile(task, 'write_file', {'path': path})
+    for path in ('secrets/key.py', '.private/config.py', 'node_modules/pkg/a.py',
+                 'build/output.py', 'unknown_package/a.py', '.asteria/policy.py'):
+        with pytest.raises(PermissionError):
+            policy.enforce_tool_permission_profile(task, 'write_file', {'path': path})
