@@ -26,3 +26,5 @@
 目标已在 f431153 上独立 15/15 + 264 tests 通过并确定性 Review/Accept。补审发现两次 read_file 在 registry 前被 task read_scope 拒绝、未进入 tool_calls，且与随后执行记录重用 ID。原 task 的 whole-session read_scope=[] 被 execution_preferences 的目录提示并集错误变成有限集合（其中还含路径样式的普通说明）。不能把此轨迹说成模型从未尝试 read_file，也不能归因成纯工具偏好。
 
 允许先确定性复现再窄修：①空 read_scope 原意是工作区内不设该层读取门，合并额外目录提示须保持这个原意；有界 scope 的原范围/显式新增目录仍按既有规则，PathGuard/秘密/越界及写权限不变，不按 AGENTS/TASK 文件名特判。②registry 前本地门禁拒绝通过既有 record_tool_call 记 denied 尝试，下一 ID 正常递增，真实 registry 已有记录不重复，原执行预算不虚增。对语义及审计各加正反例与真实 gateway 回归。原实跑不因修复而重新采样/改 oracle；新版工程修复单独以 Windows/WSL/精确 CI 验收。
+
+最终回执：真实目标 171.82 秒、15/15 + 264 tests、确定性 Review 1.00→Accept；原轨迹有 2 次未入调用账本的 read_file 拒绝，0 成功读取/0 提示触发，已纠正统计。c29c55c 两处通用修复经旧版 4 红 1 绿→新版相关 Windows 79 / WSL 56、完整 Windows 1682 通过，Verify 42969469061 三 job 全绿；不重跑原样本或改 oracle，工程修复无新增真模型采样证明。完整事实、边界及下一步见 `docs/zh/reports/S116-independent-cache-inspection-20261111.md`。
