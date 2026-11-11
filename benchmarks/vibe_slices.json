@@ -1287,7 +1287,8 @@
       "green_checks": [
         "pytest tests/unit/test_goal_spec_agent.py tests/unit/test_plan_agent.py tests/unit/test_documentation_contracts.py -q",
         "registered new-goal independent behavior and scope audit"
-      ]
+      ],
+      "status": "Engineering regressions passed; real goal functional/scope checks passed but typed path not exercised and declared-command environment mismatch; independent acceptance rejected."
     }
   ]
 }

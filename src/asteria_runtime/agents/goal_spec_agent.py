@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.core.execution_environment import command_execution_context
@@ -16,6 +16,9 @@ class GoalSpecError(RuntimeError):
     pass
 
 
+MAX_GOAL_SPEC_ATTEMPTS = 2
+
+
 @dataclass
 class GoalSpecAgent:
     model_client: ModelClient
@@ -28,7 +31,6 @@ class GoalSpecAgent:
         run_id: str,
         model_tier: str = "strong",
     ) -> dict:
-        parse_error: GoalSpecError | None = None
         role_contract = role_contract_for(
             role="GoalSpecAgent",
             purpose="goal_spec",
@@ -53,26 +55,42 @@ class GoalSpecAgent:
                 else None,
             },
         )
-        response = self.model_client.chat(request)
-        try:
-            data = self._parse_json(response.content)
-        except GoalSpecError as exc:
-            parse_error = exc
-            data = self._fallback_goal_spec(goal, str(exc))
-        if parse_error:
-            data["assumptions"].append(
-                "Model returned non-JSON for GoalSpec; deterministic goal specification fallback was used."
-            )
-        try:
-            data = self._normalize(data, goal)
-            self.validator.validate("goal_spec", data)
-        except SchemaValidationError as exc:
-            data = self._fallback_goal_spec(goal, f"schema validation failed: {exc}")
-            data["assumptions"].append(
-                "Model GoalSpec shape could not be repaired safely; deterministic fallback was used."
-            )
-            self.validator.validate("goal_spec", data)
-        return data
+        attempt = 1
+        while True:
+            # Received-but-invalid proposals get one correction; transport failures retain
+            # the client's existing policy and all requests use its original accounting.
+            response = self.model_client.chat(request)
+            try:
+                data = self._normalize(self._parse_json(response.content), goal)
+                self.validator.validate("goal_spec", data)
+                return data
+            except (GoalSpecError, SchemaValidationError) as exc:
+                if attempt >= MAX_GOAL_SPEC_ATTEMPTS:
+                    reason = str(exc) if isinstance(exc, GoalSpecError) else f"schema validation failed: {exc}"
+                    data = self._fallback_goal_spec(goal, reason)
+                    data["assumptions"].append(
+                        "Model returned non-JSON for GoalSpec; deterministic goal specification fallback was used."
+                        if isinstance(exc, GoalSpecError) else
+                        "Model GoalSpec shape could not be repaired safely; deterministic fallback was used."
+                    )
+                    data = self._normalize(data, goal)
+                    self.validator.validate("goal_spec", data)
+                    return data
+                request = replace(request, messages=[
+                    *request.messages,
+                    ChatMessage(role="assistant", content=response.content[:12000]),
+                    ChatMessage(role="user", content=(
+                        "The goal proposal failed runtime validation.\n"
+                        f"Validation error: {str(exc)[:2000]}\n"
+                        f"Finish reason: {response.finish_reason}; previous response truncated: "
+                        f"{len(response.content) > 12000}.\n"
+                        "Return one complete concise corrected JSON object using the original output shape. "
+                        "Preserve the original user goal, project context, acceptance, scope, conditions and "
+                        "permission boundaries; do not weaken requirements to pass validation. "
+                        "Use short descriptions, with no commentary or patches."
+                    )),
+                ])
+                attempt += 1
 
     def _parse_json(self, content: str) -> dict:
         try:

@@ -301,3 +301,57 @@ def test_invalid_output_intents_fall_back_without_promoting_unknown_obligations(
     assert result["target_outputs"] == []
     assert result["expanded_requirements"][0]["description"] == result["original_goal"]
     assert any("fallback" in s.lower() for s in result["assumptions"])
+
+
+class SequenceClient(FakeClient):
+    def __init__(self, contents):
+        super().__init__("")
+        self.contents = iter(contents)
+
+    def chat(self, request):
+        self.content = next(self.contents)
+        return super().chat(request)
+
+
+@pytest.mark.parametrize("first", ['{"goal_id":', '{"output_intents": "invalid"}'])
+def test_goal_proposal_gets_one_factual_correction_without_losing_original_contract(first):
+    payload = json.loads(valid_goal_spec_json())
+    payload["output_intents"] = [
+        {"value": "report.md", "obligation": "required"},
+        {"value": "helper.py", "obligation": "optional", "condition": "if needed"},
+    ]
+    client = SequenceClient([first, json.dumps(payload)])
+    result = GoalSpecAgent(client, SchemaValidator(Path("schemas"))).generate(
+        "Produce report.md; helper.py is optional. Never touch existing tests.", {}, "run-1")
+
+    assert len(client.requests) == 2
+    original, correction = client.requests
+    assert correction.messages[:2] == original.messages
+    assert correction.messages[-2].content == first
+    assert "validation" in correction.messages[-1].content.lower()
+    assert correction.metadata == original.metadata
+    assert correction.max_output_tokens == original.max_output_tokens
+    assert result["target_outputs"] == ["report.md"]
+    assert result["output_intents"] == payload["output_intents"]
+    assert result["original_goal"] == "Produce report.md; helper.py is optional. Never touch existing tests."
+    assert not any("fallback" in x.lower() for x in result["assumptions"])
+
+
+def test_goal_proposal_correction_is_bounded_and_keeps_safe_fallback():
+    client = SequenceClient(['{"goal_id":', 'still not JSON'])
+    result = GoalSpecAgent(client, SchemaValidator(Path("schemas"))).generate("Original full goal", {}, "run-1")
+    assert len(client.requests) == 2
+    assert result["original_goal"] == "Original full goal"
+    assert result["expanded_requirements"][0]["description"] == "Original full goal"
+    assert result["target_outputs"] == []
+
+
+def test_goal_proposal_does_not_retry_transport_errors():
+    class BrokenClient(FakeClient):
+        def chat(self, request):
+            self.requests.append(request)
+            raise RuntimeError("transport unavailable")
+    client = BrokenClient("")
+    with pytest.raises(RuntimeError, match="transport unavailable"):
+        GoalSpecAgent(client, SchemaValidator(Path("schemas"))).generate("Goal", {}, "run-1")
+    assert len(client.requests) == 1
