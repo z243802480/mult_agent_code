@@ -6,6 +6,7 @@ from pathlib import Path
 
 from asteria_runtime.commands.decide_command import DecideCommand
 from asteria_runtime.core.task_board import TaskBoard, TaskStateError
+from asteria_runtime.core.task_verification import declared_commands
 from asteria_runtime.core.task_contract import completion_contract, task_kind, write_scope
 from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.json_store import JsonStore
@@ -14,6 +15,34 @@ from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.utils.time import now_iso
+
+
+def _failed_recheck_commands(evidence: dict, violations: list[str]) -> list[str]:
+    """A changed source artifact may be rechecked only against every identified failure."""
+    if "verification did not pass" not in violations or not all(
+        item in {"verification did not pass", "required verification was not provided",
+                 "required changed artifact was not produced"}
+        or item.startswith("expected changed files were not modified") for item in violations
+    ):
+        return []
+    if not any(isinstance(path, str) and path.strip() for path in
+               (evidence.get("contract_check") or {}).get("changed_files", [])):
+        return []
+    execution = evidence.get("task_execution_evidence") or {}
+    results = execution.get("verification_results", [])
+    if any(not isinstance(row, dict) or not isinstance(row.get("ok"), bool) for row in results):
+        return []
+    failures = [row for row in results if not row["ok"]]
+    commands = []
+    for row in failures:
+        data = row.get("data") or {}
+        if not isinstance(data, dict):
+            return []
+        command = row.get("requested_command") or data.get("requested_command") or data.get("command")
+        if not isinstance(command, str) or not command.strip():
+            return []
+        commands.append(command.strip())
+    return list(dict.fromkeys(commands))
 
 
 @dataclass(frozen=True)
@@ -465,21 +494,30 @@ class ReplanCommand:
         #     a prior sibling already fixed the file, so the honest repair is verify-and-confirm,
         #     and demanding a fresh diff from every repair sent runs into endless replans that
         #     escalate a pointless decision to the user.
-        # "verification did not pass" still disqualifies — that violation says the artifact WAS
-        # shown wrong, so the repair must actually fix it. Any unknown future violation also
-        # disqualifies (the all() below fails closed).
+        # A failed verification remains excluded from that legacy window. The separate recheck
+        # window below requires recorded source changes and pins EVERY identified failed command
+        # as a declared check. It may finish without new writes only after those fresh checks pass.
+        # Unknown violations or unidentified failures never qualify for that window.
         # The contract only honors the flag when the repair really runs verification and passes it
         # with zero writes (task_contract.check_completion_contract), so this widens WHO may try to
         # close by verification alone, not what counts as done. Residual exposure, shared with the
         # original window: a repair whose acceptance has no machine check can pick a trivially
         # green command — accepted because the alternative, proven in dogfood, was burning the
         # whole replan budget to ask the user to decide a non-decision.
-        task["verified_noop_allowed"] = bool(violations) and all(
+        recheck_commands = _failed_recheck_commands(evidence, violations)
+        if recheck_commands:
+            task["validation_commands"] = list(dict.fromkeys(
+                [*declared_commands(source_task), *recheck_commands]
+            ))
+            task["verification_policy"].update({
+                "command_source": "planner_task", "commands": list(task["validation_commands"]),
+            })
+        task["verified_noop_allowed"] = bool(recheck_commands) or (bool(violations) and all(
             item == "required verification was not provided"
             or item == "required changed artifact was not produced"
             or item.startswith("expected changed files were not modified")
             for item in violations
-        )
+        ))
         if task["verified_noop_allowed"]:
             # Without this the doer repeats the source's exact behavior — sees a correct file,
             # writes nothing, runs nothing — and the contract rejects it again for skipping
@@ -487,11 +525,16 @@ class ReplanCommand:
             # doer what the closing move IS.
             task["description"] = (
                 task["description"]
-                + "\nVerify-first repair: nothing proved the artifact wrong — the only complaint "
+                + ("\nVerify-first repair: the source recorded changed artifacts. Recheck the "
+                   "exact declared validation commands unchanged. If they pass, no new edit "
+                   "is needed; if they fail, diagnose and repair the remaining defect. "
+                   "A different passing command cannot replace the declared checks."
+                   if recheck_commands else
+                   "\nVerify-first repair: nothing proved the artifact wrong — the only complaint "
                 "was that files went untouched or verification was skipped. First CHECK whether "
                 "the expected artifacts already satisfy the acceptance. If they do, do NOT write "
                 "just to have a diff: run the validation commands (e.g. the test suite), and if "
-                "they all pass, finish the task stating what the verification confirmed."
+                "they all pass, finish the task stating what the verification confirmed.")
             )
         return task
 

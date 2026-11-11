@@ -913,8 +913,19 @@ class ExecuteCommand:
             for item in (task.get("expected_artifacts") or task.get("write_scope") or [])
             if item
         ]
+        announced_verification_failures: set[int] = set()
 
         def _hook(event_name: str, payload: dict) -> TurnControl:
+            failures = []
+            # Declared checks already have a post-loop execution boundary. Legacy
+            # tasks need the same latest-outcome facts before leaving this loop.
+            if event_name == "pre_final" and not has_declared_checks(task):
+                failures = [obs for obs in _completion_verification_results(
+                    task, goal_spec, list(payload.get("observations") or ()), context.root,
+                ) if not obs.ok and str(obs.data.get("requested_command") or obs.data.get("command") or "").strip()]
+            new_failure = any(id(obs) not in announced_verification_failures for obs in failures)
+            failed_commands = [str(obs.data.get("requested_command") or obs.data.get("command")).strip()
+                               for obs in failures] if new_failure else []
             decision = self.hook_manager.dispatch_control(
                 context,
                 event_name,
@@ -928,8 +939,11 @@ class ExecuteCommand:
                     "root": str(context.root),
                     "expected_artifacts": expected_artifacts,
                     "methodology_skill_names": skill_names,
+                    "unresolved_verification_commands": failed_commands,
                 },
             )
+            if decision.continue_turn and failed_commands:
+                announced_verification_failures.update(id(obs) for obs in failures)
             # A hook that HELD THE LOOP OPEN changed what the user sees: the model tried to finish and
             # the run kept going. Without a card that reads as "还差 X 没产出,让它继续做" the extra
             # rounds look like the agent spinning for no reason. Only continue_turn earns a card —
@@ -944,12 +958,14 @@ class ExecuteCommand:
                     event_type="message",
                     phase="execute",
                     status="running",
-                    title="还差产出,继续做",
+                    title="验证未通过,继续处理" if failed_commands and not missing else "还差产出,继续做",
                     summary=(
                         "模型想收尾,但这些交付物还没出现:"
                         + "、".join(missing)
                         + "。已让它继续完成并验证。"
                         if missing
+                        else "模型想收尾,但仍有验证没有通过。已反馈具体检查，让它继续核对。"
+                        if failed_commands
                         else "模型想收尾,但完成条件还没满足。已让它继续。"
                     ),
                     display_level="main",
@@ -959,6 +975,7 @@ class ExecuteCommand:
                         "hook_name": event_name,
                         "held_open": True,
                         "missing_artifacts": missing,
+                        "unresolved_verification_commands": failed_commands,
                         "iteration": payload.get("iteration"),
                         "model_driven_turn": True,
                     },
@@ -1551,23 +1568,10 @@ class ExecuteCommand:
         # 验证证据口径与 review 的确定性快评保持一致(单一真源语义):仅 bug_fix/single_file_bugfix
         # 要求可执行命令验证,其余(含 doc_update)读回产物即算验证。用同一 classify_fast_path 判定,
         # 避免执行门与评审门对"何为验证"各执一词。
-        fast_path = classify_fast_path(
-            str(goal_spec.get("normalized_goal") or goal_spec.get("original_goal") or ""),
-            goal_spec=goal_spec,
-            task=task,
-        )
-        allow_readback = fast_path.task_kind not in {"bug_fix", "single_file_bugfix"}
         # Judge verification on each command's LATEST outcome (red→green on the same command passes),
         # not the cumulative pass/fail of every call — else the repair loop's mandatory initial
         # failing test dooms a genuinely fixed task (ring_recovery benchmark, 2026-07-14).
-        verification_results = (
-            declared_observations(task, observations, context.root) if has_declared_checks(task)
-            else _latest_verification_per_command([
-                obs
-                for obs in observations
-                if _is_verification_observation(obs, allow_readback=allow_readback)
-            ])
-        )
+        verification_results = _completion_verification_results(task, goal_spec, observations, context.root)
         # NB: allow_verified_noop defaults OFF here for the general case. It was tempting for repair
         # tasks (a real fix whose changed-files detection false-negatived), but real-stack validation
         # (ring_val_f) showed it opens a false-completion hole: a task can "close" by running ANY
@@ -1576,12 +1580,9 @@ class ExecuteCommand:
         # verification passing. The changed-files detection gap is fixed at the source, not papered
         # over by trusting an arbitrary passing verification.
         #
-        # The one narrow exception is `verified_noop_allowed` (set by replan_command._task_from_failure
-        # ONLY when the source task's sole violation was "required verification was not provided"):
-        # the artifact was written and never shown wrong, just never checked. A repair that reruns the
-        # SAME validation commands and gets them all green has finished, even with zero new writes —
-        # this does not reopen the ring_val_f gaming hole because it never fires for a task that failed
-        # verification or never wrote anything.
+        # Replan may permit verified-noop for unproven/untouched artifacts. A source with changed
+        # artifacts AND failed validation is eligible only when every failed command is pinned as a
+        # declared check: fresh success on those exact checks is required, not an arbitrary green.
         contract = check_completion_contract(
             task,
             changed_files,
@@ -2694,6 +2695,20 @@ def _is_verification_observation(observation: Any, *, allow_readback: bool = Fal
     return allow_readback and name == "read_file"
 
 
+def _completion_verification_results(task: dict, goal_spec: dict, observations: list, root: Path) -> list:
+    if has_declared_checks(task):
+        return declared_observations(task, observations, root)
+    fast_path = classify_fast_path(
+        str(goal_spec.get("normalized_goal") or goal_spec.get("original_goal") or ""),
+        goal_spec=goal_spec, task=task,
+    )
+    return _latest_verification_per_command([
+        obs for obs in observations if _is_verification_observation(
+            obs, allow_readback=fast_path.task_kind not in {"bug_fix", "single_file_bugfix"},
+        )
+    ])
+
+
 def _latest_verification_per_command(verification_results: list) -> list:
     """Judge a repair loop's verification on each command's LATEST outcome, not the cumulative
     pass/fail of every call across the whole task.
@@ -2876,21 +2891,30 @@ def _methodology_stop_guardrail_decision(record: dict) -> RuntimeHookDecision | 
         for item in (data.get("expected_artifacts") or [])
         if item and _looks_like_path(str(item))
     ]
-    if not root or not expected:
+    if not root:
         return None
     missing = [path for path in expected if not (Path(str(root)) / path).exists()]
-    if not missing:
+    commands = list(data.get("unresolved_verification_commands") or [])
+    if not missing and not commands:
         return None
+    parts = []
+    if missing:
+        parts.append("Expected artifact(s) not found: " + ", ".join(missing)
+                     + ". Produce and verify them with tool calls before finishing.")
+    if commands:
+        parts.append("These command identities still have failing latest outcomes: "
+                     + json.dumps(commands, ensure_ascii=False)
+                     + ". A different or compound command does not replace that evidence. "
+                     "Resolve the recorded verification gap with tools, or explain the blocker.")
+    facts = {"missing_artifacts": missing}
+    if commands:
+        facts["unresolved_verification_commands"] = commands
     return RuntimeHookDecision(
-        additional_context=(
-            "The task is not complete yet: expected artifact(s) not found: "
-            + ", ".join(missing)
-            + ". Produce and verify them with tool calls before finishing."
-        ),
+        additional_context="The task is not complete yet. " + "\n".join(parts),
         continue_turn=True,
         # The reason, structured — so the loop can tell the user why it did not stop. The prompt text
         # above is written for the MODEL and is never shown as user-facing copy.
-        facts={"missing_artifacts": missing},
+        facts=facts,
     )
 
 

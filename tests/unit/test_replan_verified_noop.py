@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from asteria_runtime.commands.replan_command import ReplanCommand
 from asteria_runtime.core.task_board import TaskBoard
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -89,3 +91,38 @@ def test_noop_repair_flag_fails_closed_on_unknown_violations(tmp_path: Path) -> 
         _evidence(["expected changed files were not modified: greeter.py", "some future violation"]),
     )
     assert task["verified_noop_allowed"] is False
+
+
+@pytest.mark.parametrize('fault', [None, 'no_changes', 'empty_change', 'no_command',
+                                 'unknown_violation', 'unidentified_failure'])
+def test_prior_artifact_recheck_requires_exact_failed_command_evidence(tmp_path, fault):
+    evidence = _evidence(['verification did not pass'])
+    evidence['contract_check']['changed_files'] = [] if fault == 'no_changes' else ['greeter.py']
+    if fault == 'empty_change':
+        evidence['contract_check']['changed_files'] = ['']
+    evidence['task_execution_evidence'] = {'verification_results': [{'ok': False,
+        'data': {} if fault == 'no_command'
+        else {'requested_command': 'python verify_greeter.py', 'command': 'expanded execution'}}]}
+    if fault == 'unknown_violation':
+        evidence['contract_check']['violations'].append('unknown violation')
+    if fault == 'unidentified_failure':
+        evidence['task_execution_evidence']['verification_results'].append({'ok': False, 'data': {}})
+    source = evidence['task']
+    source['validation_commands'] = ['python acceptance.py']
+    source['verification_policy'] = {'command_source': 'planner_task'}
+    task = _replan(tmp_path)._task_from_failure(_board(tmp_path), source, evidence)
+    assert task['verified_noop_allowed'] == (fault is None)
+    if fault is None:
+        assert task['validation_commands'] == ['python acceptance.py', 'python verify_greeter.py']
+        assert task['verification_policy']['command_source'] == 'planner_task'
+        assert 'expanded execution' not in task['validation_commands']
+
+
+def test_recheck_does_not_promote_legacy_validation_prose_to_an_executable_check(tmp_path):
+    evidence = _evidence(['verification did not pass'])
+    evidence['contract_check']['changed_files'] = ['greeter.py']
+    evidence['task_execution_evidence'] = {'verification_results': [
+        {'ok': False, 'data': {'command': 'python verify_greeter.py'}}]}
+    evidence['task']['validation_commands'] = ['run meaningful tests']
+    task = _replan(tmp_path)._task_from_failure(_board(tmp_path), evidence['task'], evidence)
+    assert task['validation_commands'] == ['python verify_greeter.py']

@@ -270,6 +270,7 @@ def run_model_driven_turn(
                         "task": task,
                         "narration": narration,
                         "observation_count": len(all_observations),
+                        "observations": tuple(all_observations),
                     },
                 )
                 if control.continue_turn:

@@ -330,13 +330,11 @@ def test_verified_noop_repair_closes_when_source_only_lacked_verification(tmp_pa
     assert repaired_status == "done"
 
 
-def test_verified_noop_not_allowed_when_source_verification_actually_failed(
+def test_failed_source_still_requires_its_exact_check_to_pass(
     tmp_path: Path,
 ) -> None:
-    # Guardrail: verified_noop_allowed must stay False whenever the source task's violations
-    # include anything beyond "never verified" (e.g. a genuinely wrong artifact) — reopening it
-    # for "verification did not pass" would recreate the ring_val_f gaming hole this stays narrow
-    # to avoid.
+    # A changed artifact may be rechecked without a forced diff, but the recorded failing
+    # command is now mandatory. The existing broken answer cannot close by merely saying done.
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
     ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()).run()
@@ -344,7 +342,14 @@ def test_verified_noop_not_allowed_when_source_verification_actually_failed(
     ReplanCommand(tmp_path, run_id=plan.run_id).run()
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     repair_task = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))["tasks"][1]
-    assert repair_task["verified_noop_allowed"] is False
+    assert repair_task["verified_noop_allowed"] is True
+    assert repair_task["validation_commands"] == [
+        'python -c "from complete_module import answer; assert answer() == 42"'
+    ]
+    before = (tmp_path / "complete_module.py").read_bytes()
+    checked = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeNoopExecuteClient()).run()
+    assert checked.completed == 0 and checked.blocked == 1
+    assert (tmp_path / "complete_module.py").read_bytes() == before
 
 
 class FakeNoopExecuteClient:

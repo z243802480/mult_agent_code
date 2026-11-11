@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S118",
+  "active_slice": "S119",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1244,6 +1244,20 @@
       "green_checks": [
         "pytest tests/unit/test_session_continuation_warm.py tests/unit/test_documentation_contracts.py -q",
         "registered snapshot oracle and complete continuation lifecycle audit"
+      ]
+    },
+    {
+      "id": "S119",
+      "name": "验证反馈与受证据约束的重验",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S118"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S119-verification-feedback-and-recheck.md",
+      "user_demo": "收尾前明确未闭合命令身份，已有改动的修复必须通过同身份新验证才可零新增改动完成",
+      "green_checks": [
+        "pytest tests/unit/test_replan_verified_noop.py tests/unit/test_model_driven_turn.py tests/unit/test_documentation_contracts.py -q",
+        "real Execute/Replan deterministic lifecycle regressions"
       ]
     }
   ]

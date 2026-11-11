@@ -501,6 +501,24 @@ def test_hook_turn_start_injects_reminder() -> None:
     assert any("REMINDER" in text for text in first_call_texts)
 
 
+def test_hook_pre_final_receives_existing_observations_without_mutable_list_alias() -> None:
+    model = FakeModelClient([
+        _json_resp('run', [{'tool_name': 'run_command', 'args': {'command': 'check'}}]),
+        _json_resp('done', [], done=True),
+    ])
+    tools = FakeToolRunner([[FakeToolResult(ok=True, summary='checked')]])
+    observed = []
+
+    def hook(name, payload):
+        if name == 'pre_final':
+            observed.append(payload['observations'])
+        return TurnControl()
+
+    result = _run(model, tools, transport='json', hook=hook)
+    assert isinstance(observed[0], tuple)
+    assert observed[0][0] is result.observations[0]
+
+
 def test_hook_pre_final_holds_loop_open_until_evidence() -> None:
     # Model tries to stop at iteration 1; the stop-guardrail hook forces one more turn (continuity),
     # then the model does the work and finishes. Guardrail = boundary, model still decides the step.
