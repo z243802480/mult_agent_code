@@ -5,6 +5,7 @@ from pathlib import Path
 
 from asteria_runtime.commands.run_command import RunCommand, RunResult, RunStepSummary
 from asteria_runtime.core.run_control import clear_pause
+from asteria_runtime.core.workspace_writer_lock import workspace_writer_lock
 from asteria_runtime.core.runtime_evidence import RuntimeEvidenceReader
 from asteria_runtime.core.session_result_service import SessionResultService
 from asteria_runtime.models.base import ModelClient
@@ -73,6 +74,12 @@ class ResumeCommand:
         self.session_results = SessionResultService(self.root, self.validator)
 
     def run(self) -> ResumeResult:
+        if not (self.root / ".asteria").exists():
+            raise RuntimeError("Workspace is not initialized. Run `asteria init` first.")
+        with workspace_writer_lock(self.root, command="resume"):
+            return self._run_unlocked()
+
+    def _run_unlocked(self) -> ResumeResult:
         agent_dir = self.root / ".asteria"
         if not agent_dir.exists():
             raise RuntimeError("Workspace is not initialized. Run `asteria init` first.")
@@ -128,6 +135,19 @@ class ResumeCommand:
             if task_plan_path.exists()
             else {"tasks": []}
         )
+        interrupted = [task for task in task_plan["tasks"]
+                       if run["status"] != "completed"
+                       and task.get("status") in {"in_progress", "testing", "reviewing"}]
+        if interrupted:
+            for task in interrupted:
+                task["status"] = "ready"
+                task["updated_at"] = now_iso()
+            self.store.write(task_plan_path, task_plan, "task_board")
+            EventLogger(run_dir / "events.jsonl", self.validator).record(
+                run_id, "interrupted_tasks_requeued", "ResumeCommand",
+                "Requeued unfinished tasks after acquiring the workspace writer lock; inspect prior effects before retrying.",
+                {"task_ids": [task["task_id"] for task in interrupted]},
+            )
         self._reconcile_with_runtime_evidence(run_dir, task_plan)
 
         if run["status"] == "completed" and applied_decisions == 0:

@@ -43,12 +43,14 @@ class ToolRegistry:
                     error=str(exc),
                     status="denied",
                 )
-                record_tool_call(context, name, str(kwargs), result, task_id, agent_id, started_at)
+                record_tool_call(context, name, str(kwargs), result, task_id, agent_id, started_at,
+                                 budget_charged=context.budget is not None)
                 return result
 
         if name not in self._tools:
             result = ToolResult(ok=False, summary=f"Unknown tool: {name}", error="unknown_tool")
-            record_tool_call(context, name, str(kwargs), result, task_id, agent_id, started_at)
+            record_tool_call(context, name, str(kwargs), result, task_id, agent_id, started_at,
+                             budget_charged=context.budget is not None)
             return result
 
         sanitized_kwargs, dropped = self._sanitize_kwargs(self._tools[name], kwargs)
@@ -61,7 +63,8 @@ class ToolRegistry:
             result = ToolResult(ok=False, summary=f"{name} denied by policy", error=str(exc), status="denied")
         except Exception as exc:  # noqa: BLE001 - tool boundary must convert failures to structured results
             result = ToolResult(ok=False, summary=f"{name} failed", error=str(exc))
-        record_tool_call(context, name, str(sanitized_kwargs), result, task_id, agent_id, started_at)
+        record_tool_call(context, name, str(sanitized_kwargs), result, task_id, agent_id, started_at,
+                         budget_charged=context.budget is not None)
         return result
 
     def _sanitize_kwargs(self, tool: Tool, kwargs: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:

@@ -46,7 +46,13 @@ class Client:
             }]}
         elif request.purpose == 'task_execution':
             self.turns += 1
-            if phase == 'start' and self.turns == 1:
+            if phase == 'crash' and self.turns == 2:
+                os._exit(23)  # no finally/task/run finalization after a completed tool batch
+            if phase == 'crash' and self.turns == 1:
+                data = {'narration': 'Write before abrupt exit', 'done': False,
+                        'tool_calls': [{'tool_name': 'write_file', 'args': {
+                            'path': 'checkpoint.py', 'content': 'VALUE = 41\n'}}]}
+            elif phase == 'start' and self.turns == 1:
                 # The real CLI writes the normal pause signal after the loop's
                 # turn-start check. This batch must still finish before pausing.
                 subprocess.run([sys.executable, '-m', 'asteria_runtime', 'pause',
@@ -68,7 +74,7 @@ class Client:
                             'fake', 'cross-process-fixture', {})
 
 client = Client()
-if phase == 'start':
+if phase in {'start', 'crash'}:
     InitCommand(root).run()
     path = root / '.asteria/policies.json'
     policy = json.loads(path.read_text(encoding='utf-8'))
@@ -88,7 +94,7 @@ print(json.dumps({'pid': os.getpid(), 'run_id': result.run_id, 'status': result.
 """
 
 
-def invoke(root: Path, phase: str, run_id: str = "") -> dict:
+def invoke(root: Path, phase: str, run_id: str = "", expected_returncode: int = 0) -> dict:
     env = {
         **os.environ,
         "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src"),
@@ -107,7 +113,9 @@ def invoke(root: Path, phase: str, run_id: str = "") -> dict:
         encoding="utf-8",
         timeout=60,
     )
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == expected_returncode, result.stdout + result.stderr
+    if expected_returncode:
+        return {"run_id": next((root / ".asteria/runs").glob("run-*")).name}
     return json.loads(result.stdout.splitlines()[-1])
 
 
@@ -156,3 +164,25 @@ def test_same_run_fresh_process_resume_keeps_written_artifact_and_budget(
     if not corrupt:
         assert sum(c["purpose"] == "task_execution" for c in calls) == 3
         assert not list((run / "task_pause_checkpoints").glob("*.json"))
+
+
+def test_abrupt_worker_exit_resume_keeps_budget_reservation_and_ledger_prefix(tmp_path):
+    initial = invoke(tmp_path, "crash", expected_returncode=23)
+    run = tmp_path / ".asteria/runs" / initial["run_id"]
+    prefix = {p.name: p.read_bytes() for p in run.glob("*.jsonl")}
+    saved = json.loads((run / "cost_report.json").read_text(encoding="utf8"))
+    completed = len((run / "model_calls.jsonl").read_text(encoding="utf8").splitlines())
+    assert saved["model_calls"] == completed + 1  # interrupted request remains reserved
+    assert saved["tool_calls"] == 1
+    assert json.loads((run / "run.json").read_text(encoding="utf8"))["status"] == "running"
+    resumed = invoke(tmp_path, "resume", initial["run_id"])
+    assert resumed["status"] == "completed"
+    after = json.loads((run / "cost_report.json").read_text(encoding="utf8"))
+    calls = [json.loads(line) for line in (run / "model_calls.jsonl").read_text(encoding="utf8").splitlines()]
+    assert after["model_calls"] > saved["model_calls"]
+    assert after["model_calls"] == len(calls) + 1
+    assert after["accounting_recovery"]["unrecorded_model_attempts"] == 1
+    assert after["estimated_input_tokens"] == sum(r.get("input_tokens", 0) or 0 for r in calls)
+    assert all((run / name).read_bytes().startswith(data) for name, data in prefix.items())
+    tools = [json.loads(line) for line in (run / "tool_calls.jsonl").read_text(encoding="utf8").splitlines()]
+    assert sum(r["tool_name"] == "write_file" for r in tools) == 1

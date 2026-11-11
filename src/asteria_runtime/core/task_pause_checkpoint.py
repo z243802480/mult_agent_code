@@ -32,6 +32,7 @@ def _contract_hash(task: dict) -> str:
         "expected_artifacts",
         "expected_changed_files",
         "write_scope",
+        "edit_boundary",
         "completion_contract",
         "validation_commands",
         "verification_policy",

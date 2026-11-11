@@ -487,6 +487,7 @@ class McpAdapter:
             "schema_version": "0.1.0",
             "mcp_invocation_id": invocation_id,
             "tool_call_id": context.tool_call_id or new_tool_call_id(),
+            "budget_charged": context.budget is not None and decision["decision"] != "deny",
             "run_id": context.run_id,
             "task_id": str(task.get("task_id", "")),
             "server_name": server_name,

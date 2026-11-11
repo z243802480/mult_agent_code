@@ -326,8 +326,7 @@ class ExecuteCommand:
         project_config = self.store.read(agent_dir / "project.json", "project_config")
         goal_spec = self.store.read(run_dir / "goal_spec.json", "goal_spec")
         cost_report_path = run_dir / "cost_report.json"
-        existing_cost = self._read_cost(cost_report_path, run_id)
-        budget = BudgetController.from_report(policy, existing_cost, run_id=run_id)
+        budget = BudgetController.from_run(policy, run_dir, self.validator)
         event_logger = EventLogger(run_dir / "events.jsonl", self.validator)
         context = RuntimeContext(
             root=self.root,
@@ -1405,6 +1404,12 @@ class ExecuteCommand:
         # turn lets the contract count in-scope disk changes and disclose out-of-scope ones.
         pre_turn_snapshot = snapshot_workspace(context.root)
 
+        def _on_turn_event(event: TurnEvent) -> None:
+            self._record_model_driven_event(context, task, event)
+            if event.kind == "tool_observation":
+                record_task_progress(context.run_dir, str(task["task_id"]), event.observations)
+                record_pause_changes(context, task, pre_turn_snapshot, snapshot_workspace(context.root))
+
         result = run_model_driven_turn(
             model_client=coder.model_client,
             tool_runner=tool_runner,
@@ -1416,7 +1421,7 @@ class ExecuteCommand:
             model_tier=model_tier,
             max_iterations=max_iterations,
             transport="json",
-            on_event=lambda event: self._record_model_driven_event(context, task, event),
+            on_event=_on_turn_event,
             hook=_hook,
             approval_gate=_approval_gate,
             # 用户暂停信号由外部进程(Studio / `asteria pause`)写进 run 目录——运行中的 loop 只能靠

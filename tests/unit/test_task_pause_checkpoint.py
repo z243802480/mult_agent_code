@@ -37,6 +37,14 @@ def test_same_task_pause_carries_only_unchanged_files(tmp_path: Path) -> None:
     assert previous_pause_changes(ctx, t, None) == []
 
 
+def test_edit_boundary_change_invalidates_prior_progress(tmp_path: Path) -> None:
+    ctx, original = context(tmp_path), task()
+    original["edit_boundary"] = {"mode": "restricted", "paths": ["a.py", "b.py"]}
+    record_pause_changes(ctx, original, {}, {"a.py": (10, 3)})
+    narrowed = {**original, "edit_boundary": {"mode": "restricted", "paths": ["b.py"]}}
+    assert previous_pause_changes(ctx, narrowed, {"a.py": (10, 3)}) == []
+
+
 def test_existing_file_without_any_pause_change_is_not_progress(tmp_path: Path) -> None:
     ctx, t = context(tmp_path), task()
     state = {"a.py": (10, 3)}

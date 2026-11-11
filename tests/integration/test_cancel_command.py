@@ -64,3 +64,16 @@ def test_cancel_survives_a_missing_current_run(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     result = CancelCommand(tmp_path).run()
     assert result.status == "not_found"
+
+
+def test_cancel_reports_accounting_failure_without_leaving_a_dead_run_running(tmp_path):
+    run_id = _zombie_run(tmp_path)
+    run = tmp_path / ".asteria/runs" / run_id
+    cost = (run / "cost_report.json").read_bytes()
+    broken = b"not valid JSONL\n"
+    (run / "model_calls.jsonl").write_bytes(broken)
+    result = CancelCommand(tmp_path).run()
+    assert result.status == "cancelled" and "Accounting recovery failed" in result.detail
+    assert RunStore(tmp_path / ".asteria", _validator()).load_run(run_id)["status"] == "cancelled"
+    assert (run / "model_calls.jsonl").read_bytes() == broken
+    assert (run / "cost_report.json").read_bytes() == cost

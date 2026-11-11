@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from threading import RLock
+from typing import Callable
+
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 from asteria_runtime.core.context_budget import (
     ContextPressure,
@@ -52,6 +56,26 @@ class BudgetController:
         self.usage = BudgetUsage()
         self._lock = RLock()
         self._last_raw_context_estimate = 0
+        self._checkpoint: Callable[[], None] | None = None
+        self.accounting_recovery: dict = {}
+
+    @classmethod
+    def from_run(cls, policy: dict, run_dir: Path, validator: SchemaValidator) -> "BudgetController":
+        from asteria_runtime.core.budget_recovery import recover_budget
+        from asteria_runtime.storage.json_store import JsonStore
+
+        store = JsonStore(validator)
+        path = run_dir / "cost_report.json"
+        report = store.read(path, "cost_report") if path.exists() else cls(policy).cost_report()
+        controller = cls.from_report(policy, report, run_id=run_dir.name)
+        recover_budget(controller, run_dir, validator)
+        controller._checkpoint = lambda: store.write(path, controller.cost_report(), "cost_report")
+        controller._persist_checkpoint()
+        return controller
+
+    def _persist_checkpoint(self) -> None:
+        if self._checkpoint is not None:
+            self._checkpoint()
 
     @classmethod
     def from_report(
@@ -69,6 +93,7 @@ class BudgetController:
                 str(key): int(value) for key, value in raw_breakdown.items()
             }
         controller.usage.repair_attempts = int(report.get("repair_attempts", 0))
+        controller.usage.research_calls = int(report.get("research_calls", 0))
         controller.usage.context_compactions = int(report.get("context_compactions", 0))
         controller.usage.user_decisions = int(report.get("user_decisions", 0))
         controller.usage.estimated_input_tokens = report.get("estimated_input_tokens")
@@ -111,6 +136,7 @@ class BudgetController:
         controller.usage.strong_model_calls = int(report.get("strong_model_calls", 0))
         controller.usage.cheap_model_calls = int(report.get("cheap_model_calls", 0))
         controller.usage.warnings = list(report.get("warnings", []))
+        controller.accounting_recovery = dict(report.get("accounting_recovery") or {})
         return controller
 
     def record_model_call(
@@ -126,7 +152,10 @@ class BudgetController:
             if model_tier == "cheap":
                 self.usage.cheap_model_calls += 1
             self.record_model_tokens(input_tokens, output_tokens)
-            self._check_limit("model_calls", self.usage.model_calls, "max_model_calls_per_goal")
+            try:
+                self._check_limit("model_calls", self.usage.model_calls, "max_model_calls_per_goal")
+            finally:
+                self._persist_checkpoint()
 
     def record_model_tokens(
         self,
@@ -142,6 +171,8 @@ class BudgetController:
                 self.usage.estimated_output_tokens += output_tokens
             elif output_tokens is not None:
                 self.usage.estimated_output_tokens = None
+            if input_tokens is not None or output_tokens is not None:
+                self._persist_checkpoint()
 
     def record_context_estimate(
         self,
@@ -279,11 +310,12 @@ class BudgetController:
             self.usage.tool_call_breakdown[tool_class] = (
                 self.usage.tool_call_breakdown.get(tool_class, 0) + 1
             )
-            self._check_limit(
-                "tool_budget_units",
-                self.usage.tool_budget_units,
-                "max_tool_calls_per_goal",
-            )
+            try:
+                self._check_limit(
+                    "tool_budget_units", self.usage.tool_budget_units, "max_tool_calls_per_goal",
+                )
+            finally:
+                self._persist_checkpoint()
 
     def record_repair_attempt(self) -> None:
         # Intentionally unwired: the effective repair bound is run_command's derived
@@ -296,25 +328,31 @@ class BudgetController:
         # execute path. See docs/zh/质量与评估.md §7.
         with self._lock:
             self.usage.repair_attempts += 1
-            self._check_limit(
-                "repair_attempts",
-                self.usage.repair_attempts,
-                "max_repair_attempts_total",
-            )
+            try:
+                self._check_limit("repair_attempts", self.usage.repair_attempts, "max_repair_attempts_total")
+            finally:
+                self._persist_checkpoint()
 
     def record_research_call(self) -> None:
         with self._lock:
             self.usage.research_calls += 1
-            self._check_limit("research_calls", self.usage.research_calls, "max_research_calls")
+            try:
+                self._check_limit("research_calls", self.usage.research_calls, "max_research_calls")
+            finally:
+                self._persist_checkpoint()
 
     def record_user_decision(self) -> None:
         with self._lock:
             self.usage.user_decisions += 1
-            self._check_limit("user_decisions", self.usage.user_decisions, "max_user_decisions")
+            try:
+                self._check_limit("user_decisions", self.usage.user_decisions, "max_user_decisions")
+            finally:
+                self._persist_checkpoint()
 
     def record_context_compaction(self) -> None:
         with self._lock:
             self.usage.context_compactions += 1
+            self._persist_checkpoint()
 
     def cost_report(self) -> dict:
         with self._lock:
@@ -350,6 +388,8 @@ class BudgetController:
                 "user_decisions": self.usage.user_decisions,
                 "status": status,
                 "warnings": list(self.usage.warnings),
+                **({"accounting_recovery": dict(self.accounting_recovery)}
+                   if self.accounting_recovery else {}),
             }
 
     @staticmethod

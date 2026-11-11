@@ -22,6 +22,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from asteria_runtime.core.workspace_writer_lock import writer_process_alive
+from asteria_runtime.core.budget import BudgetController
+from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.core.run_config import effective_policy_for_run
 from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -84,6 +87,17 @@ class CancelCommand:
                     f"Run {run_id} is still holding the workspace writer lock — it looks alive, refusing to mark it cancelled.",
                 )
             time.sleep(LOCK_DROP_POLL_SECONDS)
+        accounting_error = None
+        try:
+            policy = effective_policy_for_run(
+                policy=load_policy_config(agent_dir, self.validator),
+                run_dir=run_store.run_dir(run_id), validator=self.validator,
+            )
+            BudgetController.from_run(policy, run_store.run_dir(run_id), self.validator)
+        except (OSError, ValueError) as exc:
+            # A dead worker is cancelled even when its accounting evidence is damaged.
+            # Preserve that evidence and surface the failed recovery; never overwrite it with zero.
+            accounting_error = str(exc)
         run["status"] = "cancelled"
         run["ended_at"] = now_iso()
         run["summary"] = "Run cancelled by the user; the worker process was stopped before it could finalize."
@@ -93,5 +107,9 @@ class CancelCommand:
             "run_cancelled",
             "CancelCommand",
             "Run marked cancelled after its worker process was stopped.",
+            {"accounting_recovery_error": accounting_error},
         )
-        return CancelResult(run_id, "cancelled", f"Run {run_id} marked cancelled.")
+        detail = f"Run {run_id} marked cancelled."
+        if accounting_error:
+            detail += f" Accounting recovery failed; cost evidence was preserved: {accounting_error}"
+        return CancelResult(run_id, "cancelled", detail)

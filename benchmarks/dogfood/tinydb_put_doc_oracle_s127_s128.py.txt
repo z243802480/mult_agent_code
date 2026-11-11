@@ -1,0 +1,42 @@
+"""Evaluator-only checker for an explicitly requested self-contained doctest subsection."""
+import doctest
+from pathlib import Path
+
+
+def check(text, name):
+    test = doctest.DocTestParser().get_doctest(text, {}, name, name, 0)
+    result = doctest.DocTestRunner().run(test)
+    failures = result.failed + int(not test.examples)
+    print(name, 'attempted:', result.attempted, 'failed:', failures)
+    return failures
+
+
+def subsection(text, title):
+    lines = text.splitlines()
+    start = lines.index(title)
+    if set(lines[start + 1]) != {'~'}:
+        raise ValueError('Requested subsection needs its normal RST heading')
+    end = len(lines)
+    for index in range(start + 2, len(lines) - 1):
+        underline = lines[index + 1]
+        if lines[index].strip() and underline and set(underline) == {'~'}:
+            end = index
+            break
+    return '\n'.join(lines[start + 2:end])
+
+
+def verify(root):
+    usage = (root / 'docs/usage.rst').read_text(encoding='utf8')
+    batch = usage.split('Batch Operations', 1)[1].split('\nQueries\n', 1)[0]
+    api = (root / 'docs/api.rst').read_text(encoding='utf8').split('Batch API', 1)[1].split('``tinydb.database``', 1)[0]
+    failures = check(batch, 'usage-batch') + check(api, 'api-batch')
+    try:
+        example = subsection(batch, 'Put counts example')
+    except (ValueError, IndexError) as error:
+        print('Missing or malformed subsection:', error)
+        return failures + 1
+    return failures + check(example, 'isolated-put-example')
+
+
+if __name__ == '__main__':
+    raise SystemExit(bool(verify(Path.cwd())))

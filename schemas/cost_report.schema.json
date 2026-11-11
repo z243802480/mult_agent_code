@@ -18,6 +18,54 @@
     "warnings"
   ],
   "properties": {
+    "accounting_recovery": {
+      "type": "object",
+      "required": [
+        "source",
+        "precision",
+        "observed_model_records",
+        "unrecorded_model_attempts",
+        "unrecorded_tool_attempts",
+        "ambiguous_tool_attempts",
+        "unknown_usage_records"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "durable_ledgers"
+          ]
+        },
+        "precision": {
+          "type": "string",
+          "enum": [
+            "record_floor",
+            "conservative"
+          ]
+        },
+        "observed_model_records": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unrecorded_model_attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unrecorded_tool_attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ambiguous_tool_attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unknown_usage_records": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
     "schema_version": {
       "type": "string"
     },

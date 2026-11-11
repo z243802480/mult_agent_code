@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S126",
+  "active_slice": "S127",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1361,6 +1361,26 @@
         "fresh real skill/local identity and cost audit"
       ],
       "status": "Identity engineering verified (Windows full1836 / WSL50; real completed evidence106 local+2 skills=108 unique joined observations). Whole fresh goal rejected at900s for unfinished verification and three unauthorized DB artifacts; forced-stop cost report unreconciled. Formal Review/Accept NOT RUN. Next S127 verification scope/convergence, then S128 interruption recovery audit."
+    },
+    {
+      "id": "S127",
+      "name": "验证过程的范围与收敛",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S126"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S127-verification-scope-convergence.md",
+      "status": "In progress; same authorized batch, joint validation after engineering."
+    },
+    {
+      "id": "S128",
+      "name": "异常终止后的状态与计量恢复",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S127"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S128-interruption-accounting-recovery.md",
+      "status": "In progress; same authorized batch, joint validation after engineering."
     }
   ]
 }

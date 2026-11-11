@@ -7,6 +7,7 @@ import sys
 
 from asteria_runtime.core.process_fence import run_fenced
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.workspace_snapshot import changed_paths, snapshot_workspace
 from asteria_runtime.core.sandbox_launch import run_sandboxed
 from asteria_runtime.core.sandbox_provision import (
     SandboxContext,
@@ -58,6 +59,7 @@ class RunCommandTool:
             except SandboxUnavailable as exc:
                 return self._sandbox_unavailable(command, str(exc))
 
+        before = snapshot_workspace(context.root)
         try:
             if sandbox_ctx is not None:
                 completed = run_sandboxed(
@@ -79,14 +81,16 @@ class RunCommandTool:
                     env=self._env(),
                 )
         except subprocess.TimeoutExpired as exc:
+            effects = self._workspace_observation(context, before)
             return ToolResult(
                 ok=False,
-                summary=f"Command timed out after {timeout}s: {command}",
+                summary=self._workspace_summary(effects) + f"Command timed out after {timeout}s: {command}",
                 error="timeout",
                 data={
                     "stdout": self._truncate(self._text(exc.stdout)),
                     "stderr": self._truncate(self._text(exc.stderr)),
                     "returncode": None,
+                    **effects,
                 },
             )
         raw_stdout = self._text(completed.stdout)
@@ -95,9 +99,11 @@ class RunCommandTool:
         stderr = self._truncate(raw_stderr)
         expected = self._expected_returncodes(expected_returncodes)
         ok = completed.returncode in expected
+        effects = self._workspace_observation(context, before)
         return ToolResult(
             ok=ok,
-            summary=f"Command {'passed' if ok else 'failed'} ({completed.returncode}): {command}",
+            summary=self._workspace_summary(effects) + f"Shell command exited {completed.returncode} "
+                    f"({'expected' if ok else 'unexpected'} status): {command}",
             error=None if ok else "nonzero_exit",
             data={
                 "command": command,
@@ -108,8 +114,32 @@ class RunCommandTool:
                 "stderr": stderr,
                 "stdout_truncated": len(raw_stdout) > len(stdout),
                 "stderr_truncated": len(raw_stderr) > len(stderr),
+                **effects,
             },
         )
+
+    def _workspace_observation(self, context: RuntimeContext, before: dict | None) -> dict:
+        after = snapshot_workspace(context.root)
+        if before is None or after is None:
+            return {"workspace_scan": "unavailable", "workspace_changes": None}
+        paths = changed_paths(before, after)
+        return {
+            "workspace_scan": "stat_only",
+            "changed_files": paths,
+            "workspace_changes": {
+                "created": [p for p in paths if p not in before],
+                "modified": [p for p in paths if p in before and p in after],
+                "deleted": [p for p in paths if p not in after],
+            },
+        }
+
+    def _workspace_summary(self, effects: dict) -> str:
+        if effects["workspace_changes"] is None:
+            return "Workspace change scan unavailable; file effects unknown. "
+        paths = effects["changed_files"]
+        if not paths:
+            return "Workspace stat scan found no file changes. "
+        return f"Workspace stat changes ({len(paths)}): {', '.join(paths[:8])}. "
 
     def _sandbox_unavailable(self, command: str, reason: str) -> ToolResult:
         # Fail-closed refusal: the policy asked for a sandbox and one could not be built. The command
@@ -170,5 +200,4 @@ class RunTestsTool:
             test_command,
             timeout_seconds=timeout_seconds,
         )
-        result.summary = "Test " + result.summary[0].lower() + result.summary[1:]
         return result

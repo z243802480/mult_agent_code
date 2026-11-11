@@ -11,6 +11,7 @@
     "created_at"
   ],
   "properties": {
+    "budget_charged": { "type": "boolean" },
     "tool_call_id": { "type": "string" },
     "schema_version": { "type": "string" },
     "mcp_invocation_id": { "type": "string" },

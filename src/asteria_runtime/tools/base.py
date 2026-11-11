@@ -33,6 +33,8 @@ def record_tool_call(
     task_id: str | None = None,
     agent_id: str | None = None,
     started_at: str | None = None,
+    *,
+    budget_charged: bool = False,
 ) -> None:
     started = started_at or now_iso()
     ended = now_iso()
@@ -40,6 +42,7 @@ def record_tool_call(
     record = {
         "schema_version": "0.1.0",
         "tool_call_id": getattr(context, "tool_call_id", None) or new_tool_call_id(),
+        "budget_charged": budget_charged,
         "run_id": context.run_id,
         "task_id": task_id,
         "agent_id": agent_id,

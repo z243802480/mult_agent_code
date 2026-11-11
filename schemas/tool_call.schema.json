@@ -12,6 +12,7 @@
     "status"
   ],
   "properties": {
+    "budget_charged": { "type": "boolean" },
     "schema_version": { "type": "string" },
     "tool_call_id": { "type": "string" },
     "run_id": { "type": ["string", "null"] },
