@@ -23,3 +23,7 @@
 离线相同重建上下文 630,807→409,667 字符（-35.06%），投影仅去 62 个重复摘要、40 个相同 command、31 个可由保留 data 精确重建的 payload；其余为 JSON 空白压缩。所有记录/失败/唯一文件 payload 保留，相关 55 项回归已过。字符变化不冒充 token/费用变化。
 
 将原 S113 已接受目标及原 run 复制为两份独立评审工作区，初始内容和 cost/账本前缀一致；A 冻结 1891f8e，B 冻结本刀代码提交（提交后登记 SHA）。先 A 再 B，各运行一次普通 review，原预算不变、无新 goal、无人工解答变更或重跑刷绿。执行器仍只含 src/schemas，报告各新 Review 的真实输入/输出 token 与耗时、verdict 和副作用；这是一个额外评审单对照，不是两次新自主目标，也不证明稳定端到端降本。原 S113 工作区/原始验收与成本记录不修改；原六批未跟踪目录不提交。
+
+评审对照冻结：A=`1891f8ef6ad67c3465d44f99ca6ad7059501c75e`，B=`aa3e4f035319773dae71832055070bb2ff688365`；原样本与两份副本初始文件 hash 相等的断言已在调用前执行，控制器原记录见 WSL `~/.cache/asteria-evaluations/s114-review-pair-20261111/registration.json`。
+
+回执：本刀已验收，模型可见 Review 去精确重复表示，独立数据/错误/命令差异/唯一文件 payload 保留。Windows 完整 1655、相关 55、WSL 32、aa3e4f0 的 Verify 42951272391 三 job 全绿；额外 Review 单对真输入 165,255→110,773（-32.97%），均 pass/1.00，原 S113 全目录 hash 不变。未新增自主目标，不外推稳定端到端降本；下一刀优先 read_file 可见范围与续读提示。详见 `docs/zh/reports/S114-review-context-and-repeat-read-20261111.md`。
