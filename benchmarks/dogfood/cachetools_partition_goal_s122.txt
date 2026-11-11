@@ -1,0 +1,22 @@
+Implement Cache.partition_items(predicate), preserving the accepted peek/peekitems behavior.
+Read PARTITION_CONTRACT.md for complete public semantics and exact current edit scope.
+Take a live item snapshot before callbacks. Call predicate(key,value) once per entry;
+return (matched,rejected), a tuple of two distinct fresh lists partitioned by Python
+truth testing, preserving each side's order and original value identity. Propagate
+callback exceptions unchanged; callback cache mutations must not change snapshot traversal.
+The API itself must not count accesses, affect eviction or purge expired TTL/TLRU storage.
+Required deliverables: src/cachetools/__init__.py, docs/index.rst, NEW docs/分组（只读）.rst,
+NEW tests/test_partition_items_s122.py. Both docs need semantics and an example.
+You may edit src/cachetools/keys.py if necessary; this is permission only.
+You may create src/cachetools/_partition.py only if the implementation needs that helper;
+it is optional, not a required output. Preserve literal paths; conditions are not suffixes.
+Other source/config/LICENSE, all existing tests, AGENTS.md, TASK_CONTRACT.md and
+PARTITION_CONTRACT.md are immutable. The prior task edit set is historical.
+The project is uninstalled src layout. Use these verified commands exactly:
+/home/administrator/.cache/asteria-s101/venv/bin/python -m pytest -o pythonpath=src -o addopts= tests -q
+/home/administrator/.cache/asteria-s101/venv/bin/python -c "import sys,pathlib; sys.path.insert(0,'src'); import cachetools; print(cachetools.__file__); assert pathlib.Path(cachetools.__file__).resolve().is_relative_to(pathlib.Path.cwd()/'src/cachetools')"
+Do not assume inherited project PYTHONPATH or install dependencies/tools.
+Use normal permitted navigation. No network/Git/subagents/credentials, outside-workspace
+or other-experiment scans, reference answers, runtime/installed-package implementation
+introspection, artificial pauses/delays or repeated unchanged verification.
+Finish when verified and report actual results honestly.

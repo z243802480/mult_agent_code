@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S121",
+  "active_slice": "S122",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1289,6 +1289,20 @@
         "registered new-goal independent behavior and scope audit"
       ],
       "status": "Engineering regressions passed; real goal functional/scope checks passed but typed path not exercised and declared-command environment mismatch; independent acceptance rejected."
+    },
+    {
+      "id": "S122",
+      "name": "验收环境一致性与新链路真实证明",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S121"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S122-guarded-preflight-real-proof.md",
+      "user_demo": "真实 guarded 环境预检后，以新 partition_items 目标检验分类与规划链路",
+      "green_checks": [
+        "pytest tests/unit/test_cache_partition_oracle.py tests/unit/test_documentation_contracts.py -q",
+        "registered guarded baseline and independent real goal audit"
+      ]
     }
   ]
 }

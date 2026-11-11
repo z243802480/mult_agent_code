@@ -1,0 +1,199 @@
+"""S122 public oracle; run outside the model workspace beside the S116 oracle."""
+from pathlib import Path
+import runpy
+import unittest
+
+import cachetools
+
+reference = runpy.run_path(str(Path(__file__).with_name('cachetools_peek_oracle.py.txt')))
+Clock, make, FAMILY = (reference[name] for name in ('Clock', 'make', 'FAMILY'))
+
+
+def assert_selection(case, actual, expected):
+    case.assertIsInstance(actual, list, 'result must be a fresh list')
+    case.assertEqual(len(actual), len(expected), 'no missing/duplicate entries')
+    for pair, (key, value) in zip(actual, expected):
+        case.assertIsInstance(pair, (list, tuple))
+        case.assertEqual(len(pair), 2)
+        case.assertEqual(pair[0], key, 'snapshot order and keys must be preserved')
+        case.assertIs(pair[1], value, 'values preserve their original identity')
+
+
+
+def assert_partition(case, actual, expected):
+    case.assertIsInstance(actual, tuple)
+    case.assertEqual(len(actual), 2)
+    case.assertIsNot(actual[0], actual[1], 'partition lists are independent')
+    assert_selection(case, actual[0], expected[0])
+    assert_selection(case, actual[1], expected[1])
+
+
+def select(cache, predicate):
+    expected = ([], [])
+    def observe(key, value):
+        truth = bool(predicate(key, value))
+        expected[0 if truth else 1].append((key, value))
+        return truth
+    result = cache.partition_items(observe)
+    assert_partition(unittest.TestCase(), result, expected)
+    return result[0]
+
+
+class Partition(unittest.TestCase):
+    def populated(self, kind, **kwargs):
+        cache = make(kind, **kwargs)
+        values = {'alpha': {'value': 1}, 'beta': {'value': 2}, 'gamma': {'value': 3}}
+        cache.update(values)
+        return cache, values
+
+    def test_all_families_new_list_identity_and_order(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                cache, values = self.populated(kind)
+                snapshot = cache.peekitems()
+                calls = []
+                result = select(cache, lambda k, v: calls.append((k, v)) or True)
+                assert_selection(self, calls, snapshot)
+                assert_selection(self, result, snapshot)
+                other = select(cache, lambda k, v: True)
+                self.assertIsNot(result, other)
+                result.clear()
+                assert_selection(self, other, snapshot)
+                self.assertEqual(dict(cache.peekitems()), values)
+
+    def test_filter_and_normal_truth_testing(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                cache, _ = self.populated(kind)
+                snapshot = cache.peekitems()
+                assert_selection(self, select(cache, lambda k, v: ['yes'] if k != 'beta' else []),
+                                 [(k, v) for k, v in snapshot if k != 'beta'])
+
+    def test_false_still_calls_every_live_entry_once(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                cache, _ = self.populated(kind)
+                calls = []
+                self.assertEqual(select(cache, lambda k, v: calls.append((k, v))), [])
+                assert_selection(self, calls, cache.peekitems())
+
+    def test_empty_does_not_call_predicate(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                self.assertEqual(select(make(kind), lambda *a: self.fail('empty callback')), [])
+
+    def test_callback_mutations_do_not_change_snapshot(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                cache, _ = self.populated(kind)
+                snapshot = cache.peekitems()
+                calls = []
+                def mutate(key, value):
+                    calls.append((key, value))
+                    if len(calls) == 1:
+                        cache.clear()
+                        cache['new'] = object()
+                    return True
+                assert_selection(self, select(cache, mutate), snapshot)
+                assert_selection(self, calls, snapshot)
+                self.assertEqual(set(dict(cache.peekitems())), {'new'})
+
+    def test_predicate_exception_is_unchanged_and_stops_traversal(self):
+        error = RuntimeError('selection failure')
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                cache, _ = self.populated(kind)
+                snapshot = cache.peekitems()
+                calls = []
+                def fail(key, value):
+                    calls.append((key, value))
+                    raise error
+                with self.assertRaises(RuntimeError) as caught:
+                    select(cache, fail)
+                self.assertIs(caught.exception, error)
+                assert_selection(self, calls, snapshot[:1])
+                assert_selection(self, cache.peekitems(), snapshot)
+
+    def test_getitem_is_never_called(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                class NoGetitem(getattr(cachetools, kind)):
+                    def __getitem__(self, key):
+                        raise AssertionError('selection must not count an access')
+                cache, _ = self.populated(kind, cls=NoGetitem)
+                assert_selection(self, select(cache, lambda k, v: True), cache.peekitems())
+
+    def test_expired_storage_not_purged(self):
+        for kind in ('TTLCache', 'TLRUCache'):
+            with self.subTest(kind=kind):
+                clock = Clock()
+                cache, values = self.populated(kind, clock=clock)
+                clock.now = 20
+                self.assertEqual(select(cache, lambda *a: self.fail('expired callback')), [])
+                actual = dict(cache.expire(clock.now))
+                self.assertEqual(set(actual), set(values))
+                for key, value in values.items():
+                    self.assertIs(actual[key], value)
+
+    def test_mixed_expiry_filters_before_callbacks_without_purge(self):
+        for kind in ('TTLCache', 'TLRUCache'):
+            with self.subTest(kind=kind):
+                clock = Clock()
+                cache = make(kind, clock=clock)
+                expired, live = object(), object()
+                cache['expired'] = expired
+                clock.now = 5
+                cache['live'] = live
+                clock.now = 11
+                calls = []
+                assert_selection(self, select(cache, lambda k, v: calls.append((k, v)) or True),
+                                 [('live', live)])
+                assert_selection(self, calls, [('live', live)])
+                removed = dict(cache.expire(clock.now))
+                self.assertEqual(set(removed), {'expired'})
+                self.assertIs(removed['expired'], expired)
+
+    def test_eviction_policy_untouched(self):
+        for kind in ('FIFOCache', 'LRUCache', 'LFUCache'):
+            with self.subTest(kind=kind):
+                cache = make(kind, maxsize=3)
+                cache.update({'a': 1, 'b': 2, 'c': 3})
+                if kind == 'LFUCache':
+                    cache['b']; cache['c']; cache['c']
+                select(cache, lambda k, v: k == 'a')
+                cache['d'] = 4
+                self.assertEqual(set(dict(cache.peekitems())), {'b', 'c', 'd'})
+
+    def test_arbitrary_keys_and_shallow_values(self):
+        cache = cachetools.Cache(8)
+        keys = [0, ('tuple', 2), '中文（键）']
+        values = [[k] for k in keys]
+        for key, value in zip(keys, values):
+            cache[key] = value
+        def annotate(key, value):
+            value.append('callback')
+            return True
+        assert_selection(self, select(cache, annotate), list(zip(keys, values)))
+        self.assertTrue(all(value[-1] == 'callback' for value in values))
+
+
+    def test_both_sides_order_completeness_and_freshness(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                cache = make(kind)
+                cache.update({i: object() for i in range(6)})
+                snapshot = cache.peekitems()
+                calls = []
+                result = cache.partition_items(lambda k,v: calls.append((k,v)) or k % 2)
+                assert_selection(self, calls, snapshot)
+                expected = ([p for p in snapshot if p[0] % 2], [p for p in snapshot if not p[0] % 2])
+                assert_partition(self, result, expected)
+                other = cache.partition_items(lambda k,v: k % 2)
+                for left,right in zip(result,other):
+                    self.assertIsNot(left,right)
+                result[1].clear()
+                assert_partition(self, other, expected)
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)
