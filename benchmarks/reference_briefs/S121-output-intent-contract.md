@@ -34,3 +34,7 @@ S120 暴露的缺口是单一字符串数组混装交付、许可和条件。采
 - cachetools_peek_oracle.py.txt SHA256 f06d1df37efa1b2a7cf7a1576b71a1ae6f6e25b03dbdbaca5bd4056907b0e10e
 
 首次真实调用前，本地完整 1752 passed / 3 skipped / 42 deselected（520.58 秒），Windows/WSL 相关各 102，Ruff/类型与离线基准均过。真实样本尚未执行，不提前宣称语义或端到端通过。
+
+## 入口预检勘误（仍为 0 模型调用）
+
+`b6dd043` 导出的执行器已完成新 API 基线红、原 oracle/全套绿、检查器正反控制与 init，但默认 resolver 实际返回 harness/high_risk，控制器的 session_agent 预期断言阻止了启动；没有创建 run，也没有模型调用。不得通过删改目标词语、手改配置或强制 profile 绕开它。保留全部预检输入与哈希，按**原目标、原执行器、默认实际 harness 档位**从已初始化且无 run 的同一工作区首次执行；不重做预检、不重置模型预算、不算重跑目标。其它冻结行为/范围/语义标准不变。结果明确标为 native harness，不能声称 session_agent 已证明；此处更正调用前的入口假设，不改变原公约或通过标准。
