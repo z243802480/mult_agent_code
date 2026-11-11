@@ -1402,7 +1402,7 @@
         "S129"
       ],
       "reference_brief": "benchmarks/reference_briefs/S130-verification-method-revision.md",
-      "status": "In progress: provenance-bound method revision with execution evidence; preserve higher-level requirements and old failures."
+      "status": "Engineering accepted: provenance-bound explicit revision retains requirements/failure/history; 33new regressions, Windowsfull1897/5skip/42deselected, WSL110 and final67(overlap), Ruff/type/five offline benchmarks pass. Source9987752 Verify43081399979 all3jobs/UI green. New real goal/formalReview/Accept/keyed proof NOT RUN; original joint rejection unchanged. Next: freeze an independent fresh goal/oracle and sample natural convergence."
     }
   ]
 }

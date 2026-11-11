@@ -1,6 +1,6 @@
 # S130 — 模型自拟验证方法的证据化修订
 
-2026-11-12；[参考 brief](../../../benchmarks/reference_briefs/S130-verification-method-revision.md)。当前完成机制实现与确定性验证，全套回归和源码 CI 收口后补记。
+2026-11-12；[参考 brief](../../../benchmarks/reference_briefs/S130-verification-method-revision.md)。源码 `99877520502fa069622a4dd1d52a1e4151a9ba05`，工程及源码CI验收完成，新真模型目标仍NOT RUN。
 
 ## 问题与实现
 
@@ -20,7 +20,9 @@ S127/S128 联合真跑中，Planner 的具体检查方法自身有语法错误�
 
 当前已验：WSL 相关110 passed；Ruff（src/tests/scripts）净，mypy ratchet 无新增（60条既有，18条已不再报告，未改基线）；五项离线基准通过。
 
-首次完整回归1891 passed、5 failed：新增工具暴露两处旧清单夹具，以及生产验证矩阵硬编码旧工具清单造成的3项连带失败。矩阵现从真实默认注册表取工具，并补“缺后端仍拒收”的负控；清单断言加入新工具，原就绪标准不变。最终完整回归、此修复的WSL定向与源码CI待收口。
+首次完整回归1891 passed、5 failed：新增工具暴露两处旧清单夹具，以及生产验证矩阵硬编码旧工具清单造成的3项连带失败。矩阵现从真实默认注册表取工具，并补“缺后端仍拒收”的负控；清单断言加入新工具，原就绪标准不变。最终 Windows 完整 **1897 passed / 5 skipped / 42 deselected**（594.39秒），包含33条新增回归；最终矩阵/方法相关 Windows67、WSL67通过，与先前WSL110重叠、不累计。
+
+[精确源码 Verify43081399979](https://github.com/z243802480/mult_agent_code/actions/runs/43081399979) Python3.11/3.13、Studio含UI三job均success。源代码、schemas、tests与该提交保持一致；后续仅文档收口，不把源码CI冒充文档提交CI。
 
 ## 诚实边界与下一步
 
