@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S114",
+  "active_slice": "S115",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1189,6 +1189,19 @@
       "user_demo": "保留失败与真实验证的 Review 证据去重，离线拆解真实长任务上下文",
       "green_checks": [
         "pytest tests/unit/test_context_slimming.py tests/integration/test_review_command.py -q"
+      ]
+    },
+    {
+      "id": "S115",
+      "name": "文件读取可见范围与续读提示",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S114"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S115-file-read-visible-range.md",
+      "user_demo": "read_file 标题只声明实际可见行，截断后给准确续读位置，不跳过长行未读部分",
+      "green_checks": [
+        "pytest tests/unit/test_observation_payload.py tests/unit/test_context_slimming.py -q"
       ]
     }
   ]

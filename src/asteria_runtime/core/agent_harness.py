@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.core.agent_role_policy import role_contracts_for_prompt
+from asteria_runtime.core.file_read_payload import render_file_read
 from asteria_runtime.core.orchestration_spawn_policy import (
     SPAWN_DECISION_POLICY,
     subagent_capability_description,
@@ -1080,18 +1081,7 @@ def _model_facing_payload(tool_name: str, data: dict[str, Any]) -> str:
     if not isinstance(data, dict) or not data:
         return ""
     if tool_name == "read_file":
-        content = data.get("content")
-        if isinstance(content, str) and content:
-            start = int(data.get("line_start", 1) or 1)
-            lines = content.splitlines()
-            numbered = "\n".join(f"{start + i}\t{line}" for i, line in enumerate(lines))
-            header = ""
-            total = data.get("total_lines")
-            end = data.get("line_end")
-            if total is not None:
-                header = f"(lines {start}-{end} of {total})\n"
-            return _clip(header + numbered)
-        return ""
+        return render_file_read(data, max_chars=_PAYLOAD_MAX_CHARS)
     if tool_name in {"run_command", "shell", "run_tests"}:
         stdout = str(data.get("stdout") or "")
         stderr = str(data.get("stderr") or "")

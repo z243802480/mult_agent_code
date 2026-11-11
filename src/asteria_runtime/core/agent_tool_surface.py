@@ -77,6 +77,7 @@ class ModelToolSurfaceAdapter:
                 [
                     "Read only through PathGuard and protected path policy.",
                     "Large files auto-window to the first lines; page the rest with offset/limit.",
+                    "File output is bounded. Use returned next_offset as offset; a partial line is not fully read.",
                 ],
             ),
             self._tool(
