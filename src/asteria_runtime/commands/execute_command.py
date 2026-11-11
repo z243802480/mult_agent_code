@@ -95,6 +95,11 @@ from asteria_runtime.core.task_contract import (
     path_in_write_scope,
 )
 from asteria_runtime.core.workspace_snapshot import changed_paths, snapshot_workspace
+from asteria_runtime.core.task_pause_checkpoint import (
+    clear_pause_changes,
+    previous_pause_changes,
+    record_pause_changes,
+)
 from asteria_runtime.core.task_execution_evidence import TaskExecutionEvidenceRecorder
 from asteria_runtime.core.task_board import TaskBoard
 from asteria_runtime.core.tool_execution_gateway import ToolExecutionGateway
@@ -1484,6 +1489,9 @@ class ExecuteCommand:
                 result, goal_spec, task
             )
             if result.pending_decision is None:
+                record_pause_changes(
+                    context, task, pre_turn_snapshot, snapshot_workspace(context.root),
+                )
                 return self._user_paused_model_driven_task(
                     task=task,
                     task_board=task_board,
@@ -1522,7 +1530,11 @@ class ExecuteCommand:
         # progress no matter which path produced them (write_file or a shell command); out-of-scope
         # ones are disclosed on the contract instead of staying invisible. An empty/absent
         # write_scope means the tool layer imposed no path restriction, so nothing is "unscoped".
-        disk_changed = changed_paths(pre_turn_snapshot, snapshot_workspace(context.root))
+        post_turn_snapshot = snapshot_workspace(context.root)
+        disk_changed = sorted({
+            *changed_paths(pre_turn_snapshot, post_turn_snapshot),
+            *previous_pause_changes(context, task, post_turn_snapshot),
+        })
         write_scope = [str(item) for item in (task.get("write_scope") or []) if item]
         if write_scope:
             scope_kind = str(task.get("task_kind") or "") or None
@@ -1615,6 +1627,7 @@ class ExecuteCommand:
         # direct transition from in_progress, and carries the contract-violation note for the user.
         if status == "done":
             task_board.complete_task(task_id, notes=summary)
+            clear_pause_changes(context, task)
         else:
             task_board.update_status(task_id, "blocked")
             task_board.update_notes(task_id, summary)

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Task pause checkpoint",
+  "type": "object",
+  "required": ["schema_version", "run_id", "task_id", "task_contract_hash", "changes"],
+  "properties": {
+    "schema_version": { "const": "0.1.0" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "task_id": { "type": "string", "minLength": 1 },
+    "task_contract_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "changes": {
+      "type": "object",
+      "maxProperties": 5000,
+      "additionalProperties": {
+        "type": ["array", "null"],
+        "items": { "type": "integer" },
+        "minItems": 2,
+        "maxItems": 2
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,6 +1,6 @@
 # S111 多文件目标与跨进程暂停续作
 
-状态：已预注册，尚未调用模型。沿用未改的生产代码 2ffcbf7，其 Verify 42845187042 的 Python 3.11/3.13 与 Studio 全绿。S110 只证明单方法约 3.7 分钟，S109 失败/解答暴露历史保持。
+状态：真实目标被 provider 服务过载阻断，尚无源码改动、未发生计划暂停/恢复，不计多文件或真模型续作通过。随后确定性跨进程回归复现“暂停前已改工件被完成门忘记”的通用缺陷，窄修已过首批定向验证，完整测试已通过，精确代码 CI 待回执。实跑执行器冻结在 2ffcbf7；S110 与 S109 历史结论保持。
 
 ## 调用前固定的范围
 
@@ -18,6 +18,20 @@
 
 目标、纯 runtime package/resources + schemas 和外部控制/oracle 分放；模型只获公共任务/指导，不获隐藏测试和控制脚本。人工审计模型工具输入与范围；不声称本地 OS 隔离。默认 auto-accept 若先发生保留事实，独立功能/原测试/范围与续作检查通过后才补正式 Review→Accept，不能把 accepted/unknown 当正式 Review。
 
+## 真实样本结果
+
+WSL `~/.cache/asteria-workspaces/s111-tinydb`，外部记录 `~/.cache/asteria-evaluations/s111-tinydb-20261111`，纯执行器 `~/.cache/asteria-runtimes/s111-2ffcbf7`。run=`run-20261111-0001`，PID 388，61.38 秒后 blocked。4 次调用均 MiniMax-M2.7，input 6520 / output 5268；规划成功、无模板回退或格式纠正，首次 task_execution（约 9 秒）因 HTTP 529/overloaded_error 失败，之后生成关闭摘要。0 工具、0 源码/新测试改动、0 解题提示/控制方改代码、0 计划暂停、无 resume/Review/Accept。独立原测试 227 passed/1 skipped，因为目标未动；新 oracle 仍报告新 API 缺失，不可冒充实现成功。结果 JSON 中无检查点而为 false 的连续性标记表示“未测到”，不是已经证明账本丢失。
+
+task_plan_eval 的 0.976/warn 只含 acceptance 数量 warning、0 error，并非本轮阻断点。代码核实 MiniMax 和通用兼容客户端已有 HTTP 5xx 有限重试及总 deadline；本轮未改 provider、529 判断词、重试次数或预算，没有再调用模型重跑刷绿。
+
+## 通用续作缺陷与工程修复
+
+补真实子进程集成回归，用确定性客户端隔离外部 provider：初进程通过正常 CLI 请求 pause，活动工具批完整写入 `checkpoint.py` 后停在回合边界；新进程用 ResumeCommand 恢复同一 run，只读文件并执行原声明验证，不再写文件。原实现的正例失败：文件/账本/成本保留，验证 1/1 绿，完成契约却称 required changed artifact was not produced。负例将工件值改坏后验证红，原门正确阻断；不能把此问题归因于 529。
+
+修复仅沿用现有磁盘快照的 `(mtime_ns, size)` 签名：正常用户暂停时经 JsonStore/双份 `task_pause_checkpoint` schema 记录当时实际修改；run/task/任务契约 hash 相同且当前签名仍匹配才承接。承接项继续走原 write_scope 与 unscoped_changed_files 分流，不复用旧验证、不打开全局 verified-noop。任务契约变化、文件变更/消失、损坏或不合 schema 检查点、大工作区快照不可用均保守不承接；多次暂停合并仍有效的早期改动，完成后清理本任务检查点。检查点名按 task_id hash 生成，不拼接未约束的 task_id 为路径；事件只记引用和数量。它是 stat 级进度证据，不是文件内容完整性/OS 隔离证明，不读取工件或秘密内容。
+
+`execute_command.py` 只在用户暂停记录、完成判定合并及成功完成清理三处接线；新 helper 管理类型化检查点，预算与权限配置不变。正例确保全程只一次 write_file、执行模型仅初次 1 + 恢复 2 次，账本保留原字节前缀、同 goal/run、累计调用与 token 对账；完成后检查点已清理。负例仍非 completed。schema/跨契约/跨 run/多次暂停/不可用快照等单位正反例及原控制/预算/文档首批 **44 passed**；随后加入大批 rename delta 的保守退化测试，WSL 对最终代码的暂停/检查点/预算相关 **22 passed**（26.81 秒）；Windows 完整 Python **1642 passed / 3 skipped / 42 deselected**（541.58 秒）；两个 routing 警告来自原确定性路由单测，非真实样本使用 fake。Ruff src/tests/benchmarks 与 mypy 棘轮无新增（60 项既有债，不改 baseline）。
+
 ## 交接
 
-ACTIVE_SLICE=S111，当前仅实验与文档改动，无新增产品行为或预算变化；文档契约 23 passed。出现新 runtime 摩擦才先复现后窄修，不做模型/题目/错误词特化，不开编排 Wave/全局写并发/本地强沙箱。密钥、解答、raw ledger 与既有未跟踪验证目录不入 Git。后续补实际运行 ID、进程、检查点、独立结果与正式验收回执。
+ACTIVE_SLICE=S111。工程续作修复已过本地全套，待精确 CI 收口；真实多文件/计划暂停续作仍未验收，服务稳定后须另立记录再测，不修改本轮失败。当前不增加第二个真实样本。不做模型/题目/错误词特化，不开编排 Wave/全局写并发/本地强沙箱。密钥、第三方解答、raw ledger 与既有未跟踪验证目录不入 Git。
