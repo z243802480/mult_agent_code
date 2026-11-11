@@ -43,3 +43,7 @@ doctest 五次尝试一处失败；默认隔离 Review 仍 pass/1.0，原 run �
 
 - VERIFY_EXAMPLES.py: bfe013a778c8d15f063fd64b5ba5747d033183a1aceb9c7c0a21c531c90a8ec5
 - goal.txt: 42564efaaff886748cbbacb026ac3f68aa4114dbd4900a43226844f0a253263d
+
+## 收尾结果
+
+初轮独立 API 14/14、readonly 20/20、271 passed / 1 skipped，范围/typed 语义过；文档示例失败而拒收，隔离默认 Review 未识别。外部反馈诊断在新 run 仅改两份文档，70.09 秒、14 模型，10 个示例/完整测试过、正式 Review 1.00→Accept。原初轮72次/源码/账本不改，隔离评审1次与反馈14次单列，合计87次，不混称初轮成功。新回归 Windows/WSL各35、Ruff过。详情见 [S123 报告](../../docs/zh/reports/S123-complex-batch-real-proof-20261111.md)，下一项总计划第36项。

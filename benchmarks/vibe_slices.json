@@ -1315,9 +1315,10 @@
       "reference_brief": "benchmarks/reference_briefs/S123-complex-batch-real-proof.md",
       "user_demo": "TinyDB 跨表批量写入，含预验证、预演、缓存一致性与独立验收",
       "green_checks": [
-        "pytest tests/unit/test_database_batch_oracle.py tests/unit/test_documentation_contracts.py -q",
+        "pytest tests/unit/test_batch_documentation_examples.py tests/unit/test_database_batch_oracle.py tests/unit/test_documentation_contracts.py -q",
         "registered guarded preflight and independent complex goal audit"
-      ]
+      ],
+      "status": "Original autonomous trial rejected for incorrect documentation; separate external-feedback repair accepted, not an initial autonomy pass."
     }
   ]
 }
