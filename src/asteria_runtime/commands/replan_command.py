@@ -7,7 +7,7 @@ from pathlib import Path
 from asteria_runtime.commands.decide_command import DecideCommand
 from asteria_runtime.core.task_board import TaskBoard, TaskStateError
 from asteria_runtime.core.task_verification import declared_commands
-from asteria_runtime.core.task_contract import completion_contract, task_kind, write_scope
+from asteria_runtime.core.task_contract import completion_contract, task_kind, with_goal_edit_boundary, write_scope
 from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -454,6 +454,9 @@ class ReplanCommand:
         # (dogfood run-20260718 #3: three repair tasks denied in a row on "allowed_writes").
         if source_task.get("write_scope"):
             task["write_scope"] = [str(item) for item in source_task["write_scope"]]
+        boundary = self._repair_edit_boundary(task_board, source_task)
+        if boundary is not None:
+            task["edit_boundary"] = boundary
         if isinstance(source_task.get("read_scope"), list):
             task["read_scope"] = [str(item) for item in source_task["read_scope"]]
         if isinstance(source_task.get("validation_commands"), list):
@@ -537,6 +540,11 @@ class ReplanCommand:
                 "they all pass, finish the task stating what the verification confirmed.")
             )
         return task
+
+    def _repair_edit_boundary(self, task_board: TaskBoard, source_task: dict) -> dict | None:
+        goal_path = task_board.path.parent / "goal_spec.json"
+        goal = self.store.read(goal_path, "goal_spec") if goal_path.exists() else {}
+        return with_goal_edit_boundary(source_task, goal).get("edit_boundary")
 
     # The repair-title templates, as (prefix, suffix) pairs. Chained replans feed a repair's own
     # wrapped title back in as the next repair's source label, and 1.2.148's templates then grew

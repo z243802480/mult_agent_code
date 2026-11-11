@@ -176,6 +176,28 @@ def _declared_write_scope(task: dict) -> list[str]:
     return _string_list(task.get("expected_artifacts", []))
 
 
+def with_goal_edit_boundary(task: dict, goal_spec: dict) -> dict:
+    """A task's requested scope can only narrow the goal's explicit authority."""
+    result = dict(task)
+    boundaries = [validate_edit_boundary(source["edit_boundary"])
+                  for source in (task, goal_spec) if "edit_boundary" in source]
+    if not boundaries:
+        return result
+    boundary = {"mode": "open", "paths": []}
+    for ceiling in boundaries:
+        if ceiling["mode"] == "open":
+            continue
+        if boundary["mode"] == "open":
+            boundary = ceiling
+        else:
+            boundary = {"mode": "restricted", "paths": write_scope({
+                "task_kind": "implementation", "write_scope": boundary["paths"],
+                "edit_boundary": ceiling,
+            })}
+    result["edit_boundary"] = boundary
+    return result
+
+
 def path_in_task_write_scope(path: str, task: dict) -> bool:
     return edit_boundary_allows(task.get("edit_boundary"), path) and path_in_write_scope(
         path, write_scope(task), kind=task_kind(task)

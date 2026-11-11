@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S127",
+  "active_slice": "S129",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1381,6 +1381,17 @@
       ],
       "reference_brief": "benchmarks/reference_briefs/S128-interruption-accounting-recovery.md",
       "status": "In progress; same authorized batch, joint validation after engineering."
+    },
+    {
+      "id": "S129",
+      "name": "自动重规划的编辑授权继承",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S127",
+        "S128"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S129-replan-edit-boundary.md",
+      "status": "In progress: third adjacent task based on real joint-trial evidence; original failure unchanged."
     }
   ]
 }

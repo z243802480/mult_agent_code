@@ -93,6 +93,7 @@ from asteria_runtime.core.task_contract import (
     check_completion_contract,
     looks_like_file_path,
     path_in_write_scope,
+    with_goal_edit_boundary,
 )
 from asteria_runtime.core.workspace_snapshot import changed_paths, snapshot_workspace
 from asteria_runtime.core.task_pause_checkpoint import (
@@ -2156,6 +2157,7 @@ class ExecuteCommand:
         project_config: dict,
         runtime_context: dict,
     ) -> TaskExecutionSummary:
+        task = with_goal_edit_boundary(task, goal_spec)
         task_id = task["task_id"]
         if context.event_logger:
             context.event_logger.record(
