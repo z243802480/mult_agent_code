@@ -1,0 +1,172 @@
+"""S120 external counts oracle; shares only evaluator-owned setup with frozen snapshot checks."""
+from copy import deepcopy
+from pathlib import Path
+import runpy
+import tempfile
+import unittest
+from unittest.mock import patch
+
+setup = runpy.run_path(str(Path(__file__).with_name('tinydb_snapshot_oracle.py.txt')))
+TinyDB, Document, Table = (setup[name] for name in ('TinyDB', 'Document', 'Table'))
+CountingMemory, JSONStorage, DATA = (setup[name] for name in ('CountingMemory', 'JSONStorage', 'DATA'))
+EXPECTED = {'alpha': 1, 'beta': 1, 'empty': 0}
+
+
+def counts(case, db, *selection):
+    method = getattr(type(db), 'snapshot_counts', None)
+    case.assertTrue(callable(method), 'database-level snapshot_counts API required')
+    return method(db, *selection)
+
+
+def assert_counts(case, result, expected):
+    case.assertIsInstance(result, dict)
+    case.assertEqual(result, expected)
+    for value in result.values():
+        case.assertIs(type(value), int, 'counts are integers, not booleans or floats')
+
+
+class Counts(unittest.TestCase):
+    def seeded(self, read_only=False, cls=TinyDB):
+        storage = CountingMemory()
+        storage.write(deepcopy(DATA))
+        db = cls(storage=lambda: storage, read_only=read_only)
+        self.addCleanup(db.close)
+        return db, storage
+
+    def checked(self, db, storage, *selection, expected=None):
+        before_data = deepcopy(storage.memory)
+        reads, writes = storage.reads, storage.writes
+        result = counts(self, db, *selection)
+        self.assertEqual(storage.reads-reads, 1)
+        self.assertEqual(storage.writes, writes)
+        self.assertEqual(storage.memory, before_data)
+        assert_counts(self, result, EXPECTED if expected is None else expected)
+        return result
+
+    def test_all_counts_and_handle_modes(self):
+        for read_only in (False, True):
+            with self.subTest(read_only=read_only):
+                db, storage = self.seeded(read_only)
+                self.checked(db, storage)
+                self.assertEqual(db.read_only, read_only)
+
+    def test_string_and_one_shot_selection(self):
+        class Once:
+            def __init__(self):
+                self.iterations = 0
+
+            def __iter__(self):
+                self.iterations += 1
+                if self.iterations > 1:
+                    raise RuntimeError('iterated twice')
+                return iter(['alpha', 'empty', 'alpha'])
+
+        db, storage = self.seeded(True)
+        self.checked(db, storage, 'beta', expected={'beta': 1})
+        names = Once()
+        self.checked(db, storage, names, expected={'alpha': 1, 'empty': 0})
+        self.assertEqual(names.iterations, 1)
+
+    def test_empty_selection_reads_once(self):
+        db, storage = self.seeded()
+        self.checked(db, storage, iter(()), expected={})
+
+    def test_absent_and_unpersisted_handles(self):
+        db, storage = self.seeded()
+        db.table('handle_only')
+        for name in ('missing', 'handle_only'):
+            with self.subTest(name=name):
+                reads, writes = storage.reads, storage.writes
+                before = deepcopy(storage.memory)
+                with self.assertRaises(KeyError) as caught:
+                    counts(self, db, name)
+                self.assertEqual(caught.exception.args, (name,))
+                self.assertEqual(storage.reads-reads, 1)
+                self.assertEqual(storage.writes, writes)
+                self.assertEqual(storage.memory, before)
+
+    def test_none_storage_does_not_create_tables(self):
+        storage = CountingMemory()
+        db = TinyDB(storage=lambda: storage)
+        self.addCleanup(db.close)
+        self.checked(db, storage, expected={})
+        self.assertIsNone(storage.memory)
+
+    def test_detached_results_and_future_writes(self):
+        db, storage = self.seeded()
+        first, second = self.checked(db, storage), self.checked(db, storage)
+        self.assertIsNot(first, second)
+        first['alpha'] = 500
+        self.checked(db, storage)
+        db.table('alpha').insert({'name': 'later'})
+        assert_counts(self, second, EXPECTED)
+        self.checked(db, storage, expected={**EXPECTED, 'alpha': 2})
+
+    def test_no_table_or_document_construction(self):
+        class NoTable(Table):
+            def __init__(self, *args, **kwargs):
+                raise AssertionError('counts constructed a table')
+
+        class Database(TinyDB):
+            table_class = NoTable
+
+        for read_only in (False, True):
+            with self.subTest(read_only=read_only):
+                db, storage = self.seeded(read_only, cls=Database)
+                with patch.object(Document, '__init__', side_effect=AssertionError('counts constructed a Document')):
+                    self.checked(db, storage)
+
+    def test_json_bytes_and_open_handle(self):
+        for read_only in (False, True):
+            with self.subTest(read_only=read_only), tempfile.TemporaryDirectory() as temp:
+                path = Path(temp) / 'database.json'
+                storage = JSONStorage(path)
+                storage.write(deepcopy(DATA))
+                storage.close()
+                observed = []
+
+                class CountingJSON(JSONStorage):
+                    def __init__(self, *args, **kwargs):
+                        super().__init__(*args, **kwargs)
+                        self.reads, self.writes = 0, 0
+                        observed.append(self)
+
+                    def read(self):
+                        self.reads += 1
+                        return super().read()
+
+                    def write(self, data):
+                        self.writes += 1
+                        return super().write(data)
+
+                with TinyDB(path, storage=CountingJSON, read_only=read_only) as db:
+                    before = path.read_bytes()
+                    assert_counts(self, counts(self, db), EXPECTED)
+                    self.assertEqual((observed[0].reads, observed[0].writes), (1, 0))
+                    self.assertEqual(path.read_bytes(), before)
+                    self.assertEqual(db.table('alpha').get(doc_id=7)['name'], 'a')
+
+    def test_storage_and_iterator_errors(self):
+        class BadRead(CountingMemory):
+            def read(self):
+                raise RuntimeError('read sentinel')
+
+        db = TinyDB(storage=BadRead)
+        self.addCleanup(db.close)
+        with self.assertRaisesRegex(RuntimeError, 'read sentinel'):
+            counts(self, db)
+        db, storage = self.seeded()
+
+        def names():
+            yield 'alpha'
+            raise RuntimeError('iterator sentinel')
+
+        writes, before = storage.writes, deepcopy(storage.memory)
+        with self.assertRaisesRegex(RuntimeError, 'iterator sentinel'):
+            counts(self, db, names())
+        self.assertEqual(storage.writes, writes)
+        self.assertEqual(storage.memory, before)
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)

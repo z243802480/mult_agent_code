@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S119",
+  "active_slice": "S120",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1258,6 +1258,20 @@
       "green_checks": [
         "pytest tests/unit/test_replan_verified_noop.py tests/unit/test_model_driven_turn.py tests/unit/test_documentation_contracts.py -q",
         "real Execute/Replan deterministic lifecycle regressions"
+      ]
+    },
+    {
+      "id": "S120",
+      "name": "flat 包新会话与自然追加真实采样",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S119"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S120-flat-package-real-session.md",
+      "user_demo": "普通新会话 TinyDB 快照导出，独立验收后按入口支持同 run 追加计数摘要",
+      "green_checks": [
+        "pytest tests/unit/test_database_snapshot_oracle.py tests/unit/test_documentation_contracts.py -q",
+        "registered real flat-package goal and eligible continuation audit"
       ]
     }
   ]
