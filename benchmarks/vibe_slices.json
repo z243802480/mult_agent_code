@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S116",
+  "active_slice": "S117",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1216,6 +1216,20 @@
       "green_checks": [
         "pytest tests/unit/test_documentation_contracts.py -q",
         "registered independent real goal and read-hint adoption audit"
+      ]
+    },
+    {
+      "id": "S117",
+      "name": "修复后的自然会话追加需求",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S116"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S117-natural-session-follow-up.md",
+      "user_demo": "同一 run 自然追加批量检查需求，保留历史和累计预算后独立验收",
+      "green_checks": [
+        "pytest tests/unit/test_documentation_contracts.py tests/unit/test_session_continuation_warm.py -q",
+        "registered follow-up oracle and cumulative ledger/read audit"
       ]
     }
   ]

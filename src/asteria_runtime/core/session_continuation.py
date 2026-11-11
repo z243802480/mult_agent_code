@@ -97,7 +97,9 @@ def prepare_session_follow_up(
     follow_task["description"] = goal
     follow_task["summary"] = f"Session follow-up: {goal[:160]}"
     follow_task["write_scope"] = ["implementation artifact"]
-    follow_task["read_scope"] = ["implementation artifact"]
+    # Match cold whole-session tasks: context may live outside source conventions.
+    # Empty means no task-level read gate; PathGuard still enforces protected paths.
+    follow_task["read_scope"] = []
     follow_task["expected_artifacts"] = []
     follow_task["validation_commands"] = []
     follow_task["notes"] = f"[continuation {now_iso()}] {goal}"

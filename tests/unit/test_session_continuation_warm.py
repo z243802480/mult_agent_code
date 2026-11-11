@@ -2,12 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.plan_command import PlanCommand
+from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.session_continuation import (
     assess_session_continuation,
     prepare_session_follow_up,
 )
+from asteria_runtime.core.runtime_policy import ToolPermissionPolicy
+from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.tools.file_tools import ReadFileTool
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -78,3 +84,44 @@ def test_prepare_session_follow_up_requeues_task_without_new_run(tmp_path: Path)
 
     goal_spec = store.read(tmp_path / ".asteria" / "runs" / run_id / "goal_spec.json", "goal_spec")
     assert goal_spec["continuation_goal"] == "Add --quiet and a pytest for it."
+
+
+def test_follow_up_can_read_workspace_context_without_granting_extra_writes(tmp_path: Path) -> None:
+    run_id = _write_accepted_session(tmp_path)
+    validator = SchemaValidator(Path(__file__).resolve().parents[2] / "schemas")
+    prepare_session_follow_up(tmp_path, run_id, "Use the design in context/spec.rst.", validator=validator)
+    task_plan = JsonStore(validator).read(
+        tmp_path / ".asteria/runs" / run_id / "task_plan.json", "task_board")
+    follow = task_plan["tasks"][-1]
+    policy = ToolPermissionPolicy(tmp_path, validator)
+    policy.enforce_tool_permission_profile(follow, "read_file", {"path": "context/spec.rst"})
+    with pytest.raises(PermissionError):
+        policy.enforce_tool_permission_profile(follow, "write_file", {"path": "context/spec.rst"})
+    context = RuntimeContext(root=tmp_path, run_id=run_id, policy={"protected_paths": [".env"]},
+                             validator=validator)
+    for path in (".env", "../outside.md"):
+        with pytest.raises(PermissionError):
+            ReadFileTool().run(context, path)
+
+
+def test_follow_up_preserves_completed_tasks_ledger_and_cumulative_budget(tmp_path: Path) -> None:
+    run_id = _write_accepted_session(tmp_path)
+    validator = SchemaValidator(Path(__file__).resolve().parents[2] / "schemas")
+    store = JsonStore(validator)
+    run_dir = tmp_path / ".asteria/runs" / run_id
+    previous = store.read(run_dir / "task_plan.json", "task_board")["tasks"]
+    budget = BudgetController({"budgets": {"max_model_calls_per_goal": 200}}, run_id=run_id)
+    budget.record_model_call(input_tokens=12, output_tokens=3)
+    store.write(run_dir / "cost_report.json", budget.cost_report(), "cost_report")
+    ledger = run_dir / "model_calls.jsonl"
+    ledger.write_text('{"prior":"sentinel"}\n', encoding="utf-8")
+    before = {p.name: p.read_bytes() for p in (run_dir / "cost_report.json", ledger)}
+    prepare_session_follow_up(tmp_path, run_id, "Add another feature.", validator=validator)
+    tasks = store.read(run_dir / "task_plan.json", "task_board")["tasks"]
+    assert tasks[:-1] == previous
+    assert {p.name: p.read_bytes() for p in (run_dir / "cost_report.json", ledger)} == before
+    restored = BudgetController.from_report(budget.policy,
+        store.read(run_dir / "cost_report.json", "cost_report"))
+    restored.record_model_call(input_tokens=7, output_tokens=2)
+    assert restored.usage.model_calls == 2
+    assert restored.usage.estimated_input_tokens == budget.usage.estimated_input_tokens + 7

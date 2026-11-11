@@ -1,0 +1,221 @@
+"""S117 independently owned public-behavior checks; never put inside target."""
+from datetime import datetime, timedelta
+import unittest
+
+import cachetools
+
+
+FAMILY = ('Cache', 'FIFOCache', 'LFUCache', 'LRUCache', 'RRCache', 'TTLCache', 'TLRUCache')
+TIMED = ('TTLCache', 'TLRUCache')
+
+
+class Clock:
+    def __init__(self, now=0):
+        self.now, self.step, self.calls = now, 0, 0
+
+    def __call__(self):
+        self.calls += 1
+        result = self.now
+        self.now += self.step
+        return result
+
+
+def make(kind, clock=None, maxsize=8, ttl=10, cls=None, **kwargs):
+    cls = cls or getattr(cachetools, kind)
+    if kind == 'TTLCache':
+        kwargs.update(timer=clock or Clock(), ttl=ttl)
+    elif kind == 'TLRUCache':
+        kwargs.setdefault('ttu', lambda key, value, now: now + ttl)
+        kwargs['timer'] = clock or Clock()
+    return cls(maxsize, **kwargs)
+
+
+def assert_values(case, actual, expected):
+    case.assertIsInstance(actual, list, 'batch returns a detached list')
+    case.assertEqual(len(actual), len(expected), 'preserve duplicates and input length')
+    for got, wanted in zip(actual, expected):
+        case.assertIs(got, wanted, 'input order and caller-owned value/default identity')
+
+
+def assert_expired_batch(case, cache, clock, key, value):
+    default = object()
+    before = clock.calls
+    assert_values(case, cache.peekmany([key, key], default), [default, default])
+    case.assertLessEqual(clock.calls - before, 1, 'one timer sample per batch')
+    before = clock.calls
+    with case.assertRaises(KeyError) as caught:
+        cache.peekmany([key])
+    case.assertEqual(caught.exception.args, (key,))
+    case.assertLessEqual(clock.calls - before, 1)
+    # Observe storage through public expire; no private representation assumptions.
+    expired = dict(cache.expire(clock.now))
+    case.assertEqual(set(expired), {key}, 'batch inspection must not purge expired storage')
+    case.assertIs(expired[key], value)
+
+
+class BatchInspection(unittest.TestCase):
+    def test_identity_order_duplicates_and_defaults(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                c = make(kind)
+                a, b, default = [], {}, object()
+                c['a'], c['b'], c['none'] = a, b, None
+                assert_values(self, c.peekmany(['b', 'a', 'b', 'none']), [b, a, b, None])
+                assert_values(self, c.peekmany(['x', 'a', 'x'], default), [default, a, default])
+                assert_values(self, c.peekmany(['x', 'none'], None), [None, None])
+
+    def test_first_missing_key_stops_consumption(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                c, consumed = make(kind), []
+                c['a'] = object()
+                missing = ('missing', 19)
+
+                def keys():
+                    for key in ('a', missing, 'later'):
+                        consumed.append(key)
+                        yield key
+
+                with self.assertRaises(KeyError) as caught:
+                    c.peekmany(keys())
+                self.assertEqual(caught.exception.args, (missing,))
+                self.assertEqual(consumed, ['a', missing])
+
+    def test_one_shot_iterable_and_fresh_empty_results(self):
+        class Once:
+            def __init__(self):
+                self.calls = 0
+
+            def __iter__(self):
+                self.calls += 1
+                if self.calls > 1:
+                    raise RuntimeError('input was iterated twice')
+                return iter(['a', 'a'])
+
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                c, value, keys = make(kind), object(), Once()
+                c['a'] = value
+                assert_values(self, c.peekmany(keys), [value, value])
+                first, second = c.peekmany(iter(())), c.peekmany([])
+                assert_values(self, first, [])
+                assert_values(self, second, [])
+                self.assertIsNot(first, second)
+
+    def test_input_errors_are_not_hidden_by_default(self):
+        def broken():
+            yield 'a'
+            raise RuntimeError('iterator failure sentinel')
+
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                c = make(kind)
+                c['a'] = object()
+                with self.assertRaises(TypeError):
+                    c.peekmany([[]], object())
+                with self.assertRaisesRegex(RuntimeError, 'iterator failure sentinel'):
+                    c.peekmany(broken(), object())
+
+    def test_result_container_is_detached(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                c, value = make(kind), []
+                c['a'] = value
+                result = c.peekmany(['a', 'a'])
+                del c['a']
+                assert_values(self, result, [value, value])
+                c['a'] = value
+                result.clear()
+                self.assertIs(c.peek('a'), value)
+
+    def test_overridden_mapping_hooks_and_sizing_are_bypassed(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                base = getattr(cachetools, kind)
+
+                class Guarded(base):
+                    def __getitem__(self, key):
+                        raise AssertionError('inspection called item access')
+
+                    def __missing__(self, key):
+                        raise AssertionError('inspection called missing hook')
+
+                sizes = []
+                c = make(kind, cls=Guarded, getsizeof=lambda v: sizes.append(v) or 1)
+                value, default = [], object()
+                c['a'] = value
+                before = len(sizes)
+                assert_values(self, c.peekmany(['a', 'x', 'a'], default), [value, default, value])
+                self.assertEqual(len(sizes), before)
+
+    def test_eviction_policy_is_not_touched(self):
+        for kind in ('FIFOCache', 'LRUCache', 'LFUCache'):
+            with self.subTest(kind=kind):
+                c = make(kind, maxsize=2)
+                c['a'], c['b'] = object(), object()
+                if kind == 'LFUCache':
+                    c['b']  # no tie: b is more frequent, a must be evicted
+                c.peekmany(['a', 'a', 'a', 'a'])
+                c['c'] = object()
+                self.assertNotIn('a', c)
+                self.assertIn('b', c)
+
+    def test_random_choice_only_runs_for_real_eviction(self):
+        chosen = []
+
+        def choice(keys):
+            chosen.append(tuple(keys))
+            return min(keys)
+
+        c = make('RRCache', maxsize=2, choice=choice)
+        c['a'], c['b'] = object(), object()
+        c.peekmany(['b', 'a', 'b'])
+        self.assertEqual(chosen, [])
+        c['c'] = object()
+        self.assertEqual(len(chosen), 1)
+        self.assertNotIn('a', c)
+
+    def test_time_is_sampled_once_for_the_whole_batch(self):
+        for kind in TIMED:
+            with self.subTest(kind=kind):
+                clock, a, b = Clock(), object(), object()
+                c = make(kind, clock=clock, ttl=10)
+                c['a'], c['b'] = a, b
+                clock.now, clock.step = 9, 2
+                before = clock.calls
+                assert_values(self, c.peekmany(['a', 'b', 'a']), [a, b, a])
+                self.assertLessEqual(clock.calls - before, 1)
+
+    def test_expiry_boundary_does_not_purge_storage(self):
+        for kind in TIMED:
+            with self.subTest(kind=kind):
+                clock, value = Clock(), object()
+                c = make(kind, clock=clock)
+                c['a'] = value
+                clock.now = 10
+                assert_expired_batch(self, c, clock, 'a', value)
+
+    def test_datetime_timer_and_timedelta_expiry(self):
+        for kind in TIMED:
+            with self.subTest(kind=kind):
+                clock, value = Clock(datetime(2020, 1, 1)), object()
+                clock.step = timedelta(0)
+                c = make(kind, clock=clock, ttl=timedelta(seconds=10))
+                c['a'] = value
+                clock.now += timedelta(seconds=9)
+                assert_values(self, c.peekmany(['a', 'a']), [value, value])
+                clock.now += timedelta(seconds=1)
+                assert_expired_batch(self, c, clock, 'a', value)
+
+    def test_ttu_is_not_recomputed(self):
+        clock, calls, value = Clock(), [], object()
+        c = make('TLRUCache', clock=clock,
+                 ttu=lambda k, v, now: calls.append((k, v, now)) or now + 10)
+        c['a'] = value
+        before = len(calls)
+        assert_values(self, c.peekmany(['a', 'a']), [value, value])
+        self.assertEqual(len(calls), before)
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)
