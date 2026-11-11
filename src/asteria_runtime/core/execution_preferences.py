@@ -26,8 +26,10 @@ def apply_execution_preferences_to_task(task: dict, goal_spec: dict | None) -> N
     )
     task["execution_preferences"] = preferences
     requested_scope = preferences["requested_read_scope"]
-    if requested_scope:
-        current = _string_list(task.get("read_scope"))
+    current = _string_list(task.get("read_scope"))
+    # Empty/unset means this layer does not restrict workspace reads. Adding context
+    # hints must not turn that into a narrower allowlist (whole-goal session tasks).
+    if requested_scope and current:
         task["read_scope"] = list(dict.fromkeys([*current, *requested_scope]))
 
 

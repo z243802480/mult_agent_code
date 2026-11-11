@@ -19,6 +19,7 @@ from asteria_runtime.core.task_contract import allows_expected_failure
 from asteria_runtime.core.tool_batch_result import ToolBatchError
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.user_progress_logger import UserProgressLogger
+from asteria_runtime.tools.base import ToolResult, record_tool_call
 from asteria_runtime.utils.time import now_iso
 
 
@@ -152,6 +153,7 @@ class ToolExecutionGateway:
                 },
             )
             pre_file_changes = self._planned_file_changes(tool_name, args, context)
+            registry_started = False
             try:
                 if tool_name not in allowed:
                     raise PermissionError(f"Tool is not allowed for {task['task_id']}: {tool_name}")
@@ -191,6 +193,7 @@ class ToolExecutionGateway:
                     tool_name=tool_name,
                     data={"arg_keys": sorted(list(args.keys()))},
                 )
+                registry_started = True
                 result = self.registry.call(
                     tool_name,
                     self.permission_policy.context_with_approval(
@@ -302,6 +305,16 @@ class ToolExecutionGateway:
                 if stop_verification_on_fatal and self._fatal_verification_failure(result):
                     break
             except Exception as exc:
+                if not registry_started:
+                    # The registry owns execution records. Local gates run before it,
+                    # so record their refusal too: otherwise its ID is reused by the
+                    # next executed tool and the denial disappears from call audits.
+                    record_tool_call(
+                        context, tool_name, str(args),
+                        ToolResult(ok=False, summary=str(exc), error=str(exc),
+                                   status="denied" if isinstance(exc, PermissionError) else "failure"),
+                        task["task_id"], "CoderAgent", now_iso(),
+                    )
                 duration_ms = int((perf_counter() - started) * 1000)
                 observation = observation_from_exception(
                     tool_name=tool_name,

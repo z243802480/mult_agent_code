@@ -20,3 +20,9 @@
 若暴露通用 runtime 缺陷，先确定性复现再窄修；不把模型认知写死到按题目/模型名/错误词补丁。改产品代码才跑相应完整检查与精确 CI；仅新实验/文档复用未变生产 SHA 的 CI并跑文档/检查器回归。每次原失败保留，真实未完成仍未验收。收尾更新计划/ACTIVE 与本机记忆；小时级/独立 provider 可靠性与 keyed NOT RUN 的边界不变。
 
 预调用冻结：公约 SHA256 `42c0baf4c91a8f4a2cda27708750e6177a79fc4f9c900b2ce5ccf7d5aca3c49c`；oracle `f06d1df37efa1b2a7cf7a1576b71a1ae6f6e25b03dbdbaca5bd4056907b0e10e`。干净基线原测试 220 passed；oracle 15 方法因缺新 API 为红（53 个 subtest ERROR）。检查器自身 8 项/文档 23 项过。目录分别为 s116-cachetools / s116-f431153 / s116-cachetools-20261111；目标执行完先外部检查与人工读取审计，再正常 Review/Accept，不提前自动执行独立接受。
+
+## 真跑后的通用边界修复（不重跑原样本）
+
+目标已在 f431153 上独立 15/15 + 264 tests 通过并确定性 Review/Accept。补审发现两次 read_file 在 registry 前被 task read_scope 拒绝、未进入 tool_calls，且与随后执行记录重用 ID。原 task 的 whole-session read_scope=[] 被 execution_preferences 的目录提示并集错误变成有限集合（其中还含路径样式的普通说明）。不能把此轨迹说成模型从未尝试 read_file，也不能归因成纯工具偏好。
+
+允许先确定性复现再窄修：①空 read_scope 原意是工作区内不设该层读取门，合并额外目录提示须保持这个原意；有界 scope 的原范围/显式新增目录仍按既有规则，PathGuard/秘密/越界及写权限不变，不按 AGENTS/TASK 文件名特判。②registry 前本地门禁拒绝通过既有 record_tool_call 记 denied 尝试，下一 ID 正常递增，真实 registry 已有记录不重复，原执行预算不虚增。对语义及审计各加正反例与真实 gateway 回归。原实跑不因修复而重新采样/改 oracle；新版工程修复单独以 Windows/WSL/精确 CI 验收。
