@@ -1,0 +1,270 @@
+"""S116 public-behavior oracle; keep outside the autonomous target."""
+from datetime import datetime, timedelta
+import unittest
+
+import cachetools
+
+
+FAMILY = ('Cache', 'FIFOCache', 'LFUCache', 'LRUCache', 'RRCache', 'TTLCache', 'TLRUCache')
+TIMED = ('TTLCache', 'TLRUCache')
+
+
+class Clock:
+    def __init__(self, now=0):
+        self.now, self.step, self.calls = now, 0, 0
+
+    def __call__(self):
+        self.calls += 1
+        result = self.now
+        if self.step:
+            self.now += self.step
+        return result
+
+
+def make(kind, clock=None, maxsize=8, ttl=10, cls=None, **kwargs):
+    cls = cls or getattr(cachetools, kind)
+    if kind == 'TTLCache':
+        kwargs.update(timer=clock or Clock(), ttl=ttl)
+    elif kind == 'TLRUCache':
+        kwargs.setdefault('ttu', lambda key, value, now: now + ttl)
+        kwargs['timer'] = clock or Clock()
+    return cls(maxsize, **kwargs)
+
+
+def assert_snapshot(case, pairs, expected):
+    case.assertIsInstance(pairs, list, 'peekitems returns a fresh list, not a live view')
+    case.assertEqual(len(pairs), len(expected), 'no missing/duplicate snapshot entries')
+    actual = dict(pairs)
+    case.assertEqual(set(actual), set(expected))
+    for key, value in expected.items():
+        case.assertIs(actual[key], value, 'normal cache value identity is preserved')
+
+
+def assert_expired_remains(case, cache, clock, expected):
+    default = object()
+    for key in expected:
+        case.assertIs(cache.peek(key, default), default)
+        with case.assertRaises(KeyError) as caught:
+            cache.peek(key)
+        case.assertEqual(caught.exception.args, (key,))
+    assert_snapshot(case, cache.peekitems(), {})
+    # Own observations use a public mutating API, never a private storage/link layout.
+    expired = dict(cache.expire(clock.now))
+    case.assertEqual(set(expired), set(expected), 'inspection must not purge expired storage')
+    for key, value in expected.items():
+        case.assertIs(expired[key], value)
+
+
+class Inspection(unittest.TestCase):
+    def test_hit_default_none_and_missing_key_identity(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                c = make(kind)
+                value, default = [], object()
+                c['hit'], c['none'] = value, None
+                self.assertIs(c.peek('hit'), value)
+                self.assertIs(c.peek('hit', default), value)
+                self.assertIsNone(c.peek('none'))
+                self.assertIs(c.peek('absent', default), default)
+                self.assertIsNone(c.peek('absent', None))
+                key = ('absent', 123)
+                with self.assertRaises(KeyError) as caught:
+                    c.peek(key)
+                self.assertEqual(caught.exception.args, (key,))
+                with self.assertRaises(TypeError):
+                    c.peek([], default)
+
+    def test_snapshot_membership_is_detached_but_values_are_not_copied(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                c = make(kind)
+                a, b, later = [], {}, object()
+                c['a'], c['b'] = a, b
+                first, second = c.peekitems(), c.peekitems()
+                assert_snapshot(self, first, {'a': a, 'b': b})
+                assert_snapshot(self, second, {'a': a, 'b': b})
+                self.assertIsNot(first, second)
+                c['later'] = later
+                del c['a']
+                assert_snapshot(self, first, {'a': a, 'b': b})
+                if first and isinstance(first[0], list):
+                    first[0][0] = 'caller-only'
+                    assert_snapshot(self, second, {'a': a, 'b': b})
+                first.clear()
+                self.assertIs(c.peek('b'), b)
+                self.assertIs(c.peek('later'), later)
+
+    def test_empty_snapshot_is_fresh(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                c = make(kind)
+                a, b = c.peekitems(), c.peekitems()
+                self.assertEqual(a, [])
+                self.assertEqual(b, [])
+                self.assertIsNot(a, b)
+
+    def test_inspection_bypasses_overridden_item_and_missing_hooks(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                hooks = []
+                base = getattr(cachetools, kind)
+
+                class Tracked(base):
+                    def __getitem__(self, key):
+                        hooks.append('getitem')
+                        return super().__getitem__(key)
+
+                    def __missing__(self, key):
+                        hooks.append('missing')
+                        self[key] = 'generated'
+                        return 'generated'
+
+                c = make(kind, cls=Tracked)
+                value = object()
+                c['a'] = value
+                hooks.clear()
+                self.assertIs(c.peek('a'), value)
+                assert_snapshot(self, c.peekitems(), {'a': value})
+                self.assertIsNone(c.peek('missing', None))
+                with self.assertRaises(KeyError):
+                    c.peek('missing')
+                self.assertEqual(hooks, [])
+                self.assertNotIn('missing', c)
+
+    def test_lru_peek_does_not_touch_recency(self):
+        for kind in ('LRUCache', *TIMED):
+            with self.subTest(kind=kind):
+                c = make(kind, maxsize=2)
+                c['a'], c['b'] = 1, 2
+                for _ in range(5):
+                    self.assertEqual(c.peek('a'), 1)
+                c['c'] = 3
+                self.assertNotIn('a', c)
+                self.assertIn('b', c)
+
+    def test_lru_snapshot_does_not_reorder_prior_accesses(self):
+        for kind in ('LRUCache', *TIMED):
+            with self.subTest(kind=kind):
+                c = make(kind, maxsize=2)
+                c['a'], c['b'] = 1, 2
+                self.assertEqual(c['a'], 1)  # Ordinary access must keep its existing meaning.
+                c.peekitems()
+                c['c'] = 3
+                self.assertNotIn('b', c)
+                self.assertIn('a', c)
+
+    def test_lfu_peek_does_not_increment_frequency(self):
+        c = make('LFUCache', maxsize=2)
+        c['a'], c['b'] = 1, 2
+        self.assertEqual(c['b'], 2)  # Avoid any dependency on tie-breaking order.
+        for _ in range(5):
+            c.peek('a')
+        c['c'] = 3
+        self.assertNotIn('a', c)
+        self.assertIn('b', c)
+
+    def test_fifo_insertion_order_is_unchanged(self):
+        c = make('FIFOCache', maxsize=2)
+        c['a'], c['b'] = 1, 2
+        c.peek('a'); c.peekitems()
+        c['c'] = 3
+        self.assertNotIn('a', c)
+        self.assertIn('b', c)
+
+    def test_random_choice_is_not_called_by_inspection(self):
+        called = []
+
+        def choose(keys):
+            called.append('choice')
+            return keys[0]
+
+        c = make('RRCache', maxsize=2, choice=choose)
+        c['a'], c['b'] = 1, 2
+        c.peek('a'); c.peekitems(); c.peek('missing', None)
+        self.assertEqual(called, [])
+        c['c'] = 3
+        self.assertEqual(called, ['choice'])
+
+    def test_custom_size_is_not_recomputed(self):
+        for kind in FAMILY:
+            with self.subTest(kind=kind):
+                called = []
+
+                def size(value):
+                    called.append(value)
+                    return len(value)
+
+                c = make(kind, maxsize=10, getsizeof=size)
+                a, b = ['a', 'b'], ['c']
+                c['a'], c['b'] = a, b
+                called.clear()
+                c.peek('a'); c.peekitems(); c.peek('absent', None)
+                self.assertEqual(called, [])
+                self.assertEqual(c.currsize, 3)
+
+    def test_expired_inspection_leaves_entries_for_explicit_expire(self):
+        for kind in TIMED:
+            with self.subTest(kind=kind):
+                clock, a, b = Clock(), object(), object()
+                c = make(kind, clock=clock, ttl=5)
+                c['a'], c['b'] = a, b
+                clock.now = 5  # Exact boundary is expired.
+                assert_expired_remains(self, c, clock, {'a': a, 'b': b})
+
+    def test_timed_snapshot_uses_one_instant(self):
+        for kind in TIMED:
+            with self.subTest(kind=kind):
+                clock, a, b = Clock(), object(), object()
+                c = make(kind, clock=clock, ttl=5)
+                c['a'], c['b'] = a, b
+                clock.now, clock.step, clock.calls = 4, 2, 0
+                assert_snapshot(self, c.peekitems(), {'a': a, 'b': b})
+                self.assertLessEqual(clock.calls, 1)
+
+    def test_timed_peek_samples_timer_at_most_once(self):
+        for kind in TIMED:
+            with self.subTest(kind=kind):
+                clock = Clock()
+                c = make(kind, clock=clock, ttl=5)
+                c['a'] = 42
+                clock.now, clock.calls = 4, 0
+                self.assertEqual(c.peek('a'), 42)
+                self.assertLessEqual(clock.calls, 1)
+                clock.now, clock.calls = 5, 0
+                self.assertIsNone(c.peek('a', None))
+                self.assertLessEqual(clock.calls, 1)
+
+    def test_tlru_mixed_expiries_and_ttu_callback(self):
+        clock, called = Clock(), []
+        a, b = object(), object()
+
+        def ttu(key, value, now):
+            called.append(key)
+            return now + (1 if key == 'a' else 10)
+
+        c = make('TLRUCache', clock=clock, ttu=ttu)
+        c['a'], c['b'] = a, b
+        called.clear()
+        clock.now = 1
+        self.assertIsNone(c.peek('a', None))
+        self.assertIs(c.peek('b'), b)
+        assert_snapshot(self, c.peekitems(), {'b': b})
+        self.assertEqual(called, [])
+        self.assertEqual(dict(c.expire(1)), {'a': a})
+        self.assertIs(c['b'], b)
+
+    def test_datetime_timers_and_timedelta_expiry(self):
+        for kind in TIMED:
+            with self.subTest(kind=kind):
+                start = datetime(2026, 1, 1)
+                clock, value = Clock(start), object()
+                c = make(kind, clock=clock, ttl=timedelta(seconds=5))
+                c['a'] = value
+                self.assertIs(c.peek('a'), value)
+                assert_snapshot(self, c.peekitems(), {'a': value})
+                clock.now = start + timedelta(seconds=5)
+                assert_expired_remains(self, c, clock, {'a': value})
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)

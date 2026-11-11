@@ -32,3 +32,9 @@ S111 registers `tinydb_readonly_contract.md` and `tinydb_readonly_oracle.py.txt`
 fresh TinyDB multi-file goal with one planned pause and a new-process same-session resume.
 Keep its target separate from the S110 solution. The oracle checks the public contract;
 the external controller separately checks pause/resume and evidence/budget continuity.
+
+S116 uses clean cachetools v6.2.1 for non-touching peek/peekitems inspection APIs.
+`cachetools_peek_contract.md` fixes the public behavior and allowed edits;
+`cachetools_peek_oracle.py.txt` stays outside the target. The independent controller
+audits read-hint occurrence/adoption, source binding and input/runtime hashes before
+formal Review/Accept. No upstream source or generated solution is committed here.
