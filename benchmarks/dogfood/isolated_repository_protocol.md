@@ -22,6 +22,13 @@ name is part of the public API/contract. Otherwise permit semantically equivalen
 Independent checks use that public behavior, not resemblance to the evaluator's solution.
 No implementation hints or independent failing cases are injected during the run.
 
+Validate the grader itself with permitted alternate representations and broken-behavior
+counterexamples before freezing it. Retain references to evaluator-created instruments
+(for example, a storage write counter); do not assume the product returns that same object
+or forwards test-only attributes through wrappers. A grader error is not a behavior failure
+or a pass. Preserve the frozen result, version the corrected grader, and register a new
+trial; any post-hoc recheck of an old artifact is diagnostic and must be labeled separately.
+
 Before Review/Accept, independently run original tests and the frozen oracle; compare every
 original file and new file against the allowed scope; inspect source binding and tool inputs
 for reference exposure. Any exposure disqualifies independent autonomy even if tests pass.

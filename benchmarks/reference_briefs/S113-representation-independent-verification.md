@@ -13,3 +13,5 @@
 5. 本刀只改实验验证与相关测试/文档，产品源代码不因检查器自身缺陷改变。跑 checker 回归、文档契约、Ruff 与合适 Linux 检查；复用未变生产 SHA 的精确 CI。同步总计划/ACTIVE 与本机记忆，旧 10 月路线评估改为历史快照。
 
 预调用冻结：S113 oracle SHA256 `9e282df69c7994c821a0786a69be476f373d13e1eb0dd521b0859af620395788`；原公约哈希仍为 `31f05d93faf2a100d8d8054c487cc343ea83922505075963b38e58d7f22c6c18`。新样本目录为 `s113-tinydb` / `s113-1891f8e` / `s113-tinydb-20261111`，与旧样本分开。
+
+回执：本刀已验收，检查器 8 项正反例通过，Windows 相关 31 / WSL 17 通过，9c7f014 的 Verify 42946426133 三 job 全绿。新真实样本 1049.27 秒，pause→新进程同 run，独立 oracle 20/20 + 全套 236 passed，正式 Review 1.00→Accept accepted；累计 91 真模型/315 工具，账本/目标/计量承接，范围/来源与读取审计通过。原 S112 红记录保持；完整边界/下一步见 `docs/zh/reports/S113-representation-independent-verification-20261111.md`。
