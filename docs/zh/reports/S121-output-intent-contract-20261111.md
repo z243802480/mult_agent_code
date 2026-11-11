@@ -20,7 +20,7 @@
 
 先红后绿：初始标签投影/校验 6 例红，最终相关 8 例过；有界纠正新增回归旧版 3 红 / transport 1 绿，修后均过。覆盖 schema 持久化→规划、条件不拼路径、仅许可不升为交付、保留 Unicode、无效数据安全回退、原请求与计量不变、有限次数和 transport 不重试。
 
-首刀 `b6dd043`：Windows 完整 1752 / WSL 相关 102，Ruff/类型与离线基准过；精确 [Verify 43006166268](https://github.com/z243802480/mult_agent_code/actions/runs/43006166268) 三 job 全绿。协议恢复修正后 Windows/WSL 相关各 106、Ruff/类型通过；最终 Windows 完整 1756 passed / 3 skipped / 42 deselected（474.16 秒）已通过；最终精确提交 CI 待推送后登记。没有调整 mypy 的 60 条既有债务 baseline。
+首刀 `b6dd043`：Windows 完整 1752 / WSL 相关 102，Ruff/类型与离线基准过；精确 [Verify 43006166268](https://github.com/z243802480/mult_agent_code/actions/runs/43006166268) 三 job 全绿。协议恢复修正后 Windows/WSL 相关各 106、Ruff/类型通过；最终 Windows 完整 1756 passed / 3 skipped / 42 deselected（474.16 秒）已通过；最终生产提交 `6e3be93` 的 [Verify 43008738110](https://github.com/z243802480/mult_agent_code/actions/runs/43008738110) 三 job 全绿（Python 3.11、3.13、Studio），精确 head SHA 已核对。后续文档回执不改变产品代码；该 Verify 不证明 typed 真实链路或 keyed 模型路径。没有调整 mypy 的 60 条既有债务 baseline。
 
 ## 冻结新目标与入口勘误
 
