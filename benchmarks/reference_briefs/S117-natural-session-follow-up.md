@@ -32,3 +32,5 @@
 808a9e6 一次续作 314.50 秒，新/旧 oracle 12/12、15/15 与 308 tests 全过，调用账本前缀/累计计量/来源/允许范围均过；但旧任务的 notes/updated_at 被质量门自动修订，严格旧任务不变条件失败，保留 source_qualified=false，不正式 Review/Accept、不重跑刷绿。新任务清空 acceptance/artifact 后，质量门还从旧 goal 定义回填了旧 peek 判据；verification_policy 也残留旧命令/回读路径。允许本刀追加确定性复现和窄修：续作判据直接引用用户追加指令、使用已有通用产物占位而不猜解法/文件，清除旧验证元数据；质量门只修可执行任务，不改写或重新激活终态任务。原目标/旧任务/失败结果不迁移、不回写；工程修复独立验收。
 
 补审另见：原生 auto-accept 是既有授权行为，但旧 eval_report 仍在原路径，续作最终 summary 的 review_status=pass 实际沿用上一次正式 Review。允许同刀补齐新鲜性边界：开始新 task 时把旧 eval/review/final 报告移至本 run 的按 task 分槽历史，重置活跃记忆 review 为 unknown；原账本不动，新的正式 Review 会正常重建活跃报告。仅归档已有结果，不替模型判断通过，不改原实验。
+
+收尾回执：工程最终 0d0f5f1，Verify 42975350372 三 job 全绿，最终相关 Windows 97 / WSL 25、Ruff/类型棘轮过；4048d19 Windows 完整 1697 过（报告归档最后一刀以最终相关与精确 CI 验证）。最终无模型真实夹具回放确认历史/预算不变、追加判据和归档正确；真实 314.50 秒样本保持严格旧任务不变闸失败，新/旧 oracle 12/12、15/15 与 308 tests 不改写，不另做正式 Review/Accept。下一步见总计划 §16.2 第 30 项及 S117 报告。
