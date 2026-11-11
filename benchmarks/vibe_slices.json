@@ -1370,7 +1370,7 @@
         "S126"
       ],
       "reference_brief": "benchmarks/reference_briefs/S127-verification-scope-convergence.md",
-      "status": "In progress; same authorized batch, joint validation after engineering."
+      "status": "Verification observation/guidance delivered. Joint real goal rejected:449.44s native paused for cleanup approval; bad planner-authored method and3DB side effects remain. Next S130 method provenance/revision, no stricterJSON or model-specific patch."
     },
     {
       "id": "S128",
@@ -1380,7 +1380,7 @@
         "S127"
       ],
       "reference_brief": "benchmarks/reference_briefs/S128-interruption-accounting-recovery.md",
-      "status": "In progress; same authorized batch, joint validation after engineering."
+      "status": "Recovery engineering verified: old real-copy42models/108tools conservative rebuild, real child-process abrupt-exit/resume preserves reservation and artifact. Joint42models/tokens and83chargedtools/68units reconcile; whole goal still rejected."
     },
     {
       "id": "S129",
@@ -1391,7 +1391,7 @@
         "S128"
       ],
       "reference_brief": "benchmarks/reference_briefs/S129-replan-edit-boundary.md",
-      "status": "In progress: third adjacent task based on real joint-trial evidence; original failure unchanged."
+      "status": "Engineering accepted: goal/parent edit ceiling intersection in repair plans and execution consumption.15new cases; Windows related72pass/1skip, WSL73; final Windowsfull1864, exact e0fffc1 CI43072934506 all jobs/UI green. Original joint failure unchanged; next S130."
     }
   ]
 }

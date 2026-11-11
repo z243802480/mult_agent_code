@@ -28,3 +28,5 @@ Execute 当前只用 cost_report 初始化 BudgetController，模型/工具调�
 跨进程新回归又复现：完成工具批后 os._exit(23)，预算预留已持久，但 resume 不调度遗留 in_progress 任务，直接返回 running。补齐同一恢复责任链：Resume 在现有 writer 锁内恢复未结束任务为 ready（不动 done/discarded、不在活worker旁改任务），并保留已发生工具事实供模型复核。复用已有 task_pause_checkpoint 在每个完成工具批的事件边界保存 stat 变化与进度，而非只等正常 pause；同任务/契约/当前磁盘签名匹配才能沿用，验证不复用。仅窄接现有回调和 Resume 门口，非新调度器。旧遗留无checkpoint的工作区不凭文件存在假造已完成改动。
 
 副本回放结果：原S126源码/全部状态哈希不变，新的Cancel使副本cancelled，恢复42模型/108工具、82预算单位，tokens与完成记录对应；108条旧工具无budget_charged，按保守精度标记，不称原费用被精确追溯。跨进程强退出→真实Resume回归已完成同run，保留1次中断模型预留、只写一次工件、账本前缀完整。额外守住未初始化Resume不能因锁文件被隐式初始化；账本损坏时取消状态仍收尾、明确报计量恢复失败并保留原账本/费用。执行入口以外的规划/摘要/独立Review预算没有因此全部变成实时检查点，不宣称全生命周期断电计费完备。联合采样输入与限制见S127 brief。
+
+收口（2026-11-12）：恢复工程验收通过；联合42模型/tokens、83收费工具/68单位对账，整体目标仍拒收。 最终本批Windows完整1864、Ruff/类型/五基准过，e0fffc1 Verify43072934506 Python双版/Studio含UI全绿。详见 [报告](../../docs/zh/reports/S128-interruption-accounting-recovery-20261112.md)。

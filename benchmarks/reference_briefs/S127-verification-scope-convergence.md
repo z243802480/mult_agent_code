@@ -21,3 +21,5 @@ S126 Planner 将整份 usage doctest 与用户必需 pytest 一起放入 planner
 验收：相关 Windows/WSL、完整 Python、Ruff/类型/离线基准；与 S128 同一冻结执行器做一个新真实目标，预登记输入、基线红/正控制绿、原预算权限，一个目标不重跑刷绿。独立执行示例/项目测试、严格范围、各通道身份和累计计量，全部过才 Review→Accept。S126 原失败/产物/状态不修改。原生代码块的通用呈现解析覆盖不由本次明确 doctest 采样冒充完成。
 
 联合采样已具体化：从正式接受 S124 源码另复制，新增 Put counts example（put替换已存在文档+新增原先不存在文档），仅usage可改，验证后加载retrospect。此为新目标非重跑S126 remove目标；不声称成对因果比较。公开目标/隔离检查器见 `benchmarks/dogfood/tinydb_put_doc_goal_s127_s128.txt` / `tinydb_put_doc_oracle_s127_s128.py.txt`。900秒外部上限，控制器若到期先停进程、再调用既有Cancel做死进程收尾，明确不是给活worker发取消请求。
+
+收口（2026-11-12）：观察/指导已交付，联合目标449.44秒原生paused、整体拒收；自拟方法修订转S130。 最终本批Windows完整1864、Ruff/类型/五基准过，e0fffc1 Verify43072934506 Python双版/Studio含UI全绿。详见 [报告](../../docs/zh/reports/S127-verification-scope-convergence-20261112.md)。
