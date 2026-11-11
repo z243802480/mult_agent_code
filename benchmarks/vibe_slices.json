@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S113",
+  "active_slice": "S114",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1176,6 +1176,19 @@
       "user_demo": "检查器持有独立观测对象，合法包装不误拒、真实坏行为仍拒收，再验收新多文件目标",
       "green_checks": [
         "pytest tests/unit/test_readonly_oracle_observation.py tests/unit/test_documentation_contracts.py -q"
+      ]
+    },
+    {
+      "id": "S114",
+      "name": "Review 上下文与重复读取归因",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S113"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S114-review-context-and-repeat-read.md",
+      "user_demo": "保留失败与真实验证的 Review 证据去重，离线拆解真实长任务上下文",
+      "green_checks": [
+        "pytest tests/unit/test_context_slimming.py tests/integration/test_review_command.py -q"
       ]
     }
   ]

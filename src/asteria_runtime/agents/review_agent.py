@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
+from asteria_runtime.core.context_slimming import project_review_evidence
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
 
@@ -114,7 +115,9 @@ class ReviewAgent:
             model_tier=model_tier,
             messages=[
                 ChatMessage(role="system", content=self._system_prompt()),
-                ChatMessage(role="user", content=json.dumps(review_context, ensure_ascii=False, indent=2)),
+                ChatMessage(role="user", content=json.dumps(
+                    project_review_evidence(review_context), ensure_ascii=False, separators=(",", ":")
+                )),
             ],
             response_format="json",
             temperature=0.1,
