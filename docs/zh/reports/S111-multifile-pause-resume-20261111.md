@@ -1,6 +1,6 @@
 # S111 多文件目标与跨进程暂停续作
 
-状态：真实目标被 provider 服务过载阻断，尚无源码改动、未发生计划暂停/恢复，不计多文件或真模型续作通过。随后确定性跨进程回归复现“暂停前已改工件被完成门忘记”的通用缺陷，窄修已过首批定向验证，完整测试已通过，精确代码 CI 待回执。实跑执行器冻结在 2ffcbf7；S110 与 S109 历史结论保持。
+状态：工程修复已验收；真实多文件/计划暂停续作未验收。真实目标因 provider 过载在 0 工具/0 源码改动时 blocked；随后确定性跨进程回归复现并修复暂停改动证据丢失，Windows 全套/WSL 相关回归与精确 CI 全过。实跑执行器冻结在 2ffcbf7，未热改或重跑；S110 与 S109 历史结论保持。
 
 ## 调用前固定的范围
 
@@ -20,7 +20,7 @@
 
 ## 真实样本结果
 
-WSL `~/.cache/asteria-workspaces/s111-tinydb`，外部记录 `~/.cache/asteria-evaluations/s111-tinydb-20261111`，纯执行器 `~/.cache/asteria-runtimes/s111-2ffcbf7`。run=`run-20261111-0001`，PID 388，61.38 秒后 blocked。4 次调用均 MiniMax-M2.7，input 6520 / output 5268；规划成功、无模板回退或格式纠正，首次 task_execution（约 9 秒）因 HTTP 529/overloaded_error 失败，之后生成关闭摘要。0 工具、0 源码/新测试改动、0 解题提示/控制方改代码、0 计划暂停、无 resume/Review/Accept。独立原测试 227 passed/1 skipped，因为目标未动；新 oracle 仍报告新 API 缺失，不可冒充实现成功。结果 JSON 中无检查点而为 false 的连续性标记表示“未测到”，不是已经证明账本丢失。
+WSL `~/.cache/asteria-workspaces/s111-tinydb`，外部记录 `~/.cache/asteria-evaluations/s111-tinydb-20261111`，纯执行器 `~/.cache/asteria-runtimes/s111-2ffcbf7`。run=`run-20261111-0001`，PID 388，61.38 秒后 blocked。4 次调用均 MiniMax-M2.7，已报告 usage 为 input 6520 / output 5268（失败调用没有返回 usage，不当作零账单）；规划成功、无模板回退或格式纠正，首次 task_execution（约 9 秒）因 HTTP 529/overloaded_error 失败，之后生成关闭摘要。0 工具、0 源码/新测试改动、0 解题提示/控制方改代码、0 计划暂停、无 resume/Review/Accept。独立原测试 227 passed/1 skipped，因为目标未动；新 oracle 仍报告新 API 缺失，不可冒充实现成功。结果 JSON 中无检查点而为 false 的连续性标记表示“未测到”，不是已经证明账本丢失。
 
 task_plan_eval 的 0.976/warn 只含 acceptance 数量 warning、0 error，并非本轮阻断点。代码核实 MiniMax 和通用兼容客户端已有 HTTP 5xx 有限重试及总 deadline；本轮未改 provider、529 判断词、重试次数或预算，没有再调用模型重跑刷绿。
 
@@ -32,6 +32,10 @@ task_plan_eval 的 0.976/warn 只含 acceptance 数量 warning、0 error，并�
 
 `execute_command.py` 只在用户暂停记录、完成判定合并及成功完成清理三处接线；新 helper 管理类型化检查点，预算与权限配置不变。正例确保全程只一次 write_file、执行模型仅初次 1 + 恢复 2 次，账本保留原字节前缀、同 goal/run、累计调用与 token 对账；完成后检查点已清理。负例仍非 completed。schema/跨契约/跨 run/多次暂停/不可用快照等单位正反例及原控制/预算/文档首批 **44 passed**；随后加入大批 rename delta 的保守退化测试，WSL 对最终代码的暂停/检查点/预算相关 **22 passed**（26.81 秒）；Windows 完整 Python **1642 passed / 3 skipped / 42 deselected**（541.58 秒）；两个 routing 警告来自原确定性路由单测，非真实样本使用 fake。Ruff src/tests/benchmarks 与 mypy 棘轮无新增（60 项既有债，不改 baseline）。
 
+## 精确代码回执
+
+生产提交 `1891f8ef6ad67c3465d44f99ca6ad7059501c75e` 已推送；[Verify 42942385587](https://github.com/z243802480/mult_agent_code/actions/runs/42942385587) 已完成 success，Studio/Python 3.11/Python 3.13 三 job 全绿。两份 checkpoint schema 字节一致；最终文档契约 23 passed。该 CI 与确定性进程测试证明工程修复，不补成旧真模型目标成功；keyed proof 仍 NOT RUN。后续回执仅文档，不改生产代码。
+
 ## 交接
 
-ACTIVE_SLICE=S111。工程续作修复已过本地全套，待精确 CI 收口；真实多文件/计划暂停续作仍未验收，服务稳定后须另立记录再测，不修改本轮失败。当前不增加第二个真实样本。不做模型/题目/错误词特化，不开编排 Wave/全局写并发/本地强沙箱。密钥、第三方解答、raw ledger 与既有未跟踪验证目录不入 Git。
+ACTIVE_SLICE=S111。工程续作修复已收口；真实多文件/计划暂停续作仍未验收，下一优先是在服务稳定后以 1891f8e 冻结执行器、另立记录再测同类多文件与真实 pause/resume，不修改本轮失败。当前不增加第二个真实样本。不做模型/题目/错误词特化，不开编排 Wave/全局写并发/本地强沙箱。密钥、第三方解答、raw ledger 与既有未跟踪验证目录不入 Git。
