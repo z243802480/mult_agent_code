@@ -1,6 +1,8 @@
 from pathlib import Path
 import json
 
+import pytest
+
 from asteria_runtime.agents.goal_spec_agent import GoalSpecAgent
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -244,3 +246,58 @@ def test_goal_spec_agent_does_not_allow_model_to_expand_user_execution_controls(
         "requested_capability": None,
         "requested_read_scope": [],
     }
+
+
+def test_output_intents_project_only_required_values_and_preserve_conditions(tmp_path) -> None:
+    from asteria_runtime.agents.planner import RequirementPlanner
+    from asteria_runtime.storage.json_store import JsonStore
+
+    payload = json.loads(valid_goal_spec_json())
+    required = "资料/结果（草案）.md"
+    optional = "lib/helper.py"
+    allowed = "lib/existing.py"
+    payload["target_outputs"] = [required, "docs/result.md", optional, allowed]
+    payload["constraints"] = [f"May edit {allowed}; optionally create {optional} if needed."]
+    payload["output_intents"] = [
+        {"value": required, "obligation": "required"},
+        {"value": "docs/result.md", "obligation": "required"},
+        {"value": optional, "obligation": "optional", "condition": "仅在实现确有需要时"},
+        {"value": allowed, "obligation": "allowed"},
+    ]
+    validator = SchemaValidator(Path("schemas"))
+    agent = GoalSpecAgent(FakeClient(json.dumps(payload)), validator)
+    result = agent.generate("Produce the required report within the permitted scope.", {}, "run-1")
+
+    assert result["target_outputs"] == [required, "docs/result.md"]
+    assert result["output_intents"] == payload["output_intents"]
+    store = JsonStore(validator)
+    path = tmp_path / "goal_spec.json"
+    store.write(path, result, "goal_spec")
+    persisted = store.read(path, "goal_spec")
+    assert persisted == result
+    plan = RequirementPlanner().build_task_plan(persisted, execution_profile="session_agent")
+    artifacts = [p for task in plan["tasks"] for p in task["expected_artifacts"]]
+    assert required in artifacts
+    assert optional not in artifacts and allowed not in artifacts
+
+
+@pytest.mark.parametrize("intents", [
+    [{"value": "helper.py", "obligation": "maybe"}],
+    [{"value": "helper.py", "obligation": None}],
+    [{"value": 42, "obligation": "required"}],
+    [{"value": "helper.py", "obligation": "optional", "condition": ["if needed"]}],
+    [{"value": "helper.py", "obligation": "required", "condition": "if needed"}],
+    [{"value": "", "obligation": "required"}],
+    "helper.py",
+])
+def test_invalid_output_intents_fall_back_without_promoting_unknown_obligations(intents) -> None:
+    payload = json.loads(valid_goal_spec_json())
+    payload["target_outputs"] = ["helper.py"]
+    payload["output_intents"] = intents
+    agent = GoalSpecAgent(FakeClient(json.dumps(payload)), SchemaValidator(Path("schemas")))
+    result = agent.generate("Keep the complete original user request.", {}, "run-1")
+
+    assert result["original_goal"] == "Keep the complete original user request."
+    assert result["target_outputs"] == []
+    assert result["expanded_requirements"][0]["description"] == result["original_goal"]
+    assert any("fallback" in s.lower() for s in result["assumptions"])

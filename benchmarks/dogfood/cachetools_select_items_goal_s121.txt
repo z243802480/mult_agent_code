@@ -1,0 +1,23 @@
+Implement Cache.select_items(predicate) for non-touching selection of live cache items.
+Read SELECTION_CONTRACT.md for complete public behavior and this task's exact edit set.
+Start from the accepted peek/peekitems source artifact and preserve its existing behavior.
+Capture live items before invoking callbacks. Call predicate(key, value) once per snapshot
+entry in snapshot order and return a new list of matching pairs, retaining value identity.
+Use Python truth testing; propagate callback exceptions unchanged. Callback mutations must
+not change the traversed snapshot or include new items. The API itself must not call
+__getitem__, change eviction/access policy, delete entries or purge expired TTL/TLRU storage.
+Required deliverables are src/cachetools/__init__.py, docs/index.rst, the NEW exact path
+docs/筛选（只读）.rst, and NEW tests/test_select_items_s121.py. Update both documentation
+files with semantics and an example, and add meaningful regressions. You may edit
+src/cachetools/keys.py if necessary, but this is permission only. You may create
+src/cachetools/_selection.py only if the implementation actually needs that helper;
+it is an optional choice, not a required output. Do not append conditions to path names.
+All other source, original tests/config/LICENSE, AGENTS.md, TASK_CONTRACT.md and
+SELECTION_CONTRACT.md are immutable. The old TASK edit list is historical.
+Run /home/administrator/.cache/asteria-s101/venv/bin/python -m pytest -o addopts= tests -q
+and print cachetools.__file__; confirm it is in this workspace's src/cachetools.
+Sphinx/Ruff/mypy are absent and not required; do not install or claim them.
+Use normal permitted navigation, no forced tool strategy, artificial pause or time padding.
+No network/Git/subagents/credentials, outside-workspace or other-experiment scans,
+reference answers, executing-runtime or installed-package implementation introspection.
+Finish when verified and report actual results honestly.

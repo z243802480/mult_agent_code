@@ -59,12 +59,12 @@ class GoalSpecAgent:
         except GoalSpecError as exc:
             parse_error = exc
             data = self._fallback_goal_spec(goal, str(exc))
-        data = self._normalize(data, goal)
         if parse_error:
             data["assumptions"].append(
                 "Model returned non-JSON for GoalSpec; deterministic goal specification fallback was used."
             )
         try:
+            data = self._normalize(data, goal)
             self.validator.validate("goal_spec", data)
         except SchemaValidationError as exc:
             data = self._fallback_goal_spec(goal, f"schema validation failed: {exc}")
@@ -148,7 +148,21 @@ class GoalSpecAgent:
             normalized.get("execution_preferences"),
             original_goal=original_goal,
         )
-        return apply_research_type_to_goal_spec(normalized)
+        normalized = apply_research_type_to_goal_spec(normalized)
+        if "output_intents" in normalized:
+            # The model supplies semantics; the runtime only projects validated labels.
+            # Keep the complete proposal for audit and preserve literal names verbatim.
+            self.validator.validate("goal_spec", normalized)
+            for intent in normalized["output_intents"]:
+                if not intent["value"].strip():
+                    raise SchemaValidationError("output_intents value must not be empty")
+                if intent["obligation"] == "required" and intent.get("condition", "").strip():
+                    raise SchemaValidationError("required output intent cannot have an unresolved condition")
+            normalized["target_outputs"] = [
+                intent["value"] for intent in normalized["output_intents"]
+                if intent["obligation"] == "required"
+            ]
+        return normalized
 
     def _requirements(self, value: object, fallback_description: str) -> list[dict]:
         items = value if isinstance(value, list) else []
@@ -232,7 +246,8 @@ class GoalSpecAgent:
     def _system_prompt(self) -> str:
         return """You are GoalSpecAgent for a local-first autonomous development runtime.
 
-Return only valid JSON matching the GoalSpec schema. Do not wrap in markdown.
+Return only a valid JSON goal proposal in the shape below. Do not wrap in markdown.
+The runtime validates output_intents and derives the persisted target_outputs from required entries.
 
 You must:
 - Preserve the original user goal.
@@ -242,11 +257,13 @@ You must:
   a different, larger feature. When the goal is small and concrete, keep the spec small and concrete;
   add at most minimal, obviously-implied requirements. Do NOT invent an unrelated module.
 - Separate assumptions, constraints, non-goals, and expanded requirements.
-- Keep target_outputs limited to required deliverables. Permission to edit a file is not a
-  requirement to produce or change it: preserve allowed edit paths in constraints instead.
-  Keep optional implementation choices and their conditions in requirements or constraints,
-  not in the required output list. Do not append explanations or conditions to a file path;
-  preserve the user's literal names, including Unicode and punctuation.
+- Classify every output_intents entry as required, optional, or allowed. Required means the
+  user requires that deliverable; allowed is only permission to edit, never a completion promise.
+  Optional implementation choices remain optional at goal understanding time; the planner may
+  choose one later if needed. Put their condition in the separate condition field, not the value.
+  Required entries have no unresolved condition. Preserve scope and conditions in constraints too.
+  Keep value an exact literal path or deliverable name; preserve Unicode and punctuation.
+  Do not also generate target_outputs: the runtime derives it, without guessing from prose.
 - Include must/should/could priorities.
 - Include a verifiable definition_of_done and verification_strategy.
 - State observable outcomes for acceptance and definition_of_done. Do not invent a shell command
@@ -287,7 +304,9 @@ Return this exact JSON shape:
       "acceptance": []
     }}
   ],
-  "target_outputs": [],
+  "output_intents": [
+    {{"value": "exact path or deliverable name", "obligation": "required|optional|allowed", "condition": ""}}
+  ],
   "definition_of_done": [],
   "verification_strategy": [],
   "execution_preferences": {{

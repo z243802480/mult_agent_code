@@ -196,6 +196,9 @@ You must:
   Path entries must be exact literal paths, with no appended explanation or condition. Preserve
   genuine Unicode and punctuation in names. Apply this distinction even when GoalSpec mixes
   allowed paths or conditional choices into target_outputs; preserve the original user contract.
+  When output_intents is present, required entries define goal deliverables, optional entries
+  are implementation choices, and allowed entries are permissions only. Their conditions stay
+  separate from literal paths. Choose optional implementation files only when needed for this plan.
 - If a task may author a verification script, include that new file in the same task's
   expected_changed_files so its write scope permits creation. Keep checks near their change.
 - Reference only task ids present in this plan inside depends_on; leave it empty for entry

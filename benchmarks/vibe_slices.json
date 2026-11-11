@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S120",
+  "active_slice": "S121",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1274,6 +1274,20 @@
         "frozen real trial: independent scope FAIL; optional counts follow-up NOT RUN"
       ],
       "status": "Functional checks passed; strict scope failed; follow-up NOT RUN. Generic planning guidance updated; no end-to-end cure claim."
+    },
+    {
+      "id": "S121",
+      "name": "条件产物与编辑范围的结构化语义",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S120"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S121-output-intent-contract.md",
+      "user_demo": "结构化产物意图经 GoalSpec 规范化和规划后，用新的 select_items 目标检验真实路径",
+      "green_checks": [
+        "pytest tests/unit/test_goal_spec_agent.py tests/unit/test_plan_agent.py tests/unit/test_documentation_contracts.py -q",
+        "registered new-goal independent behavior and scope audit"
+      ]
     }
   ]
 }

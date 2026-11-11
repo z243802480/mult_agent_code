@@ -11,6 +11,7 @@ from asteria_runtime.core.task_contract import (
     completion_contract,
     context_requirements,
     failure_policy,
+    looks_like_file_path,
     parallel_safety,
     read_scope,
     validation_commands,
@@ -287,6 +288,8 @@ class RequirementPlanner:
         return tasks
 
     def _is_single_file_tool(self, goal_spec: dict) -> bool:
+        if "output_intents" in goal_spec:
+            return self._single_output_file(goal_spec) is not None
         text = " ".join(
             [
                 str(goal_spec.get("original_goal", "")),
@@ -302,14 +305,17 @@ class RequirementPlanner:
         )
 
     def _single_output_file(self, goal_spec: dict) -> str | None:
+        predicate = looks_like_file_path if "output_intents" in goal_spec else self._looks_like_file_path
         outputs = [
             str(item).strip()
             for item in goal_spec.get("target_outputs", [])
-            if isinstance(item, str) and self._looks_like_file_path(str(item).strip())
+            if isinstance(item, str) and predicate(str(item).strip())
         ]
         candidate: str | None = None
         if len(outputs) == 1:
             candidate = outputs[0]
+        elif "output_intents" in goal_spec:
+            return None
         else:
             text = " ".join(
                 [
@@ -541,6 +547,11 @@ class RequirementPlanner:
         ]
 
     def _explicit_goal_files(self, goal_spec: dict) -> list[str]:
+        if "output_intents" in goal_spec:
+            return list(dict.fromkeys(
+                item for item in goal_spec.get("target_outputs", [])
+                if isinstance(item, str) and looks_like_file_path(item)
+            ))
         text = self._goal_text(goal_spec)
         files = self._explicit_file_paths(text)
         package_dir = self._package_dir(text)
@@ -887,7 +898,10 @@ class RequirementPlanner:
         if isinstance(existing, list) and existing:
             return [str(item) for item in existing]
         description = str(requirement.get("description", "")).lower()
-        explicit_paths = self._explicit_file_paths(self._requirement_text(requirement))
+        explicit_paths = (
+            [] if "output_intents" in goal_spec
+            else self._explicit_file_paths(self._requirement_text(requirement))
+        )
         target_outputs_raw = [str(item).strip() for item in goal_spec.get("target_outputs", [])]
         target_outputs = {item.lower() for item in target_outputs_raw}
         artifacts: list[str] = []
@@ -895,9 +909,11 @@ class RequirementPlanner:
         artifacts.extend(
             item.replace("\\", "/")
             for item in target_outputs_raw
-            if self._looks_like_artifact_output(item)
+            if (looks_like_file_path(item) if "output_intents" in goal_spec else self._looks_like_artifact_output(item))
             and item.replace("\\", "/") not in explicit_paths
         )
+        if "output_intents" in goal_spec:
+            return list(dict.fromkeys(artifacts)) or ["implementation artifact"]
         if (
             "readme" in target_outputs or "doc" in description or "documentation" in description
         ) and not any(path.lower().endswith("readme.md") for path in artifacts):

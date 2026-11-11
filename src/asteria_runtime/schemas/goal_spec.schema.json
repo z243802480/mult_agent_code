@@ -173,6 +173,33 @@
           }
         }
       }
+    },
+    "output_intents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "value",
+          "obligation"
+        ],
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "obligation": {
+            "type": "string",
+            "enum": [
+              "required",
+              "optional",
+              "allowed"
+            ]
+          },
+          "condition": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
     }
   }
 }
