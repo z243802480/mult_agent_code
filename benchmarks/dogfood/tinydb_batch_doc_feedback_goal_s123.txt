@@ -1,0 +1,18 @@
+Correct the TinyDB.apply_batch documentation using actual executable-example feedback.
+The API implementation and original tests are already present; preserve them unchanged.
+Independent execution of the usage example reported:
+Expected {'inserted': 1, 'updated': 0, 'removed': 1}
+Got      {'inserted': 2, 'updated': 0, 'removed': 1}
+Inspect the actual operations and existing batch contract, correct documentation claims,
+and provide self-contained executable examples in BOTH Batch Operations (docs/usage.rst)
+and Batch API (docs/api.rst). VERIFY_EXAMPLES.py is a public immutable stdlib-doctest checker.
+Edit only docs/usage.rst and docs/api.rst. Do not change API code, any existing tests,
+BATCH_CONTRACT.md, VERIFY_EXAMPLES.py, AGENTS.md or TASK_CONTRACT.md.
+Run these commands (same verified environment; no installation needed):
+/home/administrator/.cache/asteria-s101/venv/bin/python VERIFY_EXAMPLES.py
+/home/administrator/.cache/asteria-s101/venv/bin/python -m pytest -o pythonpath=. -o addopts= tests -q
+Use normal permitted tools. No network/Git/subagents/credentials, outside-workspace or
+other-experiment scans, reference answers or runtime/installed-package introspection.
+Do not install tools or change implementation to match a documentation mistake.
+Finish when verified and report actual results. This is an externally supplied feedback
+diagnostic, not a repeat of the original independent API goal.

@@ -1,0 +1,32 @@
+"""Public executable-example checker for the S123 feedback diagnostic only."""
+import doctest
+from pathlib import Path
+
+
+def verify_section(text, name):
+    test = doctest.DocTestParser().get_doctest(text, {}, name, name, 0)
+    if not test.examples:
+        print('No executable example in', name)
+        return 0, 1
+    result = doctest.DocTestRunner().run(test)
+    return result.attempted, result.failed
+
+
+def verify(root):
+    sections = [
+        ('docs/usage.rst', 'Batch Operations', '\nQueries\n'),
+        ('docs/api.rst', 'Batch API', '``tinydb.database``'),
+    ]
+    total = failures = 0
+    for filename, start, end in sections:
+        text = (root / filename).read_text(encoding='utf8')
+        section = text.split(start, 1)[1].split(end, 1)[0]
+        attempts, failed = verify_section(section, filename)
+        total += attempts
+        failures += failed
+    print('attempted:', total, 'failed:', failures)
+    return failures
+
+
+if __name__ == '__main__':
+    raise SystemExit(bool(verify(Path.cwd())))

@@ -30,3 +30,16 @@
 - goal.txt: 3e97339f9d6411adf735c21dceeb90e803925b33d431dda81c78cc295b6fcb36
 - tinydb_apply_batch_oracle_s123.py.txt: 778d9315351f8ed5f351e5abf4c376645815eab72f8b6963ec08cd932b985514
 - tinydb_readonly_oracle_s113.py.txt: 9e282df69c7994c821a0786a69be476f373d13e1eb0dd521b0859af620395788
+
+## 初轮后的文档审计诊断
+
+冻结 API oracle 14/14、旧 readonly 20/20 与完整项目测试均过，但人工审阅发现 usage 示例两次插入却标 inserted=1。原初轮保持未验收，不做正式 Accept，不修改其代码或文档。用标准库 doctest 在实际工具环境核对新增示例；另允许在隔离的源码/运行状态副本上调用一次默认 Review 作诊断，不提供错误位置/答案/新增检查结果给模型，核实既有评审能否自行发现。保留原 run/源码/账本哈希，诊断计量单列、不重置克隆预算、不替换初轮结果。后续修复依据证据再定，不直接改模型的原产物。
+
+## 外部反馈修复诊断（单列，不替换初轮）
+
+doctest 五次尝试一处失败；默认隔离 Review 仍 pass/1.0，原 run 字节不变。追加一次普通文档修复目标：从初轮 SOURCE 复制不带 .asteria 的独立副本，给出实际验证失败和公开标准库示例检查器，只允许修两份文档、要求两者有可执行示例，API/原测试/检查器不改。此为外部反馈辅助、新 run，不称初轮自治或同 run 恢复；原初轮继续拒收。诊断单独记账，原 72 次与隔离 Review 1 次不重置，原+诊断合计上限 200 次模型；文档修复外部上限 600 秒，原目标 1800 秒不变且不混加耗时。仅通过公开检查与源码隔离审计后报告修复，不人工改模型文档；不增 Runtime 能力、token 上限或权限。
+
+反馈修复调用前登记：公开示例检查器基线红、完整 271 tests 绿；新 run 的实际档位以 registration.json 为准，输入 SHA256：
+
+- VERIFY_EXAMPLES.py: bfe013a778c8d15f063fd64b5ba5747d033183a1aceb9c7c0a21c531c90a8ec5
+- goal.txt: 42564efaaff886748cbbacb026ac3f68aa4114dbd4900a43226844f0a253263d
