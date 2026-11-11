@@ -6,6 +6,7 @@ import pytest
 
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.plan_command import PlanCommand
+from asteria_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.session_continuation import (
     assess_session_continuation,
@@ -14,6 +15,7 @@ from asteria_runtime.core.session_continuation import (
 from asteria_runtime.core.runtime_policy import ToolPermissionPolicy
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.tools.file_tools import ReadFileTool
+from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -114,7 +116,12 @@ def test_follow_up_preserves_completed_tasks_ledger_and_cumulative_budget(tmp_pa
     budget.record_model_call(input_tokens=12, output_tokens=3)
     store.write(run_dir / "cost_report.json", budget.cost_report(), "cost_report")
     ledger = run_dir / "model_calls.jsonl"
-    ledger.write_text('{"prior":"sentinel"}\n', encoding="utf-8")
+    JsonlStore(validator).append(ledger, {
+        "schema_version": "0.1.0", "model_call_id": "modelcall-0001", "run_id": run_id,
+        "model_name": "fixture", "model_provider": "fake", "model_tier": "medium",
+        "purpose": "prior execution", "status": "success", "created_at": "2026-11-11T00:00:00Z",
+        "input_tokens": 12, "output_tokens": 3,
+    }, "model_call")
     before = {p.name: p.read_bytes() for p in (run_dir / "cost_report.json", ledger)}
     prepare_session_follow_up(tmp_path, run_id, "Add another feature.", validator=validator)
     tasks = store.read(run_dir / "task_plan.json", "task_board")["tasks"]
@@ -125,3 +132,26 @@ def test_follow_up_preserves_completed_tasks_ledger_and_cumulative_budget(tmp_pa
     restored.record_model_call(input_tokens=7, output_tokens=2)
     assert restored.usage.model_calls == 2
     assert restored.usage.estimated_input_tokens == budget.usage.estimated_input_tokens + 7
+
+
+def test_follow_up_criteria_and_verification_do_not_reuse_the_previous_goal(tmp_path: Path) -> None:
+    run_id = _write_accepted_session(tmp_path)
+    validator = SchemaValidator(Path(__file__).resolve().parents[2] / "schemas")
+    store = JsonStore(validator)
+    path = tmp_path / ".asteria/runs" / run_id / "task_plan.json"
+    plan = store.read(path, "task_board")
+    plan["tasks"][0]["verification_policy"] = {
+        "required": True, "commands": ["python previous.py"], "command_source": "planner_task",
+        "readback_paths": ["previous.py"],
+    }
+    store.write(path, plan, "task_board")
+    before = plan["tasks"][:]
+    goal = "Create a calculator and test its addition behavior."
+    prepare_session_follow_up(tmp_path, run_id, goal, validator=validator)
+    TaskPlanQualityGate(tmp_path, validator).check(run_id, blocking=False)
+    tasks = store.read(path, "task_board")["tasks"]
+    assert tasks[:-1] == before
+    assert goal in tasks[-1]["acceptance"][0]
+    assert tasks[-1]["expected_artifacts"] == ["implementation artifact"]
+    assert tasks[-1]["verification_policy"] == {"required": True, "allow_expected_failure": False,
+                                               "commands": []}

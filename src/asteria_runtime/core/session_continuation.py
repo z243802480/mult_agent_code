@@ -100,12 +100,17 @@ def prepare_session_follow_up(
     # Match cold whole-session tasks: context may live outside source conventions.
     # Empty means no task-level read gate; PathGuard still enforces protected paths.
     follow_task["read_scope"] = []
-    follow_task["expected_artifacts"] = []
+    # The new instruction supplies its own criterion. Do not leave holes for the
+    # quality gate to fill from the PREVIOUS goal's definition/output paths.
+    follow_task["acceptance"] = [goal]
+    follow_task["expected_artifacts"] = ["implementation artifact"]
     follow_task["validation_commands"] = []
+    follow_task["verification_policy"] = {"required": True, "allow_expected_failure": False,
+                                          "commands": []}
     follow_task["notes"] = f"[continuation {now_iso()}] {goal}"
     follow_task["created_at"] = now_iso()
     follow_task["updated_at"] = now_iso()
-    for stale in ("expected_changed_files", "acceptance", "assigned_agent_id"):
+    for stale in ("expected_changed_files", "assigned_agent_id"):
         follow_task.pop(stale, None)
     tasks.append(follow_task)
     task_plan["tasks"] = tasks

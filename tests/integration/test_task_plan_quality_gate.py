@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
 from asteria_runtime.storage.json_store import JsonStore
@@ -79,3 +81,24 @@ def test_task_plan_quality_gate_auto_revises_simple_plan_failures(tmp_path: Path
     assert "apply_patch" in task["allowed_tools"]
     assert "run_tests" in task["allowed_tools"]
     assert (run_dir / "task_plan_revisions.jsonl").exists()
+
+
+@pytest.mark.parametrize("terminal", ["done", "discarded"])
+@pytest.mark.parametrize("with_backlog", [False, True])
+def test_quality_revision_preserves_terminal_tasks_and_never_reopens_them(tmp_path, terminal, with_backlog):
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    gate = TaskPlanQualityGate(tmp_path, validator)
+    old = {"task_id": "task-0001", "status": terminal, "notes": "original evidence",
+           "updated_at": "original timestamp", "allowed_tools": []}
+    plan = {"tasks": [old]}
+    if with_backlog:
+        plan["tasks"].append({"task_id": "task-0002", "status": "backlog",
+                              "depends_on": ["task-0001"], "allowed_tools": []})
+    revised, changes = gate._revise_task_plan(plan, {"target_outputs": ["new.py"]}, {"issues": []})
+    assert revised["tasks"][0] == old
+    if with_backlog:
+        assert revised["tasks"][1]["status"] == "ready"
+        assert revised["tasks"][1]["depends_on"] == ["task-0001"]
+        assert changes
+    else:
+        assert changes == []

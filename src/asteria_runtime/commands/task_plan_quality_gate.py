@@ -153,11 +153,16 @@ class TaskPlanQualityGate:
         changes: list[str] = []
         if not tasks:
             return revised, changes
-        if not any(task.get("status") == "ready" for task in tasks):
-            tasks[0]["status"] = "ready"
+        # Completed/discarded tasks are historical evidence. A new weak task must
+        # never rewrite them or bring one back to ready.
+        mutable_tasks = [task for task in tasks if task.get("status") not in {"done", "discarded"}]
+        if not mutable_tasks:
+            return revised, changes
+        if not any(task.get("status") == "ready" for task in mutable_tasks):
+            mutable_tasks[0]["status"] = "ready"
             changes.append("marked first task ready")
         known_ids = {str(task.get("task_id")) for task in tasks if task.get("task_id")}
-        for task in tasks:
+        for task in mutable_tasks:
             original_depends = task.get("depends_on", [])
             if not isinstance(original_depends, list):
                 task["depends_on"] = []

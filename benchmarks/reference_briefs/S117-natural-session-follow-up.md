@@ -26,3 +26,7 @@
 
 - `cachetools_peekmany_contract.md` SHA256 `dd3312eebf3ef6e24637af30281d47a7065ceabbb3a1ef08e41a3f2fe9967edd`。
 - `cachetools_peekmany_oracle.py.txt` SHA256 `019d5c21724d6dc0eb36fe6c33a898d02900346dcda17ac093b0116b23981261`。
+
+## 真跑暴露的续作历史/契约缺陷
+
+808a9e6 一次续作 314.50 秒，新/旧 oracle 12/12、15/15 与 308 tests 全过，调用账本前缀/累计计量/来源/允许范围均过；但旧任务的 notes/updated_at 被质量门自动修订，严格旧任务不变条件失败，保留 source_qualified=false，不正式 Review/Accept、不重跑刷绿。新任务清空 acceptance/artifact 后，质量门还从旧 goal 定义回填了旧 peek 判据；verification_policy 也残留旧命令/回读路径。允许本刀追加确定性复现和窄修：续作判据直接引用用户追加指令、使用已有通用产物占位而不猜解法/文件，清除旧验证元数据；质量门只修可执行任务，不改写或重新激活终态任务。原目标/旧任务/失败结果不迁移、不回写；工程修复独立验收。
