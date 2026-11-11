@@ -16,3 +16,5 @@ S113 179 次读取中 40 次 payload 字符截断；offset=390 已证确从 390 
 ## 验收与交接
 
 正反例 + 从真实 ReadFileTool→observation→模型 feedback 的测试；按 next_offset 遍历大文件时无漏行/重叠，输出有界。Windows/WSL 相关与完整必要回归、Ruff/mypy ratchet、精确 CI；更新总计划/ACTIVE、报告和本机记忆。纯工具协议修复不以重复真模型采样刷绿，不宣称已经减少自主调用数或证明小时级可靠性。原六批未跟踪输入、原实验账本、私有 key/routes 不提交。
+
+回执：本刀已验收，旧版 10 红→14 新实例过；Windows 完整 1669、相关 Windows/WSL 各 95、文档 23 通过，Ruff / mypy ratchet 无新增，f431153 的 Verify 42953846909 三 job 全绿。700 行/9 页真实工具链无漏重，原文件 hash 不变、每页 ≤6000 字符；长行明确 partial 不跳过未读部分。未新增真模型自主样本，下一刀独立真实目标观察提示采用。详见 `docs/zh/reports/S115-file-read-visible-range-20261111.md`。
