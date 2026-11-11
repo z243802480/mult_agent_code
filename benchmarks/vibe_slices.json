@@ -1345,7 +1345,8 @@
       "green_checks": [
         "pytest tests/unit/test_edit_boundary.py tests/unit/test_session_continuation_warm.py -q",
         "fresh documentation goal with an explicit single-file edit boundary"
-      ]
+      ],
+      "status": "Edit-boundary engineering verified; assisted warm document repair passes artifact/scope checks, but whole real run rejected for pre-existing cross-channel call/observation identity collision. Formal Review/Accept NOT RUN."
     }
   ]
 }
