@@ -331,6 +331,29 @@
           }
         }
       }
+    },
+    "edit_boundary": {
+      "type": "object",
+      "required": [
+        "mode",
+        "paths"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "open",
+            "restricted"
+          ]
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

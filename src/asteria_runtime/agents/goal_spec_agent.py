@@ -7,6 +7,7 @@ from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.core.execution_environment import command_execution_context
 from asteria_runtime.core.design_intel_contract import apply_research_type_to_goal_spec
 from asteria_runtime.core.execution_preferences import normalize_execution_preferences
+from asteria_runtime.core.edit_boundary import validate_edit_boundary
 from asteria_runtime.core.verification_guidance import ARTIFACT_VERIFICATION_GUIDANCE
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
@@ -110,6 +111,7 @@ class GoalSpecAgent:
             "assumptions": [
                 "The goal should be handled as a small local-first implementation slice.",
                 f"Fallback reason: {reason}",
+                "No reliable edit boundary was established; file edits require renewed goal clarification.",
             ],
             "constraints": [
                 "Keep the implementation local.",
@@ -129,6 +131,7 @@ class GoalSpecAgent:
                 }
             ],
             "target_outputs": [],
+            "edit_boundary": {"mode": "restricted", "paths": []},
             "definition_of_done": [
                 "Requested local artifact or behavior exists.",
                 "Verification evidence is recorded.",
@@ -168,6 +171,8 @@ class GoalSpecAgent:
             original_goal=original_goal,
         )
         normalized = apply_research_type_to_goal_spec(normalized)
+        if "edit_boundary" in normalized:
+            normalized["edit_boundary"] = validate_edit_boundary(normalized["edit_boundary"])
         if "output_intents" in normalized:
             # The model supplies semantics; the runtime only projects validated labels.
             # Keep the complete proposal for audit and preserve literal names verbatim.
@@ -284,6 +289,14 @@ You must:
   Keep value an exact literal path or deliverable name; preserve Unicode and punctuation.
   Do not also generate target_outputs: the runtime derives it, without guessing from prose.
 - Include must/should/could priorities.
+- Always include edit_boundary separately from output_intents. Use mode=restricted only for an
+  explicit user restriction on edits, with the complete permitted paths; directories end in /.
+  An empty restricted list means no edits. Otherwise use mode=open with paths=[]. Naming an
+  output or asking to preserve unrelated behavior does not by itself restrict all edits to it.
+  Preserve exclusive limits such as only editing named paths; do not infer broader permission
+  from necessary reads, tests, optional outputs or project layout. Paths are literal workspace
+  relative paths, never prose, globs, absolute paths or parent traversal. Keep the restriction in
+  constraints too. Read access and shell/secret permissions are separate from this edit ceiling.
 - Include a verifiable definition_of_done and verification_strategy.
 - State observable outcomes for acceptance and definition_of_done. Do not invent a shell command
   unless the user requested it or the project context establishes that it exists on this host;
@@ -313,6 +326,7 @@ Return this exact JSON shape:
   "goal_type": "software_tool|codebase_improvement|research|report|knowledge_base|automation|unknown",
   "assumptions": [],
   "constraints": [],
+  "edit_boundary": {{"mode": "open|restricted", "paths": []}},
   "non_goals": [],
   "expanded_requirements": [
     {{

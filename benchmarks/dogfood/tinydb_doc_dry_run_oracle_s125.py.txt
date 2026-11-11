@@ -1,0 +1,39 @@
+"""Evaluator-only check of actual documentation, never installed in the model workspace."""
+import ast
+import doctest
+from pathlib import Path
+
+
+def verify_dry_run(text):
+    test = doctest.DocTestParser().get_doctest(text, {}, 'dry-run', 'docs/usage.rst', 0)
+    has_preview = any(
+        isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and node.func.attr == 'apply_batch'
+        and any(k.arg == 'dry_run' and isinstance(k.value, ast.Constant) and k.value.value is True
+                for k in node.keywords)
+        for example in test.examples for node in ast.walk(ast.parse(example.source))
+    )
+    result = doctest.DocTestRunner().run(test)
+    failures = result.failed + int(not has_preview)
+    print('dry-run attempted:', result.attempted, 'failed:', failures)
+    return failures
+
+
+def verify(root):
+    total = 0
+    for filename, start, end in [
+        ('docs/usage.rst', 'Batch Operations', '\nQueries\n'),
+        ('docs/api.rst', 'Batch API', '``tinydb.database``'),
+    ]:
+        text = (root / filename).read_text(encoding='utf8').split(start, 1)[1].split(end, 1)[0]
+        test = doctest.DocTestParser().get_doctest(text, {}, filename, filename, 0)
+        result = doctest.DocTestRunner().run(test)
+        total += result.failed
+        print(filename, 'attempted:', result.attempted, 'failed:', result.failed)
+        if filename == 'docs/usage.rst':
+            total += verify_dry_run(text.split('Dry runs and read-only databases', 1)[1])
+    return total
+
+
+if __name__ == '__main__':
+    raise SystemExit(bool(verify(Path.cwd())))

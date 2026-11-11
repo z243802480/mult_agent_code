@@ -161,6 +161,7 @@ class ToolExecutionGateway:
                     task,
                     tool_name,
                     args,
+                    context=context,
                 )
                 if capability_decision["decision"] == "deny":
                     raise PermissionError(f"Tool is not allowed for {task['task_id']}: {tool_name}")

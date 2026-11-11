@@ -3,6 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from asteria_runtime.core.edit_boundary import edit_boundary_allows, validate_edit_boundary
+from asteria_runtime.storage.schema_validator import SchemaValidationError
+
 
 def looks_like_file_path(value: str) -> bool:
     """Is this entry a concrete FILE the runtime can hold a task to — as opposed to a prose
@@ -141,6 +144,27 @@ def read_scope(task: dict) -> list[str]:
 
 
 def write_scope(task: dict) -> list[str]:
+    scope = _declared_write_scope(task)
+    boundary = task.get("edit_boundary")
+    if boundary is None:
+        return scope
+    try:
+        ceiling = validate_edit_boundary(boundary)
+    except SchemaValidationError:
+        return []
+    if ceiling["mode"] == "open":
+        return scope
+    limited: list[str] = []
+    for entry in scope:
+        if edit_boundary_allows(ceiling, entry):
+            limited.append(entry)
+        else:
+            limited.extend(path for path in ceiling["paths"]
+                           if path_in_write_scope(path.rstrip("/"), [entry], kind=task_kind(task)))
+    return list(dict.fromkeys(limited))
+
+
+def _declared_write_scope(task: dict) -> list[str]:
     explicit = task.get("write_scope")
     if isinstance(explicit, list):
         return _string_list(explicit)
@@ -150,6 +174,12 @@ def write_scope(task: dict) -> list[str]:
     if task_kind(task) in {"research", "decision", "verification", "diagnostic"}:
         return []
     return _string_list(task.get("expected_artifacts", []))
+
+
+def path_in_task_write_scope(path: str, task: dict) -> bool:
+    return edit_boundary_allows(task.get("edit_boundary"), path) and path_in_write_scope(
+        path, write_scope(task), kind=task_kind(task)
+    )
 
 
 GENERIC_ARTIFACT_SCOPES = frozenset({"implementation artifact", "planning artifact"})

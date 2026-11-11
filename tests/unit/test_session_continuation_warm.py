@@ -15,6 +15,7 @@ from asteria_runtime.core.session_continuation import (
 from asteria_runtime.core.runtime_policy import ToolPermissionPolicy
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.session_result_service import SessionResultService
+from asteria_runtime.core.task_contract import write_scope, path_in_task_write_scope
 from asteria_runtime.tools.file_tools import ReadFileTool
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.json_store import JsonStore
@@ -23,6 +24,25 @@ from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 from tests.integration.test_plan_command import FakePlanClient
+
+
+def test_follow_up_keeps_explicit_edit_ceiling_without_rewriting_old_tasks(tmp_path: Path) -> None:
+    run_id = _write_accepted_session(tmp_path)
+    validator = SchemaValidator(Path("schemas"))
+    store = JsonStore(validator)
+    path = tmp_path / '.asteria/runs' / run_id / 'task_plan.json'
+    plan = store.read(path, 'task_board')
+    plan['tasks'][0]['edit_boundary'] = {'mode': 'restricted', 'paths': ['docs/result.rst']}
+    store.write(path, plan, 'task_board')
+    before = store.read(path, 'task_board')['tasks']
+
+    prepare_session_follow_up(tmp_path, run_id, 'Improve the explanation.', validator=validator)
+
+    after = store.read(path, 'task_board')['tasks']
+    assert after[:-1] == before
+    assert write_scope(after[-1]) == ['docs/result.rst']
+    assert after[-1]['read_scope'] == []
+    assert not path_in_task_write_scope('src/code.py', after[-1])
 
 
 def _write_accepted_session(root: Path, *, run_id: str | None = None) -> str:

@@ -8,6 +8,7 @@ from pathlib import Path
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.execution_profile import execution_profile_from_run_config
 from asteria_runtime.core.run_config import load_run_config
+from asteria_runtime.core.task_contract import write_scope
 from asteria_runtime.core.workspace_layout import observed_directory_write_scopes
 from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.json_store import JsonStore
@@ -104,6 +105,7 @@ def prepare_session_follow_up(
     # Match cold whole-session tasks: context may live outside source conventions.
     # Empty means no task-level read gate; PathGuard still enforces protected paths.
     follow_task["read_scope"] = []
+    follow_task["write_scope"] = write_scope(follow_task)
     # The new instruction supplies its own criterion. Do not leave holes for the
     # quality gate to fill from the PREVIOUS goal's definition/output paths.
     follow_task["acceptance"] = [goal]

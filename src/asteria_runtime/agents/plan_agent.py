@@ -189,6 +189,10 @@ You must:
   interactive check may be unavailable, state the fallback evidence honestly.
 - Use concrete file paths for expected_artifacts and expected_changed_files. Never list a
   pre-existing test file the task is judged by; DO list new test files the task authors.
+- Respect GoalSpec.edit_boundary as an edit ceiling, separate from deliverables and read context.
+  Do not require edits or new verification scripts outside a restricted boundary; use existing
+  checks or inline checks within permissions. A needed scope change requires goal clarification,
+  never silently treating a named directory or test suite as an extra write grant.
 - expected_artifacts are mandatory outputs: the runtime checks that each listed file exists.
   An allowed edit path is permission, not a required deliverable. List intended implementation
   files in expected_changed_files within the user's scope; do not demand changes to every

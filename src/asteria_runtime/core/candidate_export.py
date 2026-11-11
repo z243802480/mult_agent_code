@@ -30,6 +30,8 @@ class CandidateExporter:
         if explicit:
             return sorted({_normalize_path(path) for path in explicit if path})
         scope = write_scope(task or {})
+        boundary = (task or {}).get("edit_boundary")
+        restricted = isinstance(boundary, dict) and boundary.get("mode") == "restricted"
         discovered: list[str] = []
         candidate_root = candidate.root.resolve()
         if not candidate_root.exists():
@@ -40,7 +42,8 @@ class CandidateExporter:
             if any(part in EXCLUDED_NAMES for part in path.parts):
                 continue
             relative = _normalize_path(str(path.relative_to(candidate_root)))
-            if scope and not _path_in_scope(relative, scope):
+            # Explicit ceilings must not hide out-of-bound changes from the merge gate.
+            if not restricted and scope and not _path_in_scope(relative, scope):
                 continue
             source = (candidate.source_root / relative).resolve()
             if not source.exists() or not filecmp.cmp(source, path, shallow=False):

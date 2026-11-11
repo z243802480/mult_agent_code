@@ -81,6 +81,9 @@ class FileBackupStore:
             )
         return manifest
 
+    def read_manifest(self, backup_id: str) -> dict:
+        return self.store.read(self._find_manifest(backup_id), "file_backup_manifest")
+
     def restore(self, backup_id: str, delete_created_files: bool = False) -> dict:
         manifest_path = self._find_manifest(backup_id)
         manifest = self.store.read(manifest_path, "file_backup_manifest")

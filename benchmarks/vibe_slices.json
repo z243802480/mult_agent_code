@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S124",
+  "active_slice": "S125",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1333,6 +1333,19 @@
         "independent documentation audit without evaluator feedback"
       ],
       "status": "Engineering and one fresh unassisted documentation-audit goal accepted; command pass rate is not artifact coverage. Next: explicit write-boundary propagation."
+    },
+    {
+      "id": "S125",
+      "name": "明确编辑边界的传递与执法",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S124"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S125-explicit-edit-boundary.md",
+      "green_checks": [
+        "pytest tests/unit/test_edit_boundary.py tests/unit/test_session_continuation_warm.py -q",
+        "fresh documentation goal with an explicit single-file edit boundary"
+      ]
     }
   ]
 }

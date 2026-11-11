@@ -4,6 +4,8 @@ import json
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
+from asteria_runtime.core.edit_boundary import edit_boundary_allows
+from asteria_runtime.storage.file_backup import FileBackupStore
 from typing import Callable
 
 from asteria_runtime.core.runtime_context import RuntimeContext
@@ -61,11 +63,24 @@ class ToolPermissionPolicy:
         mode = context.policy.get("permission_mode") or "reviewed_auto"
         return permission_policy_profile(str(mode))
 
-    def enforce_tool_permission_profile(self, task: dict, tool_name: str, args: dict) -> None:
+    def enforce_tool_permission_profile(
+        self, task: dict, tool_name: str, args: dict, context: RuntimeContext | None = None,
+    ) -> None:
         write_tools = {"write_file", "apply_patch", "restore_backup"}
         if tool_name not in write_tools:
             self._enforce_read_scope(task, tool_name, args)
             return
+        requested_paths = self._write_paths_for_tool(tool_name, args)
+        if tool_name == "restore_backup" and task.get("edit_boundary") is not None:
+            if context is None:
+                raise PermissionError("Backup paths must be checked against goal edit_boundary")
+            manifest = FileBackupStore(context).read_manifest(str(args.get("backup_id") or ""))
+            requested_paths = [item["path"] for item in manifest["files"]]
+        for path in requested_paths:
+            if not edit_boundary_allows(
+                task.get("edit_boundary"), path, root=context.root if context else self.root,
+            ):
+                raise PermissionError(f"Goal edit_boundary denied write path: {path}")
         if parallel_safety(task) == "readonly":
             raise PermissionError(
                 f"ToolPermissionProfile denied write tool for readonly task {task['task_id']}: "

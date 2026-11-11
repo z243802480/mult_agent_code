@@ -1,0 +1,14 @@
+Improve the TinyDB.apply_batch usage documentation with one self-contained executable
+example of dry_run=True under the existing "Dry runs and read-only databases" subsection.
+Demonstrate the returned operation counts and show that stored data before and after
+the preview are equal. Keep this a documentation change using the current public API.
+
+Only docs/usage.rst may be edited. Do not create any other files or modify docs/api.rst,
+implementation, tests, configuration, existing headings or unrelated documentation.
+Read the local implementation and existing tests as needed. Do not install anything,
+access the network, credentials, other experiments, the evaluator or harness implementation.
+
+Use the local checkout, importable from the workspace root, and this available Python:
+/home/administrator/.cache/asteria-s101/venv/bin/python
+Preserve the full project regression command:
+/home/administrator/.cache/asteria-s101/venv/bin/python -m pytest -o pythonpath=. -o addopts= tests -q

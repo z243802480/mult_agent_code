@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+from asteria_runtime.core.edit_boundary import validate_edit_boundary
 from asteria_runtime.core.execution_profile import HARNESS, SESSION_AGENT
 from asteria_runtime.core.execution_preferences import apply_execution_preferences_to_task
 from asteria_runtime.core.fast_path_policy import classify_risk_tier
@@ -1294,6 +1295,8 @@ class RequirementPlanner:
         }
 
     def _apply_runtime_contract(self, task: dict, goal_spec: dict | None = None) -> None:
+        if goal_spec is not None and "edit_boundary" in goal_spec:
+            task["edit_boundary"] = validate_edit_boundary(goal_spec["edit_boundary"])
         task["read_scope"] = read_scope(task)
         apply_execution_preferences_to_task(task, goal_spec)
         task["read_scope"] = read_scope(task)
@@ -1311,6 +1314,7 @@ class RequirementPlanner:
         ).risk_tier
         task["merge_strategy"] = "none"
         self._harden_broad_write_scope(task)
+        task["write_scope"] = write_scope(task)
         self._mark_disjoint_write_scope(task)
         strategy = self.multi_agent_strategy.for_task(task).to_dict()
         task["multi_agent_strategy"] = strategy

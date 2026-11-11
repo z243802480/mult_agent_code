@@ -11,6 +11,8 @@ from asteria_runtime.core.execution_profile import (
 from asteria_runtime.core.flag_resolver import FlagResolver
 from asteria_runtime.core.multi_agent_strategy import MultiAgentStrategyAdvisor
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.edit_boundary import validate_edit_boundary
+from asteria_runtime.core.task_contract import write_scope
 
 
 SPAWN_KIND_READONLY_FANOUT = "readonly_fanout"
@@ -174,6 +176,10 @@ def enrich_child_task(
     }
     if child_task["write_allowed"] is None:
         child_task["write_allowed"] = bool(child_task["write_scope"])
+    if "edit_boundary" in parent_task:
+        child_task["edit_boundary"] = validate_edit_boundary(parent_task["edit_boundary"])
+        child_task["write_scope"] = write_scope(child_task)
+        child_task["write_allowed"] = bool(child_task["write_allowed"] and child_task["write_scope"])
     child_plan = resolve_worker_execution_profile(child_task)
     if child_plan.profile_id == HARNESS:
         plan = WorkerSpawnPlan(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from asteria_runtime.core.task_contract import path_in_write_scope, requires_changed_artifact, task_kind, write_scope
+from asteria_runtime.core.task_contract import path_in_task_write_scope, requires_changed_artifact, write_scope
 
 
 @dataclass(frozen=True)
@@ -45,7 +45,7 @@ class MergeGate:
         denied = [
             path
             for path in normalized_changes
-            if not path_in_write_scope(path, write_scope(task), kind=task_kind(task))
+            if not path_in_task_write_scope(path, task)
         ]
         if denied:
             violations.append("changed files outside write_scope: " + ", ".join(denied))
