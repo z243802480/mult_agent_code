@@ -188,6 +188,14 @@ You must:
   interactive check may be unavailable, state the fallback evidence honestly.
 - Use concrete file paths for expected_artifacts and expected_changed_files. Never list a
   pre-existing test file the task is judged by; DO list new test files the task authors.
+- expected_artifacts are mandatory outputs: the runtime checks that each listed file exists.
+  An allowed edit path is permission, not a required deliverable. List intended implementation
+  files in expected_changed_files within the user's scope; do not demand changes to every
+  allowed file. Keep optional alternatives and conditions in description/acceptance, and only
+  list an optional artifact as mandatory when this plan actually chooses and requires it.
+  Path entries must be exact literal paths, with no appended explanation or condition. Preserve
+  genuine Unicode and punctuation in names. Apply this distinction even when GoalSpec mixes
+  allowed paths or conditional choices into target_outputs; preserve the original user contract.
 - If a task may author a verification script, include that new file in the same task's
   expected_changed_files so its write scope permits creation. Keep checks near their change.
 - Reference only task ids present in this plan inside depends_on; leave it empty for entry

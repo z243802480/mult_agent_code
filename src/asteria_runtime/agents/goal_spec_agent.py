@@ -242,6 +242,11 @@ You must:
   a different, larger feature. When the goal is small and concrete, keep the spec small and concrete;
   add at most minimal, obviously-implied requirements. Do NOT invent an unrelated module.
 - Separate assumptions, constraints, non-goals, and expanded requirements.
+- Keep target_outputs limited to required deliverables. Permission to edit a file is not a
+  requirement to produce or change it: preserve allowed edit paths in constraints instead.
+  Keep optional implementation choices and their conditions in requirements or constraints,
+  not in the required output list. Do not append explanations or conditions to a file path;
+  preserve the user's literal names, including Unicode and punctuation.
 - Include must/should/could priorities.
 - Include a verifiable definition_of_done and verification_strategy.
 - State observable outcomes for acceptance and definition_of_done. Do not invent a shell command

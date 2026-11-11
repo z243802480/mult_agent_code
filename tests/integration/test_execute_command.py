@@ -2384,16 +2384,22 @@ class FakeModelDrivenPrematureStopClient:
         )
 
 
-def test_stop_guardrail_forces_continue_when_artifact_missing(tmp_path: Path) -> None:
+@pytest.mark.parametrize("artifact", ["result.py", "资料/结果（草案）.md", "notes/report.py（草案）"])
+def test_stop_guardrail_forces_continue_when_artifact_missing(tmp_path: Path, artifact: str) -> None:
     """Isolated: the stop-guardrail holds the loop open when an expected file is absent."""
     record = {
         "hook_name": "pre_final",
-        "data": {"root": str(tmp_path), "expected_artifacts": ["result.py"]},
+        "data": {"root": str(tmp_path), "expected_artifacts": [artifact]},
     }
     decision = _methodology_stop_guardrail_decision(record)
     assert decision is not None
     assert decision.continue_turn is True
-    assert "result.py" in decision.additional_context
+    assert artifact in decision.additional_context
+    assert decision.facts["missing_artifacts"] == [artifact]
+    target = tmp_path / artifact
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("required evidence", encoding="utf-8")
+    assert _methodology_stop_guardrail_decision(record) is None
 
 
 def test_stop_guardrail_reports_missing_artifacts_as_structured_facts(tmp_path: Path) -> None:

@@ -34,3 +34,9 @@
 - `tinydb_readonly_oracle_s113.py.txt` SHA256 `9e282df69c7994c821a0786a69be476f373d13e1eb0dd521b0859af620395788`。
 - `asteria-s120-goal.txt` SHA256 `c7a1caf4c57db96267bcc46d0b0c681cb5839688c5a781762530e99b9e554524`。
 - `asteria-s120-follow-up.txt` SHA256 `9d9372b4d0e8a25a6feeaacd631e22d8adb64419435b3fd32eaba1902d62e325`。
+
+## 首轮发现后的窄修范围（不修改冻结采样）
+
+第一阶段功能检查全过，但多建了 `tinydb/_snapshot.py（仅在实现需要时）`，严格范围失败；因此第二阶段 NOT RUN，不做正式 Review/Accept、不重跑原目标刷绿。证据链为 GoalSpec 把可选实现写进 target_outputs → Planner 把说明拼进 expected_artifacts/expected_changed_files → 两次 pre_final 缺失产物反馈 → 模型创建该字面路径。
+
+本刀只纠正 GoalSpec/Planner 通用提示：允许修改的范围不等于必须交付，可选方案/条件保留在说明或约束，必需路径字段只放精确字面路径。保持现有缺失产物守卫和 Unicode/标点文件名支持，不按本次路径、语言、provider 或后缀改解析器，不放宽范围验收。以缺失/存在的合法 Unicode 路径回归保护守卫；另做隔离的有限真实规划诊断（原目标/旧 GoalSpec，最多两次请求），不执行工具、不改原实验、不算原样本通过。产品提示有改动则完整 Windows 检查、WSL 相关回归与精确生产 SHA 的 CI。

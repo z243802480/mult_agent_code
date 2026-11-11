@@ -1270,9 +1270,10 @@
       "reference_brief": "benchmarks/reference_briefs/S120-flat-package-real-session.md",
       "user_demo": "普通新会话 TinyDB 快照导出，独立验收后按入口支持同 run 追加计数摘要",
       "green_checks": [
-        "pytest tests/unit/test_database_snapshot_oracle.py tests/unit/test_documentation_contracts.py -q",
-        "registered real flat-package goal and eligible continuation audit"
-      ]
+        "pytest tests/unit/test_goal_spec_agent.py tests/unit/test_plan_agent.py tests/unit/test_task_contract.py tests/integration/test_execute_command.py tests/unit/test_documentation_contracts.py -q",
+        "frozen real trial: independent scope FAIL; optional counts follow-up NOT RUN"
+      ],
+      "status": "Functional checks passed; strict scope failed; follow-up NOT RUN. Generic planning guidance updated; no end-to-end cure claim."
     }
   ]
 }
