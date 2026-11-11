@@ -1331,7 +1331,8 @@
       "green_checks": [
         "pytest tests/unit/test_review_verification_coverage.py tests/unit/test_plan_agent.py tests/integration/test_review_command.py -q",
         "independent documentation audit without evaluator feedback"
-      ]
+      ],
+      "status": "Engineering and one fresh unassisted documentation-audit goal accepted; command pass rate is not artifact coverage. Next: explicit write-boundary propagation."
     }
   ]
 }
