@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S122",
+  "active_slice": "S123",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1304,6 +1304,20 @@
         "registered guarded baseline and independent real goal audit"
       ],
       "status": "Independent and formal acceptance passed; typed path exercised; format correction not triggered."
+    },
+    {
+      "id": "S123",
+      "name": "更复杂批量目标与恢复证据",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S122"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S123-complex-batch-real-proof.md",
+      "user_demo": "TinyDB 跨表批量写入，含预验证、预演、缓存一致性与独立验收",
+      "green_checks": [
+        "pytest tests/unit/test_database_batch_oracle.py tests/unit/test_documentation_contracts.py -q",
+        "registered guarded preflight and independent complex goal audit"
+      ]
     }
   ]
 }

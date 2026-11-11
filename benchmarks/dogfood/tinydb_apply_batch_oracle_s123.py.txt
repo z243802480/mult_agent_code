@@ -1,0 +1,258 @@
+"""S123 public-behavior oracle. Keep outside the model's workspace."""
+from collections import UserDict
+from copy import deepcopy
+from pathlib import Path
+import tempfile
+import unittest
+
+from tinydb import TinyDB, ReadOnlyError
+from tinydb.storages import MemoryStorage
+
+
+DATA = {'a': {'1': {'v': 1, 'nested': {'items': [1]}}, '2': {'v': 2}},
+        'b': {'4': {'v': 4}}}
+
+
+class ObservedStorage(MemoryStorage):
+    def __init__(self):
+        super().__init__()
+        self.memory = deepcopy(DATA)
+        self.reads = self.writes = 0
+        self.read_error = self.write_error = None
+
+    def read(self):
+        self.reads += 1
+        if self.read_error:
+            raise self.read_error
+        return self.memory
+
+    def write(self, data):
+        self.writes += 1
+        if self.write_error:
+            raise self.write_error
+        self.memory = data
+
+
+class Once:
+    def __init__(self, values):
+        self.values, self.calls = values, 0
+
+    def __iter__(self):
+        self.calls += 1
+        if self.calls != 1:
+            raise AssertionError('input consumed more than once')
+        return iter(self.values)
+
+
+def put(table, doc_id, value):
+    return {'op': 'put', 'table': table, 'doc_id': doc_id, 'value': value}
+
+
+def remove(table, doc_id):
+    return {'op': 'remove', 'table': table, 'doc_id': doc_id}
+
+
+def assert_counts(case, actual, expected):
+    case.assertIsInstance(actual, dict)
+    case.assertEqual(set(actual), {'inserted', 'updated', 'removed'})
+    case.assertTrue(all(type(v) is int for v in actual.values()))
+    case.assertEqual(actual, dict(zip(('inserted', 'updated', 'removed'), expected)))
+
+
+def assert_io(case, storage, before, reads, writes):
+    case.assertEqual((storage.reads-before[0], storage.writes-before[1]), (reads,writes))
+
+
+def apply(db, ops, **kwargs):
+    if not callable(getattr(type(db), 'apply_batch', None)):
+        raise AssertionError('TinyDB.apply_batch is missing')
+    return db.apply_batch(ops, **kwargs)
+
+
+class Batch(unittest.TestCase):
+    def seeded(self, readonly=False, cls=TinyDB):
+        storage = ObservedStorage()
+        db = cls(storage=lambda: storage, read_only=readonly)
+        storage.reads = storage.writes = 0
+        return db, storage
+
+    def test_sequential_cross_table_commit_and_one_io(self):
+        db, s = self.seeded()
+        old = s.memory
+        ops = Once([put('a',1,{'v':10}), put('a',7,{'v':7}), remove('b',4),
+                    remove('missing',1), put('a',7,{'v':70}), remove('a',7), put('',9,{'v':9})])
+        result = apply(db,ops)
+        assert_counts(self,result,(2,2,2))
+        assert_io(self,s,(0,0),1,1)
+        self.assertEqual(ops.calls,1)
+        self.assertEqual(old,DATA,'read-owned state must not be mutated')
+        self.assertEqual(s.memory,{'a':{'1':{'v':10},'2':{'v':2}},'b':{},'':{'9':{'v':9}}})
+
+    def test_invalid_later_operation_has_zero_io(self):
+        invalid = [None, {}, {'op':'clear','table':'a','doc_id':1}, put('a',True,{}),
+            put('a',0,{}), put('a',-1,{}), put('a',1.0,{}), put(7,1,{}), put('a',1,[]),
+            {**remove('a',1),'value':None}, {**put('a',1,{}),'extra':True}]
+        for bad in invalid:
+            with self.subTest(bad=bad):
+                db,s = self.seeded()
+                with self.assertRaises(ValueError):
+                    apply(db,[put('a',1,{'v':'should not happen'}),bad])
+                assert_io(self,s,(0,0),0,0)
+                self.assertEqual(s.memory,DATA)
+
+    def test_iterator_failure_is_unchanged_before_io(self):
+        db,s = self.seeded()
+        error = RuntimeError('input failed')
+        def ops():
+            yield put('a',1,{'v':9})
+            raise error
+        with self.assertRaises(RuntimeError) as caught:
+            apply(db,ops())
+        self.assertIs(caught.exception,error)
+        assert_io(self,s,(0,0),0,0)
+        self.assertEqual(s.memory,DATA)
+
+    def test_copy_failure_is_unchanged_before_io(self):
+        db,s = self.seeded()
+        error = RuntimeError('copy failed')
+        class Bomb:
+            def __deepcopy__(self, memo):
+                raise error
+        with self.assertRaises(RuntimeError) as caught:
+            apply(db,[put('a',1,{'v':9}),put('a',2,{'v':Bomb()})])
+        self.assertIs(caught.exception,error)
+        assert_io(self,s,(0,0),0,0)
+        self.assertEqual(s.memory,DATA)
+
+    def test_non_iterable_and_flag_type(self):
+        db,s = self.seeded()
+        for flag in (None,0,1,'yes'):
+            with self.subTest(flag=flag), self.assertRaises(TypeError):
+                apply(db,[],dry_run=flag)
+        with self.assertRaises(TypeError):
+            apply(db,None)
+        assert_io(self,s,(0,0),0,0)
+
+    def test_noop_empty_and_equal_put_io(self):
+        for ops, expected, writes in [([], (0,0,0),0),([remove('missing',9)],(0,0,0),0),
+                ([put('a',2,{'v':2})],(0,1,0),1)]:
+            with self.subTest(ops=ops):
+                db,s = self.seeded()
+                assert_counts(self,apply(db,ops),expected)
+                assert_io(self,s,(0,0),1,writes)
+
+    def test_input_and_storage_nested_data_are_detached(self):
+        db,s = self.seeded()
+        value={'nested':{'items':[7]}}
+        op=UserDict(put('新表',8,UserDict(value)))
+        original=deepcopy(op)
+        old=s.memory
+        assert_counts(self,apply(db,[op]),(1,0,0))
+        self.assertEqual(op,original)
+        value['nested']['items'].append(8)
+        self.assertEqual(s.memory['新表']['8'],{'nested':{'items':[7]}})
+        s.memory['a']['1']['nested']['items'].append(9)
+        self.assertEqual(old,DATA)
+
+    def test_operation_reuse_is_snapshotted_when_consumed(self):
+        db,s = self.seeded()
+        op=put('new',1,{'v':[1]})
+        def ops():
+            yield op
+            op['doc_id']=2
+            op['value']['v'].append(2)
+            yield op
+        assert_counts(self,apply(db,ops()),(2,0,0))
+        self.assertEqual(s.memory['new'],{'1':{'v':[1]},'2':{'v':[1,2]}})
+
+    def test_readonly_rejects_without_consumption_or_io(self):
+        db,s = self.seeded(True)
+        ops=Once([])
+        with self.assertRaises(ReadOnlyError):
+            apply(db,ops)
+        self.assertEqual(ops.calls,0)
+        assert_io(self,s,(0,0),0,0)
+
+    def test_dry_run_readonly_no_tables_or_mutation(self):
+        class NoTable:
+            def __init__(self,*a,**kw):
+                raise AssertionError('dry-run must not construct Table')
+        for readonly in (False,True):
+            with self.subTest(readonly=readonly):
+                db,s = self.seeded(readonly)
+                db.table_class=NoTable
+                assert_counts(self,apply(db,[put('a',1,{}),put('new',8,{}),remove('b',4)],dry_run=True),(1,1,1))
+                assert_io(self,s,(0,0),1,0)
+                self.assertEqual(s.memory,DATA)
+
+    def test_existing_query_and_next_id_refresh_after_commit(self):
+        db,s = self.seeded()
+        table=db.table('a')
+        table.insert({'v':3})
+        predicate=lambda d:d.get('v')==1
+        self.assertEqual(len(table.search(predicate)),1)
+        before=(s.reads,s.writes)
+        assert_counts(self,apply(db,[put('a',1,{'v':9}),put('a',50,{'v':50}),remove('a',2)]),(1,1,1))
+        assert_io(self,s,before,1,1)
+        self.assertEqual(table.search(predicate),[])
+        self.assertEqual(table.insert({'v':51}),51)
+        self.assertEqual(table.get(doc_id=50),{'v':50})
+
+    def test_no_write_preserves_query_and_next_id_cache(self):
+        for mode in ('dry','noop','failure'):
+            with self.subTest(mode=mode):
+                db,s = self.seeded()
+                table=db.table('a')
+                table.insert({'v':3})
+                calls=[]
+                def query(doc):
+                    calls.append(doc)
+                    return True
+                cached=table.search(query)
+                count=len(calls)
+                error=RuntimeError('write failed')
+                if mode=='failure':
+                    s.write_error=error
+                    with self.assertRaises(RuntimeError) as caught:
+                        apply(db,[put('a',40,{})])
+                    self.assertIs(caught.exception,error)
+                    s.write_error=None
+                elif mode=='dry':
+                    apply(db,[put('a',40,{})],dry_run=True)
+                else:
+                    apply(db,[remove('missing',7)])
+                self.assertEqual(table.search(query),cached)
+                self.assertEqual(len(calls),count)
+                self.assertEqual(table.insert({'v':4}),4)
+
+    def test_storage_exceptions_are_unchanged_and_no_owned_mutation(self):
+        for kind in ('read','write'):
+            with self.subTest(kind=kind):
+                db,s = self.seeded()
+                old=s.memory
+                error=RuntimeError(kind+' failed')
+                setattr(s,kind+'_error',error)
+                with self.assertRaises(RuntimeError) as caught:
+                    apply(db,[put('a',1,{'v':99}),remove('b',4)])
+                self.assertIs(caught.exception,error)
+                self.assertEqual(old,DATA)
+                self.assertEqual(s.memory,DATA)
+
+    def test_json_roundtrip_and_invalid_input_preserves_bytes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'db.json'
+            with TinyDB(path) as db:
+                db.table('a').insert({'v':1})
+                before=path.read_bytes()
+                with self.assertRaises(ValueError):
+                    apply(db,[put('a',1,{'v':9}),{}])
+                self.assertEqual(path.read_bytes(),before)
+                assert_counts(self,apply(db,[put('a',1,{'v':2}),put('new',11,{'nested':[1]})]),(1,1,0))
+            with TinyDB(path,read_only=True) as db:
+                self.assertEqual(db.table('a').get(doc_id=1),{'v':2})
+                self.assertEqual(db.table('new').get(doc_id=11),{'nested':[1]})
+                assert_counts(self,apply(db,[remove('a',1)],dry_run=True),(0,0,1))
+
+
+if __name__=='__main__':
+    unittest.main(verbosity=2)

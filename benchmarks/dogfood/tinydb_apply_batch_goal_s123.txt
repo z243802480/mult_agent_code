@@ -1,0 +1,24 @@
+Implement TinyDB.apply_batch(operations, *, dry_run=False), a validated cross-table batch API.
+Read BATCH_CONTRACT.md for exact operation, exception, I/O, cache and readonly semantics.
+Consume a finite iterable once; snapshot each operation/value, validate the ENTIRE batch
+before I/O, then apply put/remove operations sequentially on detached staging data.
+Return inserted/updated/removed counts. A valid batch reads storage once and writes at most
+once; invalid inputs have zero I/O. Dry-run predicts counts without mutations and works on
+readonly handles. Normal readonly calls reject before consuming inputs. After successful
+commit, existing table handles must have fresh queries and collision-free next IDs.
+Preserve failed/no-op/dry-run cache state, input/value isolation, JSON/custom storage behavior,
+all original APIs and the accepted readonly guarantees. Do not promise rollback of partial
+writes performed by storage itself. The public contract includes exact corner cases.
+Required: tinydb/database.py, docs/usage.rst, docs/api.rst, NEW tests/test_apply_batch_s123.py.
+Update both docs with semantics/examples and add meaningful regressions. You may edit
+tinydb/table.py and tinydb/__init__.py if necessary, but permission is not an output promise.
+NEW tinydb/_batch.py is optional, only if needed by the chosen design; no placeholder file.
+All other source/config/LICENSE, existing tests, AGENTS.md, TASK_CONTRACT.md and
+BATCH_CONTRACT.md are immutable. The old task edit list is historical.
+Use these exact preverified commands (project import is explicit):
+/home/administrator/.cache/asteria-s101/venv/bin/python -m pytest -o pythonpath=. -o addopts= tests -q
+/home/administrator/.cache/asteria-s101/venv/bin/python -c "import sys,pathlib; sys.path.insert(0,'.'); import tinydb; print(tinydb.__file__); assert pathlib.Path(tinydb.__file__).resolve().is_relative_to(pathlib.Path.cwd()/'tinydb')"
+No installs, network/Git/subagents/credentials, scans outside this workspace or other
+experiments, reference answers, runtime/installed-package implementation introspection,
+forced tool strategy, artificial pause or time padding. Sphinx/Ruff/mypy are absent;
+do not install or claim them. Finish when verified and report actual results honestly.
