@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S123",
+  "active_slice": "S124",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1319,6 +1319,19 @@
         "registered guarded preflight and independent complex goal audit"
       ],
       "status": "Original autonomous trial rejected for incorrect documentation; separate external-feedback repair accepted, not an initial autonomy pass."
+    },
+    {
+      "id": "S124",
+      "name": "文档实例的实际验证覆盖",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S123"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S124-artifact-verification-coverage.md",
+      "green_checks": [
+        "pytest tests/unit/test_review_verification_coverage.py tests/unit/test_plan_agent.py tests/integration/test_review_command.py -q",
+        "independent documentation audit without evaluator feedback"
+      ]
     }
   ]
 }

@@ -15,6 +15,7 @@ from asteria_runtime.core.active_next_step import capability_feedback_active_nex
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.fast_path_policy import classify_fast_path
+from asteria_runtime.core.verification_guidance import VERIFICATION_SCOPE_NOTE
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
 from asteria_runtime.core.real_provider_matrix import (
@@ -506,7 +507,7 @@ class ReviewCommand:
         report = {
             "schema_version": "0.1.0",
             "run_id": run_id,
-            "goal_eval": {"requirement_coverage": 1.0},
+            "goal_eval": {"requirement_coverage": None, "task_completion_rate": 1.0},
             "artifact_eval": {"artifacts_present": True, "logs_present": True},
             "outcome_eval": {"verification_pass_rate": 1.0, "run_success": True},
             "trajectory_eval": {
@@ -543,7 +544,7 @@ class ReviewCommand:
                 "status": "pass",
                 "score": float(correctness["score"]),
                 "reason": f"{base_reason} Score is the real verification pass rate "
-                f"({float(correctness['score']):.2f}).",
+                f"({float(correctness['score']):.2f}). {VERIFICATION_SCOPE_NOTE}",
             }
         return {
             "status": "pass",
@@ -667,7 +668,10 @@ class ReviewCommand:
         artifact_eval = eval_report.get("artifact_eval") or {}
         outcome_eval = eval_report.get("outcome_eval") or {}
         trajectory_eval = eval_report.get("trajectory_eval") or {}
-        coverage = float(goal_eval.get("requirement_coverage", 1.0) or 0.0)
+        coverage = goal_eval.get("requirement_coverage")
+        if coverage is None:
+            coverage = goal_eval.get("task_completion_rate", 1.0)
+        coverage = float(coverage or 0.0)
         artifacts_present = artifact_eval.get("artifacts_present", True)
         blocked_tasks = int(trajectory_eval.get("blocked_task_count", 0) or 0)
         verification_rate = float(outcome_eval.get("verification_pass_rate", 1.0) or 0.0)

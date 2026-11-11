@@ -1,0 +1,15 @@
+Audit the newly added TinyDB.apply_batch documentation in docs/usage.rst and
+docs/api.rst against the current implementation and the existing tests. Correct any
+inaccurate description or example, keeping the documentation clear and usable.
+
+Only docs/usage.rst and docs/api.rst may change. Preserve all implementation files,
+existing tests, project configuration, section headings and unrelated documentation. Do not create
+additional files. This is a documentation task, not a request to change API semantics.
+
+Use the local source checkout. Do not install anything, access the network, read
+credentials, other experiments, the evaluator or the harness implementation.
+The project source is importable from the workspace root. The available Python is:
+/home/administrator/.cache/asteria-s101/venv/bin/python
+
+Keep this full project regression check:
+/home/administrator/.cache/asteria-s101/venv/bin/python -m pytest -o pythonpath=. -o addopts= tests -q

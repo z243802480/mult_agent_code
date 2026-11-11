@@ -354,6 +354,8 @@ def test_review_command_uses_deterministic_first_for_fast_path_without_model_cli
     assert review_tier["mode"] == "deterministic_first"
     assert review_tier["accepted_without_model"] is True
     assert review_tier["fast_path"]["task_kind"] == "simple_file"
+    assert eval_report["goal_eval"]["requirement_coverage"] is None
+    assert eval_report["goal_eval"]["task_completion_rate"] == 1.0
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost_report["model_calls"] == 5
     user_progress = [
@@ -471,6 +473,7 @@ def test_fast_path_overall_score_is_unverified_without_executable_verification(
     verified = command._fast_path_overall({"status": "pass", "score": 0.5, "reason": "1/2 passed"})
     assert verified["status"] == "pass"
     assert verified["score"] == 0.5
+    assert "not artifact or requirement coverage" in verified["reason"]
 
 
 def test_review_command_treats_discarded_replanned_worker_failure_as_recovered(
@@ -554,7 +557,8 @@ def test_review_command_normalizes_sparse_eval_report(tmp_path: Path) -> None:
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
     assert eval_report["schema_version"] == "0.1.0"
-    assert eval_report["goal_eval"]["requirement_coverage"] == 1.0
+    assert eval_report["goal_eval"]["requirement_coverage"] is None
+    assert eval_report["goal_eval"]["task_completion_rate"] == 1.0
     assert eval_report["artifact_eval"]["logs_present"]
     assert eval_report["outcome_eval"]["run_success"]
 

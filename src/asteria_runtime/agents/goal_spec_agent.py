@@ -7,6 +7,7 @@ from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.core.execution_environment import command_execution_context
 from asteria_runtime.core.design_intel_contract import apply_research_type_to_goal_spec
 from asteria_runtime.core.execution_preferences import normalize_execution_preferences
+from asteria_runtime.core.verification_guidance import ARTIFACT_VERIFICATION_GUIDANCE
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
@@ -292,7 +293,7 @@ You must:
 - Mirror the user's language: write normalized_goal, descriptions, acceptance, definition_of_done and
   every other prose field in the SAME natural language as the user's goal (Chinese goal -> Chinese
   text). Keep code, identifiers, file paths and commands in their native form.
-"""
+""" + "\n" + ARTIFACT_VERIFICATION_GUIDANCE
 
     def _user_prompt(self, goal: str, project_context: dict) -> str:
         return f"""User goal:

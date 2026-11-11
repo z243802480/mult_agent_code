@@ -8,6 +8,7 @@ from asteria_runtime.agents.planner import RequirementPlanner
 from asteria_runtime.core.execution_environment import command_execution_context
 from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.core.execution_profile import HARNESS, SESSION_AGENT
+from asteria_runtime.core.verification_guidance import ARTIFACT_VERIFICATION_GUIDANCE
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
@@ -209,7 +210,7 @@ You must:
   prose); keep code, file paths and commands in their native form.
 - If the execution profile is "session_agent" you MUST return exactly ONE task covering the
   whole goal (implement and verify in a single slice).
-"""
+""" + "\n" + ARTIFACT_VERIFICATION_GUIDANCE
 
     def _user_prompt(
         self,

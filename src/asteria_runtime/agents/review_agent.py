@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.core.context_slimming import project_review_evidence
+from asteria_runtime.core.verification_guidance import VERIFICATION_SCOPE_NOTE
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
 
@@ -193,7 +194,7 @@ class ReviewAgent:
         normalized["run_id"] = normalized.get("run_id", run_id)
         normalized["goal_eval"] = self._object(
             normalized.get("goal_eval"),
-            {"requirement_coverage": completion},
+            {"requirement_coverage": None, "task_completion_rate": completion},
         )
         normalized["artifact_eval"] = self._object(
             normalized.get("artifact_eval"),
@@ -248,7 +249,10 @@ class ReviewAgent:
             score = model_score if model_score is not None else real_score  # may be None
             reason = str(value.get("reason") or f"Deterministic checks indicate {status}.")
             if model_score is None and real_score is not None:
-                reason = f"{reason} Score is the real verification pass rate ({real_score:.2f})."
+                reason = (
+                    f"{reason} Score is the real verification pass rate ({real_score:.2f}). "
+                    f"{VERIFICATION_SCOPE_NOTE}"
+                )
             elif score is None:
                 reason = (
                     f"{reason} Unverified: no executable verification ran and no model score "
@@ -265,7 +269,7 @@ class ReviewAgent:
             return {
                 "status": str(correctness["status"]),
                 "score": real_score,
-                "reason": str(correctness["reason"]),
+                "reason": f"{correctness['reason']} {VERIFICATION_SCOPE_NOTE}",
             }
         return {
             "status": default_status,
@@ -284,6 +288,11 @@ Return only valid JSON matching the EvalReport schema. Do not wrap in markdown.
 You must:
 - Evaluate goal understanding, artifacts, outcome, trajectory, and cost.
 - Use the supplied logs and task board as evidence.
+- Compare the requested artifacts and observable claims with the actual checks and their output.
+  Passing tests alone do not verify documentation examples or displayed results; file existence
+  or readback alone does not verify their semantics. Identify material unchecked claims explicitly.
+  Keep requirement coverage unknown when the supplied evidence does not establish it; task
+  completion and verification pass rate are separate signals. Do not invent executed checks.
 - Penalize missing verification, blocked tasks, missing artifacts, unsafe actions, or uncontrolled cost.
 - When tool_observation_actions are present, use them as explicit review choices:
   diagnose unresolved failures, repair scoped defects, replan wrong task contracts,

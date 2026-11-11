@@ -8,6 +8,7 @@ from typing import Any
 
 from asteria_runtime.core.agent_role_policy import role_contracts_for_prompt
 from asteria_runtime.core.file_read_payload import render_file_read
+from asteria_runtime.core.verification_guidance import ARTIFACT_VERIFICATION_GUIDANCE
 from asteria_runtime.core.orchestration_spawn_policy import (
     SPAWN_DECISION_POLICY,
     subagent_capability_description,
@@ -834,9 +835,11 @@ class AgentHarness:
                 (
                     f"Discipline version {DISCIPLINE_VERSION}. Execution plane: honor task_contract "
                     "(read_scope, write_scope, validation_commands, failure_policy). Prefer structured "
-                    "tools over shell; keep AgentLoopDecision aligned with tool_calls. Use verification "
-                    "commands from the task contract only—do not invent domain-specific checks. "
-                    "Return valid JSON for ExecutionAction unless worker_transport policy selects tool_use."
+                    "tools over shell; keep AgentLoopDecision aligned with tool_calls. Preserve required "
+                    "verification commands from the task contract. Supplemental checks must be grounded "
+                    "in the actual artifacts and available tools, within existing task permissions. "
+                    "Return valid JSON for ExecutionAction unless worker_transport policy selects tool_use.\n"
+                    f"{ARTIFACT_VERIFICATION_GUIDANCE}"
                 ),
                 cache_break_reasons=["discipline_version_changed"],
             ),

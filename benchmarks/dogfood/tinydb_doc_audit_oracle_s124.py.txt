@@ -1,0 +1,26 @@
+"""Evaluator-only documented-output oracle; not installed in the model workspace."""
+import doctest
+from pathlib import Path
+
+
+def verify(root):
+    total = failures = 0
+    for filename, start, end, required in [
+        ('docs/usage.rst', 'Batch Operations', '\nQueries\n', True),
+        ('docs/api.rst', 'Batch API', '``tinydb.database``', False),
+    ]:
+        text = (root / filename).read_text(encoding='utf8')
+        section = text.split(start, 1)[1].split(end, 1)[0]
+        test = doctest.DocTestParser().get_doctest(section, {}, filename, filename, 0)
+        if required and not test.examples:
+            print('Missing executable usage example:', filename)
+            failures += 1
+        result = doctest.DocTestRunner().run(test)
+        total += result.attempted
+        failures += result.failed
+    print('attempted:', total, 'failed:', failures)
+    return failures
+
+
+if __name__ == '__main__':
+    raise SystemExit(bool(verify(Path.cwd())))

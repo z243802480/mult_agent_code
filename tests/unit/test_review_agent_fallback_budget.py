@@ -54,7 +54,10 @@ def test_overall_uses_real_correctness_score_over_constant() -> None:
 
     # Pure-deterministic review (model absent) -> the graded correctness verdict is authoritative.
     deterministic = agent._overall(None, "pass", real)
-    assert deterministic == {"status": "partial", "score": 0.5, "reason": "2/4 verification passed"}
+    assert deterministic["status"] == "partial"
+    assert deterministic["score"] == 0.5
+    assert deterministic["reason"].startswith("2/4 verification passed")
+    assert "not artifact or requirement coverage" in deterministic["reason"]
 
     # ADR-0016 §3: no executable verification AND no model score -> score is None ("unverified"),
     # NOT a fabricated 0.9/0.6/0.2 constant. The status still reflects the deterministic verdict, and
