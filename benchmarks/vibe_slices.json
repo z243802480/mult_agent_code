@@ -1412,7 +1412,7 @@
         "S130"
       ],
       "reference_brief": "benchmarks/reference_briefs/S131-content-preservation-contract.md",
-      "status": "In progress: source-bound optional whole-line preservation, completion gate integration and evaluator controls; no new real model run."
+      "status": "Engineering accepted: optional source-bound whole-line preservation enforced at completion, durable across same-run repair; v2oracle accepts legal API/variable alternatives and rejects predicate/content drift.26new cases; Windowsfull1923/5skip/42excluded, WSL129, Ruff/type/fivebenchmarks pass.9a0cb3e Verify43135211339 all3jobs/UI green. New real GoalSpec adoption/enforcement proof NOT RUN; original S130 rejection unchanged. Next: one clean-baseline post-fix controlled trial."
     }
   ]
 }

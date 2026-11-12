@@ -22,8 +22,8 @@ Execute最终完成闸用当前GoalSpec与原运行快照比对，原整行必�
 
 26个新回归覆盖完整字节行、顺序/重复/CRLF/未终止末行、旧兼容、坏/缺/变更证据、重捕基线拒绝、受保护路径/容量及真实Plan→Execute→失败→Replan→修复。测试工具实际读写文件、实际运行绿色检查，证明绿色验证不能掩盖原行损坏；修复后可以完成且原快照字节不变。
 
-WSL相关129通过，Ruff(src/tests/scripts)和mypy ratchet无新增（60条既有、18条已不再报告，未改基线）。Windows完整回归、离线基准和精确源码CI收口后补记。
+WSL相关129通过，Ruff(src/tests/scripts)和mypy ratchet无新增（60条既有、18条已不再报告，未改基线）。Windows完整**1923 passed / 5 skipped / 42 deselected**（665.64秒）、五离线基准通过。[精确源码Verify43135211339](https://github.com/z243802480/mult_agent_code/actions/runs/43135211339) Python3.11/3.13与Studio含UI三job全绿，源码`9a0cb3ec032145d40131cb669dec30535a4f1227`；后续仅文档收口。
 
 证据：WSL `~/.cache/asteria-evaluations/s131-content-contract-20261112/oracle-controls.json`及`production-replay.json`。生产函数在副本对原S130改坏文档作显式新约束的反事实重放：旧完成判据通过，新判据拒绝，原文档哈希不变、0付费调用。不得称原GoalSpec已有该字段或把旧运行翻绿。
 
-下一步冻结源码和新版检查器，进行一次新的真实目标验收，观察内容约束的真实提出/执法和验证收敛。新真模型目标及正式Review/Accept本片均NOT RUN；原S130拒收不变。
+下一步冻结源码和新版检查器，在干净基线作一次修复后对照采样，观察内容约束的真实提出/执法和验证收敛。这是带已知失败背景的后修复验证，不冒充未见新题或成对因果/成本证明。新真模型目标及正式Review/Accept本片均NOT RUN；原S130拒收不变。
