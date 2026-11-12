@@ -223,6 +223,29 @@
         }
       },
       "additionalProperties": false
+    },
+    "content_preservation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "mode"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "existing_lines"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
     }
   }
 }

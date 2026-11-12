@@ -96,6 +96,7 @@ from asteria_runtime.core.task_contract import (
     with_goal_edit_boundary,
 )
 from asteria_runtime.core.workspace_snapshot import changed_paths, snapshot_workspace
+from asteria_runtime.core.content_preservation import content_preservation_violations
 from asteria_runtime.core.task_pause_checkpoint import (
     clear_pause_changes,
     previous_pause_changes,
@@ -1595,6 +1596,7 @@ class ExecuteCommand:
             verification_results,
             allow_verified_noop=bool(task.get("verified_noop_allowed")),
             unscoped_changed_files=unscoped_disk,
+            content_preservation_violations=content_preservation_violations(context, goal_spec),
         )
         tool_calls = len(observations)
         verification_calls = contract.verification_total

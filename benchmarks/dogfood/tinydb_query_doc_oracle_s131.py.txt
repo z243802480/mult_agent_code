@@ -1,0 +1,61 @@
+"""New evaluator version. S130's frozen oracle and original results stay unchanged."""
+import difflib
+import doctest
+from pathlib import Path
+
+
+def verify(root, original):
+    text = (root / 'docs/usage.rst').read_text(encoding='utf8')
+    before = (original / 'docs/usage.rst').read_text(encoding='utf8')
+    operations = difflib.SequenceMatcher(None, before.splitlines(True), text.splitlines(True), autojunk=False).get_opcodes()
+    if any(op[0] not in {'equal', 'insert'} for op in operations):
+        return {'ok': False, 'reason': 'original lines changed'}
+    try:
+        title = 'Count and contains example'
+        assert text.count(title) == 1
+        assert text.index('Queries\n-------') < text.index(title)
+        lines = text.splitlines()
+        start = lines.index(title)
+        assert set(lines[start + 1]) == {'.'}
+        end = len(lines)
+        for i in range(start + 2, len(lines) - 1):
+            underline = lines[i + 1].strip()
+            if lines[i].strip() and len(underline) >= 3 and len(set(underline)) == 1 and underline[0] in '.-=~^':
+                end = i
+                break
+        test = doctest.DocTestParser().get_doctest('\n'.join(lines[start + 2:end]), {}, title, 'usage.rst', 0)
+        assert test.examples
+        from tinydb.table import Table
+        observations = {'count': [], 'contains': []}
+        probes = [{'name': name, 'rank': rank} for name in ['Ada', 'Grace', 'Lin', 'Other'] for rank in range(4)]
+        expected_docs = [{'name': 'Ada', 'rank': 1}, {'name': 'Grace', 'rank': 2}, {'name': 'Lin', 'rank': 2}]
+        originals = {name: getattr(Table, name) for name in observations}
+
+        def wrap(name):
+            def invoke(table, *args, **kwargs):
+                condition = args[0] if args else kwargs.get('cond')
+                docs = table.all()
+                if sorted((dict(doc) for doc in docs), key=lambda doc: doc.get('name', '')) == expected_docs:
+                    observations[name].append(tuple(bool(condition(doc)) for doc in probes))
+                return originals[name](table, *args, **kwargs)
+            return invoke
+
+        try:
+            for name in originals:
+                setattr(Table, name, wrap(name))
+            result = doctest.DocTestRunner().run(test, clear_globs=False)
+        finally:
+            for name, method in originals.items():
+                setattr(Table, name, method)
+        assert not result.failed
+        assert tuple(doc['rank'] == 2 for doc in probes) in observations['count']
+        assert tuple(doc['rank'] == 1 for doc in probes) in observations['contains']
+        assert tuple(doc['rank'] == 3 for doc in probes) in observations['contains']
+        from tinydb import TinyDB
+        from tinydb.storages import MemoryStorage
+        assert any(isinstance(db, TinyDB) and isinstance(db.storage, MemoryStorage)
+                   and sorted((dict(doc) for doc in db.all()), key=lambda doc: doc['name']) == expected_docs
+                   for db in test.globs.values())
+        return {'ok': True, 'attempted': result.attempted}
+    except (AssertionError, ValueError, IndexError, KeyError, TypeError):
+        return {'ok': False, 'reason': 'example does not demonstrate the requested claims'}

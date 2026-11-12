@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ContentPreservation",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "goal_id",
+    "constraints_sha256",
+    "files"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string"
+    },
+    "goal_id": {
+      "type": "string"
+    },
+    "constraints_sha256": {
+      "type": "string",
+      "minLength": 64
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "content_sha256",
+          "line_sha256",
+          "lines_sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "content_sha256": {
+            "type": "string",
+            "minLength": 64
+          },
+          "lines_sha256": {
+            "type": "string",
+            "minLength": 64
+          },
+          "line_sha256": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 64
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

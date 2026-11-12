@@ -467,6 +467,12 @@ class PlanCommand:
         design_intel_research_type = goal_spec.get("research_type")
         goal_spec_path = run_dir / "goal_spec.json"
         self.store.write(goal_spec_path, goal_spec, "goal_spec")
+        from asteria_runtime.core.content_preservation import capture_content_preservation
+        from asteria_runtime.core.runtime_context import RuntimeContext
+
+        capture_content_preservation(RuntimeContext(
+            self.root, run["run_id"], policy, self.validator,
+        ), goal_spec)
         event_logger.record(run["run_id"], "artifact_created", "GoalSpecAgent", "GoalSpec created")
         progress_logger.record(
             run_id=run["run_id"],

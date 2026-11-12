@@ -373,6 +373,7 @@ def check_completion_contract(
     verification_results: list,
     allow_verified_noop: bool = False,
     unscoped_changed_files: list[str] | None = None,
+    content_preservation_violations: list[str] | None = None,
 ) -> TaskContractCheck:
     contract = completion_contract(task)
     expected_files = _expected_changed_files(task)
@@ -387,7 +388,7 @@ def check_completion_contract(
         and verification_passed == verification_total
         and not normalized_changed
     )
-    violations: list[str] = []
+    violations: list[str] = list(content_preservation_violations or [])
 
     if contract.get("requires_verification") and verification_total == 0:
         violations.append("required verification was not provided")

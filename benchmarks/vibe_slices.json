@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S130",
+  "active_slice": "S131",
   "active_phase": "产品主路径 dogfood",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -1412,7 +1412,7 @@
         "S130"
       ],
       "reference_brief": "benchmarks/reference_briefs/S131-content-preservation-contract.md",
-      "status": "Next; audit and red/green contracts before implementation. No new orchestration or model/language-specific patch."
+      "status": "In progress: source-bound optional whole-line preservation, completion gate integration and evaluator controls; no new real model run."
     }
   ]
 }

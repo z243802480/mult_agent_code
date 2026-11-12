@@ -8,6 +8,7 @@ from asteria_runtime.core.execution_environment import command_execution_context
 from asteria_runtime.core.design_intel_contract import apply_research_type_to_goal_spec
 from asteria_runtime.core.execution_preferences import normalize_execution_preferences
 from asteria_runtime.core.edit_boundary import validate_edit_boundary
+from asteria_runtime.core.content_preservation import normalize_content_preservation
 from asteria_runtime.core.verification_guidance import ARTIFACT_VERIFICATION_GUIDANCE
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
@@ -173,6 +174,8 @@ class GoalSpecAgent:
         normalized = apply_research_type_to_goal_spec(normalized)
         if "edit_boundary" in normalized:
             normalized["edit_boundary"] = validate_edit_boundary(normalized["edit_boundary"])
+        if "content_preservation" in normalized:
+            normalized["content_preservation"] = normalize_content_preservation(normalized["content_preservation"])
         if "output_intents" in normalized:
             # The model supplies semantics; the runtime only projects validated labels.
             # Keep the complete proposal for audit and preserve literal names verbatim.
@@ -298,6 +301,11 @@ You must:
   relative paths, never prose, globs, absolute paths or parent traversal. Keep the restriction in
   constraints too. Read access and shell/secret permissions are separate from this edit ceiling.
 - Include a verifiable definition_of_done and verification_strategy.
+- Use content_preservation=[{"path": "literal/file", "mode": "existing_lines"}] only when
+  the user explicitly requires keeping all existing content of named files while adding new
+  material. Otherwise omit it or use []. Do not infer it from requests to preserve behavior.
+  Existing complete lines including their endings must remain ordered and unchanged; whole
+  new lines may be inserted. This is a content requirement, not an additional write grant.
 - State observable outcomes for acceptance and definition_of_done. Do not invent a shell command
   unless the user requested it or the project context establishes that it exists on this host;
   file-content checks can be described without prescribing a specific shell utility.
