@@ -1,0 +1,16 @@
+Add a "Count and contains example" subsection under Queries in docs/usage.rst,
+using the existing subsection style. Provide a self-contained executable doctest
+using TinyDB with MemoryStorage and Query. Insert Ada(rank=1), Grace(rank=2),
+and Lin(rank=2). Demonstrate the number matching rank 2, existence of rank 1,
+absence of rank 3, and that querying preserves all three stored documents.
+Show the actual returned results from the current public API.
+
+Only docs/usage.rst may be edited. Preserve every existing heading, example,
+unrelated content, implementation, tests and configuration. Do not create user
+files. Do not access credentials, the network, other experiments, evaluator or
+harness implementation, or install dependencies. Choose appropriate bounded
+verification for the new example and preserve this full regression command:
+/home/administrator/.cache/asteria-s101/venv/bin/python -m pytest -o pythonpath=. -o addopts= tests -q
+
+Use this existing Python and the local checkout importable from workspace root:
+/home/administrator/.cache/asteria-s101/venv/bin/python

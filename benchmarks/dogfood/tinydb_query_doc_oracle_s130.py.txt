@@ -1,0 +1,47 @@
+"""Evaluator-only bounded example execution; never supplied as model feedback."""
+import ast
+import doctest
+from pathlib import Path
+
+
+def verify(root):
+    text = (root / 'docs/usage.rst').read_text(encoding='utf8')
+    lines = text.splitlines()
+    title = 'Count and contains example'
+    try:
+        start = lines.index(title)
+        assert text.index('Queries\n-------') < text.index(title)
+        assert set(lines[start + 1]) == {'.'}
+        end = len(lines)
+        for i in range(start + 2, len(lines) - 1):
+            underline = lines[i + 1].strip()
+            if (lines[i].strip() and len(underline) >= 3
+                    and len(set(underline)) == 1 and underline[0] in '.-=~^'):
+                end = i
+                break
+        section = '\n'.join(lines[start + 2:end])
+        test = doctest.DocTestParser().get_doctest(section, {}, title, 'usage.rst', 0)
+        tree = ast.parse('\n'.join(example.source for example in test.examples))
+        methods = {node.func.attr for node in ast.walk(tree)
+                   if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)}
+        assert {'count', 'contains', 'insert_multiple'} <= methods
+        assert len(test.examples) >= 8
+        result = doctest.DocTestRunner().run(test, clear_globs=False)
+        assert result.failed == 0
+        from tinydb import Query
+        from tinydb.storages import MemoryStorage
+        db = test.globs['db']
+        assert isinstance(db.storage, MemoryStorage)
+        assert db.all() == [{'name': 'Ada', 'rank': 1}, {'name': 'Grace', 'rank': 2}, {'name': 'Lin', 'rank': 2}]
+        assert db.count(Query().rank == 2) == 2
+        assert db.contains(Query().rank == 1) is True
+        assert db.contains(Query().rank == 3) is False
+        print('isolated query example:', result.attempted, 'passed')
+        return 0
+    except (AssertionError, ValueError, IndexError, KeyError) as error:
+        print('independent example rejected:', type(error).__name__, str(error))
+        return 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(verify(Path.cwd()))

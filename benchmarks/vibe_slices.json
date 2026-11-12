@@ -1402,7 +1402,17 @@
         "S129"
       ],
       "reference_brief": "benchmarks/reference_briefs/S130-verification-method-revision.md",
-      "status": "Engineering accepted: provenance-bound explicit revision retains requirements/failure/history; 33new regressions, Windowsfull1897/5skip/42deselected, WSL110 and final67(overlap), Ruff/type/five offline benchmarks pass. Source9987752 Verify43081399979 all3jobs/UI green. New real goal/formalReview/Accept/keyed proof NOT RUN; original joint rejection unchanged. Next: freeze an independent fresh goal/oracle and sample natural convergence."
+      "status": "Engineering accepted; fresh frozen-source trial285.28s native completed but independently REJECTED:110 old examples weakened and count predicate narrowed; oracle contract also defective, audited without rewriting.31models/72observations/70charged/38units reconcile.0revision calls; formalReview/Accept NOT RUN. Next S131 content preservation/verification contract audit."
+    },
+    {
+      "id": "S131",
+      "name": "内容保留与验证判据契约审计",
+      "phase": "产品主路径 dogfood",
+      "depends_on": [
+        "S130"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S131-content-preservation-contract.md",
+      "status": "Next; audit and red/green contracts before implementation. No new orchestration or model/language-specific patch."
     }
   ]
 }
