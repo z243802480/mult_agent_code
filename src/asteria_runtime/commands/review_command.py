@@ -16,6 +16,7 @@ from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.budget import BudgetController, budget_evidence
 from asteria_runtime.core.review_artifacts import collect_review_artifacts, constrain_review_approval, review_basis
 from asteria_runtime.core.review_focus import collect_review_focus
+from asteria_runtime.core.review_tools import ReviewTools
 from asteria_runtime.core.edit_boundary import observed_outside_edit_boundary
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.policy_config import load_policy_config
@@ -230,7 +231,8 @@ class ReviewCommand:
         self.model_client = model_client
         # Opt-in: when set, the correctness signal is the INDEPENDENT re-run (recorded verification
         # commands re-executed against the current workspace) rather than trusting recorded exit
-        # codes. Default off → byte-identical read-only review.
+        # codes. This legacy option executes in the ORIGINAL workspace; it is not read-only.
+        # Reviewer-selected checks use a disposable copy instead.
         self.rerun = rerun
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
@@ -355,7 +357,11 @@ class ReviewCommand:
         except Exception as exc:
             client = None
             initialization_error = {"error_type": type(exc).__name__}
-        reviewer = ReviewAgent(client, self.validator)
+        tools = ReviewTools(
+            RuntimeContext(self.root, run_id, policy, self.validator, event_logger=event_logger, budget=budget),
+            artifacts, review_context["goal_spec"], review_context["task_plan"],
+        ) if client is not None else None
+        reviewer = ReviewAgent(client, self.validator, tools=tools)
         model_review_context = slim_review_context(review_context) if self.model_client is None else review_context
         try:
             eval_report = reviewer.evaluate(model_review_context, run_id)

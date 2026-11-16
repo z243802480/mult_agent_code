@@ -31,6 +31,7 @@ class ToolExecutionGateway:
     permission_policy: ToolPermissionPolicy
     hook_manager: RuntimeHookManager | None = None
     actor: str = "ToolExecutionGateway"
+    agent_id: str = "CoderAgent"
     mcp_adapter: Any = None
     skill_adapter: Any = None
 
@@ -209,7 +210,7 @@ class ToolExecutionGateway:
                         args,
                     ),
                     task_id=task["task_id"],
-                    agent_id="CoderAgent",
+                    agent_id=self.agent_id,
                     **self._tool_args(tool_name, args),
                 )
                 if self._accepts_diagnostic_failure(task, tool_name, result):
@@ -331,7 +332,7 @@ class ToolExecutionGateway:
                         context, tool_name, str(args),
                         ToolResult(ok=False, summary=str(exc), error=str(exc),
                                    status="denied" if isinstance(exc, PermissionError) else "failure"),
-                        task["task_id"], "CoderAgent", now_iso(),
+                        task["task_id"], self.agent_id, now_iso(),
                     )
                 duration_ms = int((perf_counter() - started) * 1000)
                 observation = observation_from_exception(

@@ -105,3 +105,12 @@ f5be13c单次253.72秒/23模型完成，范围/旧行/项目测试过，恢复�
 最终e69b4b9：真实原数据0模型回放证明尾12未知→全41完整627字符diff，首次备份SHA匹配冻结原始项目。修后副本Review15.89秒1模型仍pass.99漏检，但新快照真实有完整diff/29条件，原件和账本/快照用量对账保持，未Accept。两负控共新增2模型202852入2887出，不把继承24条旧调用重复记账。旧9b全套因真接线修复中止，不称通过；最终Windows完整2007/6跳过/42排除482.44秒、两端相关35+1跳过/36及追加2各、Ruff/类型/五基准过。
 
 同一冻结名表完整流程一次：170.91秒14模型，独立v2示例9/项目271+1跳过/旧行/范围均过；正式Review13.97秒1模型pass/1.00，实际565字符diff/37条件绑定新鲜快照，再复用报告Accept accepted=true/ACCEPTED。累计15MiniMax450657入10375出、19本地/19关联观察/19收费10单位对账，0方法修订/授权请求/范围事件反馈。原失败、源/fixture/runtime/项目及评审前账本前缀均保持。编码提示/机制未变，正确新产物不能归因于Review聚焦；只签本次正向整链，真实负控漏检仍未解决，不宣称稳定降本/跨provider/小时级证明。下一先核实Review选择/消费独立可执行验证证据的能力边界，不再归因于未送达或堆提醒。详见docs/zh/reports/S131-review-change-focus-20261116.md。
+### 2026-11-16 下一刀：Review 自选可执行证据（开工登记，未验收）
+
+代码核实：ReviewAgent 的单报告请求没有工具；CorrectnessEval 的 opt-in rerun 只重放已记录命令，不能代替评审自选检查。readonly task 只禁止文件写工具，不约束 shell；候选工作区默认复制还可能包含 protected 文件，不能直接复用为安全边界。
+
+参考：[Codex review task](https://github.com/openai/codex/blob/main/codex-rs/core/src/tasks/review.rs) 复用普通 agent 执行并限制外部能力；[Anthropic tool-use](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview) 由模型选工具、应用回传真实结果。仅参考机制，不复制实现。方案：复用 model_driven_turn + ToolExecutionGateway/Registry/RunTestsTool/共享预算；允许本地读取与 run_tests，自选命令在受保护文件过滤、有界、一次性项目副本运行，不 promote。不提供写入/MCP/skill/delegation/提权接口；ask_everything 不自动执行工具，禁止项以真实失败观察反馈。副本不是 OS sandbox，命令仍受现有 ShellGuard、环境清理、进程围栏和 opt-in sandbox_shell 约束，不保证任意解释器的系统隔离；禁止宣称 shell 只读。现有 --rerun 语义保留并明确其原工作区副作用风险。
+
+只扩展通用循环的结构化终局协议，不改 Review 语义 rubric/验证指导，不加格式/模型规则，也不强迫模型执行特定检查。最多8轮，沿用 Review 总时间预算及 shared_goal 成本硬停；单命令上限60秒并受剩余时间约束。副本输入摘要、排除范围、工具/观察ID、所绑定产物快照、终止原因单独持久化并 schema 校验；无法执行/协议或预算中止、副本已有输入被改动均不冒充验证成功。没有选检查也如实记录，不把能力可用当能力已用。
+
+先做无领域控制：真实失败输出回灌→模型否决、正向检查→Review/Accept、权限/预算/超时/受保护与 symlink/非回写/来源计费边界。相关检查通过后冻结源码，仅一次新副本评审旧真实坏样本（无 oracle/新提醒，不 Accept 坏件），再一次同冻结正向完整 Goal→独立v2→Review→Accept。保留旧失败/历史账本/正向结果，若仍漏检或未选检查就写真实缺口，不无改重采样。更新总计划与忽略的本机记忆；不新增 slice/强隔离/工作流。

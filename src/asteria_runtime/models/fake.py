@@ -99,6 +99,8 @@ class FakeModelClient:
             return {"ok": True}
         if request.purpose == "goal_spec":
             return self._goal_spec(request)
+        if request.purpose == "run_review":
+            return self._eval_report(request)
         if (request.metadata or {}).get("loop") == "model_driven_turn":
             # 立真身脊梁（RA7 后的默认路径）：模型每步返回 {narration, tool_calls, done}，
             # 而不是 FSM 的 ExecutionAction。离线 fake 也须能驱动脊梁到完成，否则脊梁默认下
@@ -106,8 +108,6 @@ class FakeModelClient:
             return self._model_driven_turn(request)
         if request.purpose in {"task_execution", "task_repair"}:
             return self._execution_action(request)
-        if request.purpose == "run_review":
-            return self._eval_report(request)
         if request.purpose == "slice_completion_judge":
             return self._slice_completion_judge(request)
         if request.purpose == "research":

@@ -9,6 +9,8 @@ from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.core.context_slimming import project_review_evidence
 from asteria_runtime.core.verification_guidance import VERIFICATION_SCOPE_NOTE
+from asteria_runtime.core.model_driven_turn import run_model_driven_turn
+from asteria_runtime.core.review_tools import REVIEW_TURN_CONTRACT, ReviewTools
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
 
@@ -21,8 +23,11 @@ class ReviewAgentError(RuntimeError):
 class ReviewAgent:
     model_client: ModelClient | None
     validator: SchemaValidator
+    tools: ReviewTools | None = None
 
     def evaluate(self, review_context: dict, run_id: str) -> dict:
+        if self.tools is not None and self.model_client is not None:
+            return self._evaluate_with_tools(review_context, run_id)
         if self.model_client is None:
             report = self._normalize({}, review_context, run_id)
             report["trajectory_eval"]["review_assessment"] = {"status": "unavailable", "reason": "client_unavailable"}
@@ -158,6 +163,81 @@ class ReviewAgent:
             self.validator.validate("eval_report", report)
         except SchemaValidationError as exc:
             raise ReviewAgentError(f"EvalReport failed schema validation: {exc}") from exc
+        return report
+
+    def _evaluate_with_tools(self, review_context: dict, run_id: str) -> dict:
+        assert self.tools is not None and self.model_client is not None
+        tools = self.tools
+        review_context = {**review_context, "review_tools": tools.describe()}
+        role = role_contract_for(role="ReviewAgent", purpose="run_review", policy=tools.context.policy)
+        result = None
+        call_errors = []
+
+        def terminal(response) -> str | None:
+            if getattr(response, "finish_reason", None) == "length":
+                return None
+            try:
+                value = self._parse_json(response.content)
+            except ReviewAgentError:
+                return None
+            if not value.get("tool_calls") and self._has_judgment(value):
+                return response.content
+            return None
+
+        try:
+            for tier in self._fallback_tiers(review_context):
+                if tools.exhausted() or tools.model_calls >= 8:
+                    break
+                request = self._request(review_context, run_id, tier, role.to_dict())
+                try:
+                    result = run_model_driven_turn(
+                        model_client=tools.bounded_client(self.model_client), tool_runner=tools,
+                        task=tools.task, context=tools.context, available_tools=tools.allowed,
+                        system_prompt=request.messages[0].text(), user_prompt=request.messages[1].text(),
+                        model_tier=tier, request_purpose="run_review", temperature=0.1,
+                        max_iterations=8 - tools.model_calls, budget_exhausted=tools.exhausted,
+                        call_attribution=request.metadata, json_turn_contract=REVIEW_TURN_CONTRACT,
+                        final_response=terminal,
+                    )
+                except Exception as exc:  # provider boundary; never replay a tool-bearing review
+                    call_errors.append({"model_tier": tier, "error_type": type(exc).__name__})
+                    if tools.dispatched:
+                        break
+                    continue
+                break
+        finally:
+            reason = "model_unavailable"
+            if result is not None:
+                fuses = [event.text for event in result.events if event.kind == "fuse"]
+                reason = ("review_time_budget" if tools.remaining() < 1 else
+                          result.stop_reason or (fuses[-1] or "iteration_limit" if fuses else result.status))
+            evidence = tools.finish(reason)
+        assessed = result is not None and result.status == "completed"
+        raw = self._parse_json(result.final_message) if result is not None and assessed else {}
+        assessed = assessed and self._has_judgment(raw)
+        report = self._normalize(raw, review_context, run_id)
+        report["trajectory_eval"]["review_assessment"] = {
+            "status": "assessed" if assessed else "unavailable",
+            "reason": "model_judgment" if assessed else evidence["stop_reason"],
+        }
+        report["trajectory_eval"]["review_validation"] = {
+            "evidence_ref": str(tools.path), "artifact_evidence_id": tools.artifacts["evidence_id"],
+            "tool_count": len(evidence["observations"]), "copy_created": evidence["copy_created"],
+            "stop_reason": evidence["stop_reason"], "errors": evidence["errors"],
+        }
+        if call_errors:
+            report["trajectory_eval"]["review_model_call_errors"] = call_errors
+        protocol_errors = [event.text for event in result.events if event.kind == "protocol_error"] if result else []
+        if protocol_errors:
+            report["trajectory_eval"]["review_model_parse_error"] = protocol_errors[-1]
+            report["trajectory_eval"]["review_protocol_errors"] = protocol_errors
+        if not assessed or (evidence["errors"] and report["overall"]["status"] == "pass"):
+            report["trajectory_eval"]["model_overall_before_validation_check"] = dict(report["overall"])
+            report["overall"] = {"status": "partial", "score": None,
+                                 "reason": "Review validation was interrupted or its evidence boundary is unresolved: "
+                                 + ", ".join(evidence["errors"] or [evidence["stop_reason"]])
+                                 + "; deterministic runtime checks cannot replace a completed semantic review."}
+        self.validator.validate("eval_report", report)
         return report
 
     @staticmethod

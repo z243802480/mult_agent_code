@@ -131,6 +131,8 @@ def run_model_driven_turn(
     budget_exhausted: Callable[[], bool] | None = None,
     take_steer: Callable[[], list[str]] | None = None,
     call_attribution: dict[str, Any] | None = None,
+    json_turn_contract: str | None = None,
+    final_response: Callable[[Any], str | None] | None = None,
 ) -> ModelDrivenTurnResult:
     """跑一条模型驱动的循环，直到模型收尾或撞上保险丝。
 
@@ -152,7 +154,8 @@ def run_model_driven_turn(
 
     system_content = system_prompt
     if transport == "json":
-        system_content = f"{system_prompt}\n\n{_JSON_TURN_CONTRACT}"
+        system_content = (f"{json_turn_contract}\n\n{system_prompt}" if json_turn_contract
+                          else f"{system_prompt}\n\n{_JSON_TURN_CONTRACT}")
     messages: list[ChatMessage] = [
         ChatMessage(role="system", content=system_content),
         ChatMessage(role="user", content=user_prompt),
@@ -233,14 +236,22 @@ def run_model_driven_turn(
         # Usage is known after the response. Stop before executing its proposed tool batch.
         if budget_exhausted is not None and budget_exhausted():
             return budget_stop(iteration)
-        narration, calls, protocol_error = _read_turn(response, transport)
+        # Structured consumers may have a terminal schema of their own. The callback must
+        # reject truncated responses and responses containing calls; actions still use this loop.
+        terminal = final_response(response) if final_response is not None else None
+        narration, calls, protocol_error = (terminal, [], None) if terminal is not None else _read_turn(response, transport)
+        if final_response is not None and terminal is None and not calls and protocol_error is None:
+            protocol_error = "Missing a valid structured terminal response."
         if protocol_error:
             # Plain prose is not a model decision in the JSON transport: it contains neither a
             # usable tool call nor an explicit done=true. Ask the model to repair the protocol,
             # bounded by the same iteration fuse, rather than silently treating prose as success.
             messages.append(ChatMessage(role="assistant", content=narration or "(empty response)"))
             messages.append(
-                ChatMessage(role="user", content=_json_format_nudge(available_tools, protocol_error))
+                ChatMessage(role="user", content=(
+                    f"Protocol error: {protocol_error}\n{json_turn_contract}"
+                    if json_turn_contract else _json_format_nudge(available_tools, protocol_error)
+                ))
             )
             emit(TurnEvent(kind="protocol_error", iteration=iteration, text=protocol_error))
             consecutive_invalid_turns += 1
@@ -326,7 +337,8 @@ def run_model_driven_turn(
             ChatMessage(role="assistant", content=_assistant_turn_text(narration, calls, transport))
         )
         messages.append(
-            ChatMessage(role="user", content=_observation_feedback(observations, transport))
+            ChatMessage(role="user", content=_observation_feedback(observations, transport,
+                                                                  json_turn_contract=json_turn_contract))
         )
         observation_feedback_index.append((len(messages) - 1, observations))
         if hook is not None:
@@ -349,6 +361,7 @@ def run_model_driven_turn(
             transport,
             char_budget=history_char_budget,
             keep_recent=keep_recent_observation_payloads,
+            json_turn_contract=json_turn_contract,
         )
 
     # 撞上保险丝：可 resume 的预算边界，不是"失败"也不是"完成"。
@@ -511,6 +524,7 @@ def _observation_feedback(
     transport: str,
     *,
     include_payloads: bool = True,
+    json_turn_contract: str | None = None,
 ) -> str:
     blocks: list[str] = []
     for obs in observations:
@@ -532,6 +546,8 @@ def _observation_feedback(
         if transport == "json"
         else "Continue with tool calls if not complete, or reply with a final message and NO tool calls when done."
     )
+    if json_turn_contract is not None:
+        tail = "Return the next JSON object according to the supplied tool/terminal contract."
     return f"Tool results (observations):\n{body}\n{tail}"
 
 
@@ -542,6 +558,7 @@ def _compact_history(
     *,
     char_budget: int,
     keep_recent: int,
+    json_turn_contract: str | None = None,
 ) -> None:
     """Collapse the oldest observation payloads once the history outgrows ``char_budget`` chars.
 
@@ -562,7 +579,8 @@ def _compact_history(
         observation_feedback_index[:-keep_recent] if keep_recent > 0 else observation_feedback_index
     )
     for index, observations in collapsible:
-        collapsed = _observation_feedback(observations, transport, include_payloads=False)
+        collapsed = _observation_feedback(observations, transport, include_payloads=False,
+                                          json_turn_contract=json_turn_contract)
         if len(collapsed) >= len(str(messages[index].content)):
             continue
         messages[index] = ChatMessage(role="user", content=collapsed)
