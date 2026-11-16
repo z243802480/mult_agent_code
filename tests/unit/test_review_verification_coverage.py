@@ -12,7 +12,9 @@ def test_sparse_review_keeps_coverage_unknown_despite_complete_tasks() -> None:
     context = {"deterministic_checks": {"task_completion_rate": 1.0}}
     report = agent._normalize({}, context, "run-coverage")
 
-    assert report["goal_eval"] == {"requirement_coverage": None, "task_completion_rate": 1.0}
+    assert report["goal_eval"] == {"requirement_coverage": None, "task_completion_rate": 1.0,
+                                   "requirement_coverage_source": "unassessed",
+                                   "requirement_coverage_runtime_verified": False}
     assessed = agent._normalize({"goal_eval": {"requirement_coverage": 0.4}}, context, "run-coverage")
     assert assessed["goal_eval"]["requirement_coverage"] == 0.4
 

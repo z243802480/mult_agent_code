@@ -168,6 +168,7 @@ class ReviewAgent:
     def _evaluate_with_tools(self, review_context: dict, run_id: str) -> dict:
         assert self.tools is not None and self.model_client is not None
         tools = self.tools
+        review_context = tools.bind_evidence(review_context)
         review_context = {**review_context, "review_tools": tools.describe()}
         role = role_contract_for(role="ReviewAgent", purpose="run_review", policy=tools.context.policy)
         result = None
@@ -223,6 +224,8 @@ class ReviewAgent:
         report["trajectory_eval"]["review_validation"] = {
             "evidence_ref": str(tools.path), "artifact_evidence_id": tools.artifacts["evidence_id"],
             "tool_count": len(evidence["observations"]), "copy_created": evidence["copy_created"],
+            "evidence_read_count": sum(r["tool_name"] == "inspect_evidence" for r in evidence["observations"]),
+            "command_check_count": sum(r["tool_name"] == "run_tests" for r in evidence["observations"]),
             "stop_reason": evidence["stop_reason"], "errors": evidence["errors"],
         }
         if call_errors:
@@ -347,6 +350,10 @@ class ReviewAgent:
             normalized.get("goal_eval"),
             {"requirement_coverage": None, "task_completion_rate": completion},
         )
+        normalized["goal_eval"]["requirement_coverage_source"] = (
+            "model_assessment" if normalized["goal_eval"]["requirement_coverage"] is not None else "unassessed"
+        )
+        normalized["goal_eval"]["requirement_coverage_runtime_verified"] = False
         normalized["artifact_eval"] = self._object(
             normalized.get("artifact_eval"),
             {"artifacts_present": completion > 0, "logs_present": True},

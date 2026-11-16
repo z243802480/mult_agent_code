@@ -1085,6 +1085,9 @@ def _model_facing_payload(tool_name: str, data: dict[str, Any]) -> str:
         return ""
     if tool_name == "read_file":
         return render_file_read(data, max_chars=_PAYLOAD_MAX_CHARS)
+    if tool_name == "inspect_evidence":
+        metadata = {key: value for key, value in data.items() if key not in {"content", "tool_call_id"}}
+        return _clip(json.dumps(metadata, ensure_ascii=False, separators=(",", ":")) + "\n" + str(data.get("content", "")))
     if tool_name in {"run_command", "shell", "run_tests"}:
         stdout = str(data.get("stdout") or "")
         stderr = str(data.get("stderr") or "")

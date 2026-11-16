@@ -117,9 +117,11 @@ def revise_method(
     commands = declared_commands(task)
     original = original_command.strip()
     replacement = replacement_command.strip()
-    if (not original or not replacement or original == replacement or replacement in commands
+    if (not original or not replacement or original == replacement
             or original not in commands or original not in source.get("revisable_commands", [])):
         raise PermissionError("Only a provenance-backed planner method can be replaced")
+    if replacement in commands:
+        raise PermissionError("Replacement is already a declared check; revision cannot merge or remove existing checks")
     if (source.get("goal_sha256") != authority_digest(goal)
             or source.get("guidance_sha256") != authority_digest(guidance)
             or source.get("project_commands_sha256") != authority_digest(project_commands)):

@@ -77,6 +77,16 @@ def records(context):
     return JsonlStore(context.validator).read_all(context.run_dir / "tool_observations.jsonl", "tool_observation")
 
 
+def test_existing_required_check_cannot_replace_supplement_and_failure_identifies_duplicate(tmp_path):
+    task, goal, context, _ = setup_run(tmp_path)
+    project = JsonStore(context.validator).read(tmp_path / ".asteria/project.json", "project_config")
+    before = deepcopy(task)
+    with pytest.raises(PermissionError, match="already a declared check"):
+        revise_method(task, goal, (tmp_path / "AGENTS.md").read_text(), project["commands"], [],
+                      **{**ARGS, "replacement_command": REQUIRED})
+    assert task == before
+
+
 def test_explicit_revision_updates_live_contract_and_preserves_failure(tmp_path):
     task, goal, context, gateway = setup_run(tmp_path)
     before = deepcopy(task)

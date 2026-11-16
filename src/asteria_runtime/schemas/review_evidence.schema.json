@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReviewEvidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "task_id", "source_snapshot_id", "sections", "verification_origins"],
+  "properties": {
+    "schema_version": {"enum": ["0.1.0"]},
+    "run_id": {"type": ["string", "null"]},
+    "task_id": {"type": "string"},
+    "source_snapshot_id": {"type": "string"},
+    "verification_origins": {"type": "object"},
+    "sections": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["evidence_ref", "content", "characters", "stored_characters", "truncated", "content_sha256"],
+      "properties": {
+        "evidence_ref": {"type": "string"}, "content": {"type": "string"},
+        "characters": {"type": "integer", "minimum": 0},
+        "stored_characters": {"type": "integer", "minimum": 0},
+        "truncated": {"type": "boolean"}, "content_sha256": {"type": "string"}
+      }
+    }}
+  }
+}

@@ -10,6 +10,7 @@ class CapabilityInvocationPolicy:
 
     _TOOL_KINDS = {
         "read_file": "read",
+        "inspect_evidence": "read",
         "list_files": "read",
         "search": "read",
         "search_text": "read",

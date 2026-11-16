@@ -12,12 +12,14 @@ import stat
 from pathlib import Path
 import tempfile
 import time
+from typing import Any
 from dataclasses import replace
 
 from asteria_runtime.core.candidate_workspace import EXCLUDED_NAMES
 from asteria_runtime.core.agent_tool_surface import model_tool_surface_for_task
 from asteria_runtime.core.content_preservation import PROTECTED
 from asteria_runtime.core.review_artifacts import collect_review_artifacts
+from asteria_runtime.core.review_evidence import ReviewEvidence
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.runtime_policy import ToolPermissionPolicy
 from asteria_runtime.core.tool_execution_gateway import ToolExecutionGateway
@@ -30,7 +32,7 @@ from asteria_runtime.tools.file_tools import ListFilesTool, ReadFileTool
 from asteria_runtime.tools.search_tools import FindFilesTool, SearchTextTool
 from asteria_runtime.tools.registry import ToolRegistry
 
-REVIEW_TOOLS = ["read_file", "list_files", "find_files", "search_text", "run_tests"]
+REVIEW_TOOLS = ["read_file", "list_files", "find_files", "search_text", "run_tests", "inspect_evidence"]
 REVIEW_TURN_CONTRACT = (
     'For an intermediate tool turn return {"narration":"...","tool_calls":'
     '[{"tool_name":"<available tool>","args":{...}}],"done":false}. '
@@ -49,7 +51,7 @@ class ReviewTools:
         self.started = time.monotonic()
         self.total_seconds, self.max_files, self.max_bytes = total_seconds, max_files, max_bytes
         self.allowed = [] if context.policy.get("permission_mode") == "ask_everything" else list(REVIEW_TOOLS)
-        self.task = {"task_id": f"review-{artifacts['evidence_id']}", "task_kind": "verification",
+        self.task: dict[str, Any] = {"task_id": f"review-{artifacts['evidence_id']}", "task_kind": "verification",
                      "risk": "low", "parallel_safety": "readonly",
                      "write_scope": [], "allowed_tools": self.allowed, "allowed_mcp": [], "allowed_skills": []}
         self._temporary: tempfile.TemporaryDirectory | None = None
@@ -60,8 +62,22 @@ class ReviewTools:
         self.stop_reason = "not_started"
         self.model_calls = 0
         self.dispatched = False
+        self.evidence: ReviewEvidence | None = None
         self.path = context.run_dir / f"{artifacts['evidence_id']}-validation.json" if context.run_dir else None
         self._save()
+
+    def bind_evidence(self, review_context: dict) -> dict:
+        if not self.allowed:
+            return review_context
+        from asteria_runtime.storage.jsonl_store import JsonlStore
+        store = JsonlStore(self.context.validator)
+        def rows(name, schema):
+            path = self.context.run_dir / name if self.context.run_dir else None
+            return store.read_all(path, schema) if path is not None and path.exists() else []
+        self.evidence = ReviewEvidence(self.context, self.artifacts["evidence_id"], self.task["task_id"],
+                                       review_context, rows("tool_observations.jsonl", "tool_observation"),
+                                       rows("tool_calls.jsonl", "tool_call"), self.board)
+        return self.evidence.input_view()
 
     def remaining(self) -> float:
         return max(0, self.total_seconds - (time.monotonic() - self.started))
@@ -70,7 +86,8 @@ class ReviewTools:
         return self.remaining() < 1 or bool(self.context.budget and self.context.budget.cost_hard_stop_reached())
 
     def describe(self) -> dict:
-        surface = model_tool_surface_for_task(REVIEW_TOOLS, self.task)
+        names = [name for name in REVIEW_TOOLS if name != "inspect_evidence" or self.evidence is not None]
+        surface = model_tool_surface_for_task(names, self.task)
         return {"tools": [tool for tool in surface["tools"] if tool["task_allowed"]], "max_iterations": 8,
                 "total_seconds": self.total_seconds, "command_max_seconds": 60,
                 "execution_root": "disposable filtered project copy; never promoted",
@@ -156,18 +173,13 @@ class ReviewTools:
         if not self.allowed:
             self.errors.append("selected_check_denied:ask_everything")
             raise PermissionError("Review tools require an execution-capable permission mode")
-        try:
-            copied = self._prepare()
-        except Exception as exc:
-            self.errors.append(f"copy_unavailable:{type(exc).__name__}")
-            raise
         registry = ToolRegistry()
         # Register a restricted surface, not merely a model-facing allowlist. No adapters.
         for tool in [ReadFileTool(), ListFilesTool(), FindFilesTool(), SearchTextTool()]:
             registry.register(tool)
         registry.register(RunTestsTool(RunCommandTool(default_timeout_seconds=60)))
-        gateway = ToolExecutionGateway(registry, ToolPermissionPolicy(copied.root, copied.validator),
-                                       actor="ReviewAgent", agent_id="ReviewAgent")
+        if self.evidence is not None:
+            registry.register(self.evidence)
         results = []
         for index, call in enumerate(calls):
             if self.exhausted():
@@ -179,7 +191,16 @@ class ReviewTools:
                 if not isinstance(timeout, bool) and isinstance(timeout, (int, float)) and math.isfinite(timeout) and timeout > 0:
                     args["timeout_seconds"] = min(timeout, 60, max(1, math.floor(self.remaining())))
             try:
-                results.extend(gateway.run_tool_calls([{**call, "args": args}], self.task, copied, stop_on_failure=False))
+                execution_context = self.context
+                if call.get("tool_name") != "inspect_evidence":
+                    try:
+                        execution_context = self._prepare()
+                    except Exception as exc:
+                        self.errors.append(f"copy_unavailable:{type(exc).__name__}")
+                        raise
+                gateway = ToolExecutionGateway(registry, ToolPermissionPolicy(execution_context.root, execution_context.validator),
+                                               actor="ReviewAgent", agent_id="ReviewAgent")
+                results.extend(gateway.run_tool_calls([{**call, "args": args}], self.task, execution_context, stop_on_failure=False))
             except ToolBatchError as exc:
                 raise ToolBatchError(results, call, exc.cause, calls[index + 1:]) from exc
         for result in results:

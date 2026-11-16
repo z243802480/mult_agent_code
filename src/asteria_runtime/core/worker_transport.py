@@ -153,6 +153,14 @@ def tool_definitions_for(
             },
         },
     }
+    specs["inspect_evidence"] = {
+        "type": "function", "function": {
+            "name": "inspect_evidence", "description": "Read a frozen section of this Review's historical evidence by its supplied reference. No file or other-run access.",
+            "parameters": {"type": "object", "properties": {
+                "evidence_ref": {"type": "string"}, "offset": {"type": "integer", "minimum": 0},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 4000}}, "required": ["evidence_ref"]},
+        },
+    }
     specs["revise_verification"] = {
         "type": "function",
         "function": {
