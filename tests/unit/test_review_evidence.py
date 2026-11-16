@@ -137,7 +137,8 @@ def test_payload_preserves_page_as_text():
 def test_review_machine_description_matches_execution_permissions_without_grant(tmp_path):
     tools = setup(tmp_path)
     snapshot(tools)
-    by_name = lambda: {t["name"]: t for t in tools.describe()["tools"]}
+    def by_name():
+        return {t["name"]: t for t in tools.describe()["tools"]}
     assert by_name()["run_tests"]["permission"] == "ask"
     assert by_name()["inspect_evidence"]["permission"] == "allow"
     tools.context.policy["permissions"]["allow_shell"] = False
