@@ -1804,7 +1804,9 @@ class RunCommand:
 
         Left for the human (genuine decision points): blocked/paused runs; unverified runs (no
         executable verification ran → correctness unproven); failed verification; pending risky
-        promotions. ``ask_everything`` keeps the explicit run→review→accept workflow; an explicit
+        promotions; observed changes outside an explicit goal edit boundary. The latter are
+        retained across later green rounds for review, not silently cleared by passing commands.
+        ``ask_everything`` keeps the explicit run→review→accept workflow; an explicit
         ``agent_loop.auto_accept`` flag overrides. Best-effort — never breaks a completed run.
         """
         if self._run_status(run_id) != "completed":
@@ -1816,6 +1818,21 @@ class RunCommand:
             from asteria_runtime.commands.correctness_eval_command import CorrectnessEvalCommand
 
             signal = CorrectnessEvalCommand(self.root).score_signal(run_dir)
+            goal = self.store.read(run_dir / "goal_spec.json", "goal_spec")
+            boundary = goal.get("edit_boundary")
+            if isinstance(boundary, dict) and boundary.get("mode") == "restricted":
+                from asteria_runtime.core.edit_boundary import observed_outside_edit_boundary
+
+                evidence_path = run_dir / "task_execution_evidence.jsonl"
+                evidence_rows = self.jsonl.read_all(evidence_path, "task_execution_evidence") if evidence_path.exists() else []
+                outside = observed_outside_edit_boundary(boundary, evidence_rows, root=self.root)
+                if outside:
+                    steps.append(RunStepSummary(
+                        "accept", "skipped",
+                        "Observed changes outside the goal edit boundary require review; "
+                        "automatic finalization withheld: " + ", ".join(outside),
+                    ))
+                    return
         except Exception:  # noqa: BLE001 - verification read must never abort a run
             return
         if not signal or str(signal.get("status")) != "pass":

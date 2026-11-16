@@ -74,3 +74,15 @@ def edit_boundary_allows(boundary: object, path: str, *, root: Path | None = Non
         except (OSError, RuntimeError):
             continue
     return False
+
+
+def observed_outside_edit_boundary(boundary: object, evidence: list[dict], *, root: Path) -> list[str]:
+    """Historical stat observations outside the current ceiling; not a content-damage verdict."""
+    if not isinstance(boundary, dict) or boundary.get("mode") != "restricted":
+        return []
+    return sorted({
+        path for row in evidence
+        for key in ("changed_files", "unscoped_changed_files")
+        for path in (row.get("contract_check") or {}).get(key, [])
+        if isinstance(path, str) and path and not edit_boundary_allows(boundary, path, root=root)
+    })

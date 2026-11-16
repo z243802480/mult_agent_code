@@ -216,6 +216,12 @@
             }
           },
           "additionalProperties": false
+        },
+        "observed_outside_current_edit_boundary": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false

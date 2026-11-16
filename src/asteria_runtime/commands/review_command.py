@@ -15,6 +15,7 @@ from asteria_runtime.core.active_next_step import capability_feedback_active_nex
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.review_artifacts import collect_review_artifacts, review_basis
+from asteria_runtime.core.edit_boundary import observed_outside_edit_boundary
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
@@ -297,6 +298,10 @@ class ReviewCommand:
         artifacts["review_basis"] = review_basis(
             review_context["goal_spec"], guidance=guidance.content,
             guidance_present=bool(guidance.evidence_refs),
+        )
+        artifacts["review_basis"]["observed_outside_current_edit_boundary"] = observed_outside_edit_boundary(
+            review_context["goal_spec"].get("edit_boundary"),
+            review_context["trajectory"]["runtime_os_evidence"]["task_execution_evidence"], root=self.root,
         )
         if artifacts["review_basis"]["project_guidance"]["status"] == "partial":
             artifacts["complete"] = False
