@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from hashlib import sha256
 
 import pytest
 
@@ -82,7 +83,7 @@ def test_fallback_total_budget_seconds_parsing() -> None:
     assert agent._fallback_total_budget_seconds({"review_fallback_total_seconds": True}) == 120.0
 
 
-@pytest.mark.parametrize("content", ["not JSON", "{}", '{"overall":{"status":"unknown"}}'])
+@pytest.mark.parametrize("content", ["not JSON", "{}", '{"overall":{"status":"unknown"}}', "x" * 25000])
 def test_missing_semantic_judgment_never_promotes_green_execution_checks(content):
     class InvalidReviewer:
         calls = 0
@@ -96,9 +97,67 @@ def test_missing_semantic_judgment_never_promotes_green_execution_checks(content
         deterministic_checks={"task_completion_rate": 1.0, "blocked_task_count": 0, "verification_pass_rate": 1.0},
         correctness_signal={"status": "pass", "score": 1.0, "reason": "All commands passed"},
     ), "run-unavailable-review")
-    assert client.calls == 1
+    assert client.calls == 2
     assert report["overall"]["status"] == "partial" and report["overall"]["score"] is None
     assert report["goal_eval"]["requirement_coverage"] is None
+    assert len(report["trajectory_eval"]["review_protocol_errors"]) == 2
+    assert report["trajectory_eval"]["review_protocol_recovery"]["recovered"] is False
+    error = report["trajectory_eval"]["review_protocol_errors"][0]
+    assert error["response_excerpt"] == content[:24000]
+    assert error["response_chars"] == len(content)
+    assert error["response_excerpt_truncated"] is (len(content) > 24000)
+
+
+def test_review_protocol_correction_preserves_evidence_and_call_limits():
+    original = '{"status":"partial","finding":"Requested output differs from current artifact"}'
+    class CorrectingReviewer:
+        requests = None
+        def __init__(self):
+            self.requests = []
+        def chat(self, request):
+            self.requests.append(request)
+            content = original if len(self.requests) == 1 else (
+                '{"overall":{"status":"partial","score":0.6,"reason":"Requested output differs from current artifact"}}'
+            )
+            return ChatResponse(content=content, finish_reason="length" if len(self.requests) == 1 else "stop",
+                                usage=TokenUsage(1, 1, 2), model_provider="fake",
+                                model_name="protocol-fixture", raw_response={})
+    client = CorrectingReviewer()
+    report = ReviewAgent(client, SchemaValidator(Path("schemas"))).evaluate(_review_context(), "run-correction")
+    assert report["overall"]["status"] == "partial"
+    assert report["trajectory_eval"]["review_assessment"]["status"] == "assessed"
+    error = report["trajectory_eval"]["review_protocol_errors"][0]
+    assert error["response_excerpt"] == original
+    assert error["response_sha256"] == sha256(original.encode("utf8")).hexdigest()
+    assert error["finish_reason"] == "length" and not error["response_excerpt_truncated"]
+    assert report["trajectory_eval"]["review_protocol_recovery"] == {
+        "attempts": 2, "recovered": True, "skipped_reason": None,
+    }
+    assert len(client.requests) == 2
+    first, second = client.requests
+    assert second.messages[:len(first.messages)] == first.messages
+    assert second.messages[-2].content == original
+    assert "Preserve your substantive findings" in second.messages[-1].content
+    assert second.max_output_tokens == first.max_output_tokens == 5000
+    assert second.model_tier == first.model_tier and second.metadata == first.metadata
+
+
+def test_review_protocol_correction_stops_when_time_budget_spent(monkeypatch):
+    class InvalidReviewer:
+        calls = 0
+        def chat(self, request):
+            self.calls += 1
+            return ChatResponse(content="", finish_reason="length", usage=TokenUsage(1, 1, 2),
+                                model_provider="fake", model_name="invalid-review-fixture", raw_response={})
+    client = InvalidReviewer()
+    clock = iter([0.0, 130.0])
+    monkeypatch.setattr(review_agent_module.time, "monotonic", lambda: next(clock))
+    report = ReviewAgent(client, SchemaValidator(Path("schemas"))).evaluate(_review_context(), "run-spent")
+    assert client.calls == 1 and report["overall"]["score"] is None
+    assert report["trajectory_eval"]["review_assessment"]["reason"] == "invalid_json"
+    assert report["trajectory_eval"]["review_protocol_recovery"] == {
+        "attempts": 1, "recovered": False, "skipped_reason": "time_budget_exhausted",
+    }
 
 
 def test_review_fallback_stops_after_budget_exceeded(monkeypatch) -> None:

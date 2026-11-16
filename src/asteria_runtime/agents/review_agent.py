@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from hashlib import sha256
 
 from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
@@ -74,22 +75,65 @@ class ReviewAgent:
                 continue
             response_content = response.content
             break
-        if response_content is None:
-            report = {}
-        else:
+        report = {}
+        protocol_errors: list[dict] = []
+        protocol_attempts = 0
+        recovery_skipped = None
+        for attempt in range(2):
+            if response_content is None:
+                break
+            protocol_attempts += 1
+            parse_error = None
             try:
                 report = self._parse_json(response_content)
             except ReviewAgentError as exc:
                 parse_error = exc
                 report = {}
-        judgment = report.get("overall")
-        assessed = isinstance(judgment, dict) and str(judgment.get("status") or "").lower() in {"pass", "partial", "fail"}
+            if self._has_judgment(report):
+                break
+            error = str(parse_error) if parse_error else "Missing or invalid overall.status; expected pass, partial, or fail"
+            protocol_errors.append({
+                "attempt": attempt + 1, "error": error, "finish_reason": response.finish_reason,
+                "response_excerpt": response_content[:24000], "response_chars": len(response_content),
+                "response_excerpt_truncated": len(response_content) > 24000,
+                "response_sha256": sha256(response_content.encode("utf8")).hexdigest(),
+            })
+            if attempt == 1:
+                break
+            if total_budget is not None and time.monotonic() - review_started >= total_budget:
+                recovery_skipped = "time_budget_exhausted"
+                break
+            messages = list(request.messages)
+            if response_content:
+                messages.append(ChatMessage(role="assistant", content=response_content[:12000]))
+            messages.append(ChatMessage(role="user", content=(
+                f"The review output is unusable: {error[:2000]}. Finish reason: {response.finish_reason}.\n"
+                "Return one concise JSON report using the supplied EvalReport schema. "
+                "Preserve your substantive findings and the original user requirements; "
+                "do not change the verdict merely to fit the format. Do not echo artifact contents, "
+                "logs or schema. If evidence is insufficient, say so in overall.reason."
+            )))
+            request = replace(request, messages=messages)
+            try:
+                response = self.model_client.chat(request)
+            except Exception as exc:  # noqa: BLE001 - a single bounded protocol correction
+                model_call_errors.append({"model_tier": selected_tier, "error_type": type(exc).__name__,
+                                          "summary": str(exc)})
+                response_content, report, parse_error = None, {}, None
+                break
+            response_content = response.content
+        assessed = self._has_judgment(report)
         report = self._normalize(report, review_context, run_id)
         report["trajectory_eval"]["review_assessment"] = {
             "status": "assessed" if assessed else "unavailable",
             "reason": "model_judgment" if assessed else "model_unavailable" if response_content is None
             else "invalid_json" if parse_error else "missing_or_invalid_overall",
         }
+        if protocol_errors:
+            report["trajectory_eval"]["review_protocol_errors"] = protocol_errors
+            report["trajectory_eval"]["review_protocol_recovery"] = {
+                "attempts": protocol_attempts, "recovered": assessed, "skipped_reason": recovery_skipped,
+            }
         if parse_error:
             report["overall"]["reason"] = (
                 f"{report['overall']['reason']} Model review returned non-JSON; "
@@ -115,6 +159,11 @@ class ReviewAgent:
         except SchemaValidationError as exc:
             raise ReviewAgentError(f"EvalReport failed schema validation: {exc}") from exc
         return report
+
+    @staticmethod
+    def _has_judgment(report: dict) -> bool:
+        value = report.get("overall")
+        return isinstance(value, dict) and str(value.get("status") or "").lower() in {"pass", "partial", "fail"}
 
     def _request(
         self,
@@ -290,6 +339,8 @@ class ReviewAgent:
 Return only valid JSON matching the EvalReport schema. Do not wrap in markdown.
 
 You must:
+- Keep the report concise: summarize material findings and evidence references; do not copy
+  artifact bodies, logs, the goal or schema into the response.
 - Evaluate goal understanding, artifacts, outcome, trajectory, and cost.
 - Inspect current_artifacts against the ORIGINAL user goal and acceptance criteria, including
   structure, placement, presentation and observable results. Cite concrete file/line evidence
