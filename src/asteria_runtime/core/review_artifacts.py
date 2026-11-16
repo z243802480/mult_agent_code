@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from asteria_runtime.core.content_preservation import PROTECTED
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.task_contract import looks_like_file_path
 from asteria_runtime.tools.file_tools import ReadFileTool
 from asteria_runtime.utils.time import now_iso
 
@@ -17,7 +18,9 @@ MAX_TOTAL_CONTENT_BYTES = 196_608
 
 
 def collect_review_artifacts(context: RuntimeContext, goal: dict, board: dict) -> dict:
-    paths = [p for p in goal.get("target_outputs", []) if isinstance(p, str) and p]
+    # Legacy GoalSpec outputs can describe outcomes, not files. Reuse the existing
+    # concrete-file contract; task-declared artifact paths remain literal.
+    paths = [p for p in goal.get("target_outputs", []) if isinstance(p, str) and looks_like_file_path(p)]
     for task in board.get("tasks", []):
         if not isinstance(task, dict) or task.get("status") == "discarded":
             continue

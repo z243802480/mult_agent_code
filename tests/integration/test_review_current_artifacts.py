@@ -42,6 +42,9 @@ def test_default_review_reaches_model_with_current_content_despite_green_histori
     monkeypatch.setattr(module, "create_model_client", lambda *args: client)
     result = ReviewCommand(tmp_path, run_id=run_id).run()
     assert result.status == "fail" and len(client.requests) == 1
+    exposed_schema = json.loads(client.requests[0].messages[0].content.split("EvalReport JSON schema:\n", 1)[1])
+    assert exposed_schema == SchemaValidator(Path("schemas")).schema("eval_report")
+    assert "overall" in exposed_schema["required"]
     payload = json.loads(client.requests[0].messages[-1].content)
     assert payload["deterministic_checks"]["task_completion_rate"] == 1
     assert payload["current_artifacts"]["files"][0]["content"].splitlines() == path.read_text(encoding="utf8").splitlines()

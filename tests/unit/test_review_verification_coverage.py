@@ -35,3 +35,12 @@ def test_coverage_reporting_preserves_failure_routing(tmp_path, goal_eval, expec
     }
 
     assert ReviewCommand(tmp_path)._failure_classification(report)["category"] == expected
+
+
+def test_unavailable_assessment_routes_to_review_not_artifact_repair(tmp_path):
+    report = {"overall": {"status": "partial"},
+              "trajectory_eval": {"review_assessment": {"status": "unavailable"}},
+              "outcome_eval": {"verification_pass_rate": 1.0}}
+    classification = ReviewCommand(tmp_path)._failure_classification(report)
+    assert classification["category"] == "review_unavailable"
+    assert classification["recommended_command"] == "review"

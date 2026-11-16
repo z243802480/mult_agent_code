@@ -381,7 +381,7 @@ def test_status_ignores_task_failure_superseded_by_done_evidence(tmp_path: Path)
     assert payload["current_blocker"] is None
 
 
-def test_review_falls_back_to_deterministic_report_when_model_call_fails(
+def test_review_does_not_approve_when_model_call_fails(
     tmp_path: Path,
 ) -> None:
     InitCommand(tmp_path).run()
@@ -402,8 +402,8 @@ def test_review_falls_back_to_deterministic_report_when_model_call_fails(
         ]
     )
     assert cost["model_calls"] == model_call_count
-    assert review.status == "pass"
-    assert review.recommended_next_command == "accept"
+    assert review.status == "partial"
+    assert review.recommended_next_command == "review"
     eval_report = JsonStore(SchemaValidator(Path("schemas"))).read(
         review.eval_report_path,
         "eval_report",

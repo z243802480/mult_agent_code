@@ -74,3 +74,13 @@ def test_missing_directory_and_non_text_targets_are_explicitly_unavailable(tmp_p
     snapshot = collect_review_artifacts(context(tmp_path), {"target_outputs": ["missing", "directory", "binary"]}, {})
     assert not snapshot["complete"]
     assert all(row["status"] == "unavailable" and row["content"] is None for row in snapshot["files"])
+
+
+def test_legacy_outcome_description_is_not_invented_as_a_missing_file(tmp_path):
+    snapshot = collect_review_artifacts(context(tmp_path), {"target_outputs": ["workflow evidence"]}, {})
+    assert snapshot["files"] == [] and snapshot["complete"]
+
+
+def test_task_declared_artifact_with_spaces_still_requires_current_content(tmp_path):
+    snapshot = collect_review_artifacts(context(tmp_path), {}, {"tasks": [{"expected_artifacts": ["My report.txt"]}]})
+    assert not snapshot["complete"] and snapshot["files"][0]["path"] == "My report.txt"

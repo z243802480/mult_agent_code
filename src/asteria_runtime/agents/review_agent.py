@@ -24,7 +24,7 @@ class ReviewAgent:
     def evaluate(self, review_context: dict, run_id: str) -> dict:
         if self.model_client is None:
             report = self._normalize({}, review_context, run_id)
-            report["trajectory_eval"]["review_assessment"] = {"status": "unavailable"}
+            report["trajectory_eval"]["review_assessment"] = {"status": "unavailable", "reason": "client_unavailable"}
             self.validator.validate("eval_report", report)
             return report
         parse_error: ReviewAgentError | None = None
@@ -85,7 +85,11 @@ class ReviewAgent:
         judgment = report.get("overall")
         assessed = isinstance(judgment, dict) and str(judgment.get("status") or "").lower() in {"pass", "partial", "fail"}
         report = self._normalize(report, review_context, run_id)
-        report["trajectory_eval"]["review_assessment"] = {"status": "assessed" if assessed else "unavailable"}
+        report["trajectory_eval"]["review_assessment"] = {
+            "status": "assessed" if assessed else "unavailable",
+            "reason": "model_judgment" if assessed else "model_unavailable" if response_content is None
+            else "invalid_json" if parse_error else "missing_or_invalid_overall",
+        }
         if parse_error:
             report["overall"]["reason"] = (
                 f"{report['overall']['reason']} Model review returned non-JSON; "
@@ -308,4 +312,7 @@ You must:
 - Mark status as pass only when the run is usable, verified, and within budget.
 - Mark partial when the result is useful but has clear gaps.
 - Mark fail when the result is unusable, unverified, unsafe, or materially off-goal.
-"""
+Use the root fields in the schema below; put the final verdict in overall.status/score/reason.
+""" + "\nEvalReport JSON schema:\n" + json.dumps(
+            self.validator.schema("eval_report"), ensure_ascii=False, separators=(",", ":"),
+        )

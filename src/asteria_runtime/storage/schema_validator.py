@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,10 @@ class SchemaValidator:
     def validate(self, schema_name: str, data: Any) -> None:
         schema = self._load(schema_name)
         self._validate_node(schema, data, path="$")
+
+    def schema(self, schema_name: str) -> dict[str, Any]:
+        """Expose the actual output contract without allowing mutation of validation."""
+        return deepcopy(self._load(schema_name))
 
     def _load(self, schema_name: str) -> dict[str, Any]:
         if schema_name not in self._cache:

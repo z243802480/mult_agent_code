@@ -538,6 +538,12 @@ class ReviewCommand:
         return "debug"
 
     def _failure_classification(self, eval_report: dict) -> dict:
+        assessment = (eval_report.get("trajectory_eval") or {}).get("review_assessment") or {}
+        if assessment.get("status") == "unavailable":
+            return {
+                "category": "review_unavailable", "recommended_command": "review",
+                "reason": "Semantic review has no usable verdict; retry review without rewriting verified artifacts.",
+            }
         overall = eval_report.get("overall") or {}
         status = str(overall.get("status") or "unknown")
         if status == "pass":

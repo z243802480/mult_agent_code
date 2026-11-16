@@ -7,6 +7,13 @@ from asteria_runtime.storage.schema_validator import SchemaValidationError, Sche
 pytestmark = pytest.mark.contract
 
 
+def test_exposed_schema_cannot_mutate_cached_validation_contract():
+    validator = SchemaValidator(Path("schemas"))
+    exposed = validator.schema("eval_report")
+    exposed["required"].clear()
+    with pytest.raises(SchemaValidationError):
+        validator.validate("eval_report", {})
+
 def test_schema_validator_accepts_valid_task() -> None:
     validator = SchemaValidator(Path("schemas"))
     validator.validate(
