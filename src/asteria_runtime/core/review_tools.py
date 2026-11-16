@@ -90,6 +90,10 @@ class ReviewTools:
         surface = model_tool_surface_for_task(
             names, self.task, allow_shell=bool(self.context.policy.get("permissions", {}).get("allow_shell")),
         )
+        for tool in surface["tools"]:
+            if tool["name"] == "run_tests":
+                # Review has no registered execution-task method references.
+                tool["parameter_contract"].pop("verification_ref", None)
         return {"tools": [tool for tool in surface["tools"] if tool["task_allowed"]], "max_iterations": 8,
                 "total_seconds": self.total_seconds, "command_max_seconds": 60,
                 "execution_root": "disposable filtered project copy; never promoted",

@@ -208,8 +208,28 @@ def test_review_machine_description_matches_execution_permissions_without_grant(
     def by_name():
         return {t["name"]: t for t in tools.describe()["tools"]}
     assert by_name()["run_tests"]["permission"] == "ask"
+    assert "command" in by_name()["run_tests"]["parameter_contract"]
+    assert "verification_ref" not in by_name()["run_tests"]["parameter_contract"]
     assert by_name()["inspect_evidence"]["permission"] == "allow"
     tools.context.policy["permissions"]["allow_shell"] = False
     assert by_name()["run_tests"]["permission"] == "deny"
     assert not invoke(tools, "run_tests", {"command": command("print('not authorized')")})[0].ok
+    tools.finish("completed")
+
+
+def test_review_reference_description_is_scoped_and_mixed_arguments_still_refused(tmp_path):
+    from asteria_runtime.core.agent_tool_surface import model_tool_surface
+
+    ordinary = next(t for t in model_tool_surface(["run_tests"], allow_shell=True) if t["name"] == "run_tests")
+    assert "verification_ref" in ordinary["parameter_contract"]
+    tools = setup(tmp_path)
+    snapshot(tools)
+    review = next(t for t in tools.describe()["tools"] if t["name"] == "run_tests")
+    assert "verification_ref" not in review["parameter_contract"]
+    refused = invoke(tools, "run_tests", {"command": command("print('not executed')"),
+                                          "verification_ref": "unavailable"})[0]
+    assert not refused.ok and "never both" in refused.summary
+    assert refused.data.get("returncode") is None
+    assert tools.context.budget.cost_report()["tool_calls"] == 0
+    assert "verification_ref" in ordinary["parameter_contract"]
     tools.finish("completed")
