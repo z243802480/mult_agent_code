@@ -1915,6 +1915,7 @@ class ExecuteCommand:
         payload = {
             "task": task,
             "goal_spec": goal_spec,
+            "runtime_budget": runtime_context.get("runtime_budget", {"source": "unavailable"}),
             "task_contract": {
                 "read_scope": task.get("read_scope", []),
                 "write_scope": task.get("write_scope", []),

@@ -13,7 +13,7 @@ from asteria_runtime.core.agent_harness import (
 )
 from asteria_runtime.core.active_next_step import capability_feedback_active_next_step
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
-from asteria_runtime.core.budget import BudgetController
+from asteria_runtime.core.budget import BudgetController, budget_evidence
 from asteria_runtime.core.review_artifacts import collect_review_artifacts, constrain_review_approval, review_basis
 from asteria_runtime.core.edit_boundary import observed_outside_edit_boundary
 from asteria_runtime.core.runtime_context import RuntimeContext
@@ -298,6 +298,14 @@ class ReviewCommand:
         artifacts["review_basis"] = review_basis(
             review_context["goal_spec"], guidance=guidance.content,
             guidance_present=bool(guidance.evidence_refs),
+        )
+        artifacts["review_basis"]["runtime_budget"] = budget_evidence(policy, review_context["cost_report"],
+                                                                    controller=budget)
+        artifacts["review_basis"]["runtime_budget"]["temporal_scope"] = "current_review_start"
+        # Current policy is known; historical CLI overrides are not reconstructed from proposals.
+        loop_path = run_dir / "run_loop_summary.json"
+        artifacts["review_basis"]["runtime_budget"]["recorded_outer_iterations"] = (
+            self.store.read(loop_path, "run_loop_summary").get("iteration_count") if loop_path.exists() else None
         )
         artifacts["review_basis"]["observed_outside_current_edit_boundary"] = observed_outside_edit_boundary(
             review_context["goal_spec"].get("edit_boundary"),

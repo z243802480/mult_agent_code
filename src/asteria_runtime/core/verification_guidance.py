@@ -1,6 +1,16 @@
 """Shared model guidance; evidence selection remains a model responsibility."""
 
 ARTIFACT_VERIFICATION_GUIDANCE = """Verification coverage:
+- Separate the artifact's acceptance conditions from assumptions made by a proposed checking
+  method. Relate each original requirement to evidence for the current artifact: behavior,
+  structure, placement, presentation and preservation may require different checks or inspection.
+  A runnable behavior check does not establish the other conditions. Describe material unchecked
+  conditions honestly; no extra report file or mandatory response format is required.
+- A self-authored selector, naming convention, case count or setup assumption is not a user
+  requirement. Establish that a proposed method accepts relevant valid alternatives before making
+  it a completion check. Do not reshape an otherwise valid artifact merely to satisfy an untested
+  probe. When the method is defective, correct the method with the existing revision mechanism
+  while preserving the original acceptance conditions and required project/user checks.
 - Match checks to the requested artifacts and their observable claims, not only to existing tests.
   For documentation with executable examples or displayed results, check the setup, calls and
   claimed output against the actual implementation using a bounded runnable check when possible.

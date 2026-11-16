@@ -8,17 +8,24 @@ SCHEMA_VERSION = "0.1.0"
 
 @dataclass(frozen=True)
 class BudgetProfile:
-    max_model_calls: int
-    max_tool_calls: int
+    max_model_calls: int | None
+    max_tool_calls: int | None
     max_runtime_minutes: int | None = None
+    scope: str | None = None
+    source: str | None = None
+    tool_limit_unit: str | None = None
 
     def to_dict(self) -> dict:
-        data = {
+        data: dict[str, object] = {
             "max_model_calls": self.max_model_calls,
             "max_tool_calls": self.max_tool_calls,
         }
         if self.max_runtime_minutes is not None:
             data["max_runtime_minutes"] = self.max_runtime_minutes
+        for name in ("scope", "source", "tool_limit_unit"):
+            value = getattr(self, name)
+            if value is not None:
+                data[name] = value
         return data
 
 

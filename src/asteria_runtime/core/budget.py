@@ -515,6 +515,32 @@ def resolve_budget_limits(policy: dict) -> dict:
     return budgets
 
 
+def budget_evidence(policy: dict, report: dict | None = None, *,
+                    controller: BudgetController | None = None) -> dict:
+    """Expose real limits/units without promoting proposals or per-call hints into caps."""
+    limits = dict(controller.budgets if controller is not None else resolve_budget_limits(policy))
+    required = {"max_model_calls_per_goal", "max_tool_calls_per_goal", "max_repair_attempts_total",
+                "max_research_calls", "max_user_decisions"}
+    pressure = {"status": "unknown"}
+    if report is not None and required <= limits.keys():
+        # Use the controller's captured limits when present, even if a caller later changes policy.
+        pressure = BudgetController.pressure({**policy, "budgets": limits, "active_budget_profile": ""}, report)
+    return {
+        "source": "budget_controller" if controller is not None else "current_effective_policy",
+        "scope": "shared_goal", "configured_limits": limits, "pressure": pressure,
+        "interpretation": (
+            "Model/tool usage is shared across tasks and attempts, not a new allowance per worker. "
+            "max_tool_calls_per_goal limits weighted tool_budget_units, not tool kinds or raw count. "
+            "max_iterations_per_goal refers to outer scheduling cycles, not model turns. "
+            "Role-contract call counts/provider deadlines describe individual invocations, not a "
+            "worker's total calls or duration. GoalSpec.budget is a model proposal, not enforcement. "
+            "Configured fields alone do not prove an independent enforcement mechanism; pressure "
+            "reports the BudgetController axes. This snapshot does not reconstruct historical "
+            "policy changes or an unrecorded CLI override."
+        ),
+    }
+
+
 def _ratio(value: object, limit: object) -> float:
     numeric_limit = max(1, _as_int(limit))
     return max(0, _as_int(value)) / numeric_limit

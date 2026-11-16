@@ -147,13 +147,28 @@
             ],
             "properties": {
               "max_model_calls": {
-                "type": "integer"
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "max_tool_calls": {
-                "type": "integer"
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "max_runtime_minutes": {
                 "type": "integer"
+              },
+              "scope": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "tool_limit_unit": {
+                "type": "string"
               }
             }
           },

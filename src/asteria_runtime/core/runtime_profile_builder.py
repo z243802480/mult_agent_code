@@ -6,6 +6,7 @@ from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.core.agent_loop_profiles import AgentLoopProfileRegistry
 from asteria_runtime.core.active_next_step import capability_feedback_active_next_step
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
+from asteria_runtime.core.budget import budget_evidence
 from asteria_runtime.core.context_budget import record_context_budget_snapshot
 from asteria_runtime.core.context_mount_builder import ContextMountBuilder
 from asteria_runtime.core.context_package_builder import ContextPackageBuilder
@@ -130,6 +131,10 @@ class RuntimeProfileBuilder:
             reason=sandbox_plan.reason,
         )
         context_mount = scoped.get("context_mount") or {}
+        budget_basis = budget_evidence(context.policy,
+            context.budget.cost_report() if context.budget is not None else None,
+            controller=context.budget)
+        limits = budget_basis["configured_limits"]
         runtime_profile = RuntimeProfile(
             runtime_profile_id=f"runtime-{profile_base_id}",
             agent_id=str(task.get("assigned_agent_id") or task.get("role") or "CoderAgent"),
@@ -141,9 +146,10 @@ class RuntimeProfileBuilder:
                 context_mount.get("context_mount_id") or f"context-{profile_base_id}"
             ),
             budget=BudgetProfile(
-                max_model_calls=role_contract.max_model_calls,
-                max_tool_calls=max(1, len(task.get("allowed_tools", []))),
-                max_runtime_minutes=max(1, (role_contract.provider_call_seconds + 59) // 60),
+                max_model_calls=limits.get("max_model_calls_per_goal"),
+                max_tool_calls=limits.get("max_tool_calls_per_goal"),
+                scope="shared_goal", source=budget_basis["source"],
+                tool_limit_unit="weighted_tool_budget_units",
             ),
             parent_runtime_profile_id=self._runtime_hint(task, "parent_runtime_profile_id"),
             worker_kind=self._runtime_hint(task, "worker_kind"),
@@ -151,6 +157,7 @@ class RuntimeProfileBuilder:
             candidate_workspace_id=self._runtime_hint(task, "candidate_workspace_id"),
         )
         scoped["runtime_profile_id"] = runtime_profile.runtime_profile_id
+        scoped["runtime_budget"] = budget_basis
         scoped["model_profile_id"] = model_profile.model_profile_id
         scoped["tool_permission_profile_id"] = tool_profile.tool_permission_profile_id
         scoped["sandbox_profile_id"] = sandbox_profile.sandbox_profile_id

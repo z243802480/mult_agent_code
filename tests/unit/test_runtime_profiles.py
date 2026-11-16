@@ -507,5 +507,7 @@ def test_runtime_profile_builder_records_resolved_model_route(
     runtime_profiles = (
         tmp_path / ".asteria" / "runs" / "run-0004" / "runtime_profiles.jsonl"
     ).read_text(encoding="utf-8")
-    # ceil(provider_call_seconds / 60) — 3 minutes since the contract's 90s became 180s (a28f1ea).
-    assert '"max_runtime_minutes": 3' in runtime_profiles
+    # A per-provider-call deadline is not an enforced worker lifetime or call allowance.
+    assert '"max_runtime_minutes"' not in runtime_profiles
+    assert '"max_model_calls": null' in runtime_profiles  # This minimal fixture has no budget policy.
+    assert '"scope": "shared_goal"' in runtime_profiles

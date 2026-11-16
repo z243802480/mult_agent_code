@@ -222,6 +222,48 @@
           "items": {
             "type": "string"
           }
+        },
+        "runtime_budget": {
+          "type": "object",
+          "required": [
+            "source",
+            "scope",
+            "configured_limits",
+            "pressure",
+            "interpretation",
+            "recorded_outer_iterations",
+            "temporal_scope"
+          ],
+          "properties": {
+            "source": {
+              "enum": [
+                "budget_controller",
+                "current_effective_policy"
+              ]
+            },
+            "scope": {
+              "const": "shared_goal"
+            },
+            "configured_limits": {
+              "type": "object"
+            },
+            "pressure": {
+              "type": "object"
+            },
+            "interpretation": {
+              "type": "string"
+            },
+            "recorded_outer_iterations": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "temporal_scope": {
+              "const": "current_review_start"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

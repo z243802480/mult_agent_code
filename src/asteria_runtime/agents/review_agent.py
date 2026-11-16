@@ -360,6 +360,12 @@ You must:
   unrelated earlier objectives. Resolve task-scope conflicts against the current explicit user
   request while preserving runtime permissions and security rules. Current guidance is not proof
   of which guidance was present during a historical action.
+- Use review_basis.runtime_budget for effective limits, units, pressure and their observation
+  scope. Distinguish outer scheduling cycles from model turns, and per-call role/deadline hints
+  from shared goal budgets. Old runtime-profile numbers and model-proposed GoalSpec budgets are
+  not proof of an enforced worker cap. A current snapshot cannot certify historical CLI settings.
+  Cite an applicable limit, its authority, matching usage unit and time scope for any budget
+  violation; keep unresolved history unknown rather than inventing a breach or a permission grant.
 - Separate current artifact quality from historical process claims. Cite actual comparisons
   or concrete action evidence for alleged changes: a single timestamp/listing establishes
   presence or metadata, not a before/after content difference or a scope violation.

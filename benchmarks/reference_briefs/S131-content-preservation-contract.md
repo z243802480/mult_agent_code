@@ -79,3 +79,11 @@ aaeada5最终完整1976/5跳过/42排除460.38秒通过后，用户本轮“再�
 分离控制进一步坐实两个独立事实：实际标题29字符而点线28字符，仍是真失败；仅在离线控制副本补齐点线后，旧v1因多输出误拒，新v2接受1个自包含示例。v2共13控通过，真实产物继续拒收，未修改真实文件。原v1结果不翻绿。本轮不再coding采样；为核对完整失败路径，在同一原样run额外登记一次标准Review作为负控，模型只看正常当前产物与运行证据，不收到缺陷/评估器答案；无论其判定如何都不Accept。正向授权→恢复→验证→Review→Accept以确定性真实工具/生产命令回归单独证明，不能冒充真模型正向整链通过。
 
 本刀工程收尾：最终Windows完整1986/5跳过/42排除491.23秒，Ruff/类型/五基准通过；正向授权生产全链两端各4项通过（确定性模型+真实工具/命令，不冒充真模型成功）。真实标准Review为partial/0.86，指出单行展示/预算解释，未明确检出短标题；Accept未跑。29实际MiniMax986574入21391出，50本地+1skill/51观察/51收费50单位对账；初审遗漏skill通道的计数断言已纠正，无补写账本。原v1/v2真实均拒收、原源/fixture/runtime/文件/工具及模型前缀保持。下一核实原始要求的结构/展示覆盖及Review有效预算来源，按证据修通用输入/反馈/审批边界，不加格式/provider特判或无改重采样。详见docs/zh/reports/S131-bounded-verification-loop-20261116.md。
+
+2026-11-16后续用户授权先核实验证覆盖/预算来源再修复及完整流程。回代码与上一轮冻结证据核实：原始要求、GoalSpec和任务acceptance都保留了结构/展示要求，不能归咎于字段丢失；但planner自拟selector要求两次调用出现在同一例，未验证可行性，执行者改变产物以满足该假设，检查绿只覆盖行为，未证明标题/呈现。另RuntimeProfileBuilder把role单调用次数、allowed_tools长度和provider_call_seconds折成整个worker的budget（实际旧profile=1模型/16工具/3分钟），实际执行却共享BudgetController的goal预算，Review没有有效policy预算来源事实，混淆了外层调度迭代、模型turn和子调用。不能将这种记录错位当作已证实超预算。
+
+本刀按责任修：共享验证指导要求按原始行为/结构/位置/呈现/保留要求分别找证据，区分产物条件与自拟选择器假设，不让未验证方法反向约束合法产物；不增加必填JSON、固定评审FSM或领域检查器。预算producer改用同一resolve_budget_limits/实际控制器，明确共享goal/加权工具单位，未知不伪造数值，provider超时不冒充worker时限；Review公开当前有效policy及其时间范围，旧profile/GoalSpec预算保持历史提议/旧记录身份，不补签旧值、不猜历史CLI。新持久字段仍走schema，主/内置schema镜像一致。实际硬停、权限、旧失败及验收保护不放松。
+
+参考[Anthropic长任务harness](https://www.anthropic.com/research/effective-harnesses-for-long-running-agents)对需求与实际验证的区分、[OpenAI harness工程](https://openai.com/index/harness-engineering/)对可观察事实/反馈环的建设，借机制不复制实现。先做有效profile覆盖、未知预算、scope/单位、per-call与worker限额区别、Review输入/持久快照绑定、行为检查不等于结构覆盖及自拟方法合法替代指导的回归；保留旧9d样本不改。确定性合格和真实机制变化后，只对同一冻结名表目标/通用指导/原v1及修正v2判据/13控/预算登记一次干净后修复对照，不提示标题或评估答案，不中途反馈/清理/换题刷绿；独立合格后标准Review一次，工程保护后pass才用新鲜报告Accept。
+
+实现相关Windows/WSL各40项通过；Review预算快照追加明确current_review_start并验证schema绑定，Windows相关+文档25项通过。原9d只读审计记录profile=1/16/3、实际任务25模型/外层1迭代、当前有效200模型/1000加权单位/outer32；当前policy不能补签历史CLI。没有放宽任何真实预算/权限。新采样独立验收以已提交的名表oracle v2为准（支持合法单例多输出）；原v1保留诊断，13控及两版文件分别冻结，不再运行后放宽判据。全部输入仍在模型工作区外；正式Review/Accept只在独立合格后进行。
