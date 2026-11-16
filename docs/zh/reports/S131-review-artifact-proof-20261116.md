@@ -68,3 +68,5 @@
 下一步仍保持 S131：先独立核实**原始用户要求、模型扩展约束、生成缓存与历史过程证据**的权威/范围关系，必要时补通用来源和范围事实；不按缓存名或文档格式强行判绿。已回代码核实 [workspace_snapshot](../../../src/asteria_runtime/core/workspace_snapshot.py) 的 `_SKIP_DIRS` 将生成缓存视为 authored-change 扫描噪声，但这个排除表只定义观察覆盖，并不是用户授权豁免。再登记一个独立新目标，用冻结 v4 和完整 Goal→Execute→Review 生命周期验证；仅独立验收合格才 Accept。不重跑同题挑绿，不扩大编排/强沙箱，不解除 shell 删除审批。
 
 机制参考：[Anthropic 长任务 harness](https://www.anthropic.com/research/effective-harnesses-for-long-running-agents)强调用户需求与真实验证证据，[OpenAI harness engineering](https://openai.com/index/harness-engineering/)强调环境可观察性和反馈建设。这里借用原则，不声称对方采用本项目协议、快照字段或边界规则。
+
+后续（2026-11-16）：[来源/完整流程核实](S131-source-scope-lifecycle-20261116.md)已执行：来源/扫描事实接通，旧正控通过但短线再漏检；新lookup范围失败，补自动收尾/Review显式边界保护。本文冻结结论不回填；新报告区分真实模型失败与0付费后修复回放。
