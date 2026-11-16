@@ -73,6 +73,7 @@ def test_tool_surface_contract_is_ready_when_all_model_primitives_have_backends(
     assert tools["remember"]["status"] == "available"
     assert tools["remember"]["permission"] == "allow"
     assert tools["recall_memory"]["status"] == "available"
+    assert "inspect_evidence" not in tools  # Review-scoped capability is not a standard backend requirement.
 
 
 def test_adapt_model_tool_call_translates_model_primitive_to_runtime_tool() -> None:

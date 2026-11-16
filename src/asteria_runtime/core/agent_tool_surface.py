@@ -63,12 +63,6 @@ class ModelToolSurfaceAdapter:
 
     def tools(self) -> list[ModelFacingTool]:
         definitions = [
-            self._tool("inspect_evidence", "read", "allow", "inspect_evidence",
-                       {"evidence_ref": "exact reference from review_evidence catalog or verification_origins",
-                        "offset": "optional 0-based character offset, default 0",
-                        "limit": "optional page size 1..4000 characters, default 4000"},
-                       ["Frozen historical context only; no arbitrary paths or other runs.",
-                        "Use next_offset to continue. Truncation and full source hash are explicit."]),
             self._tool(
                 "read_file",
                 "read",
@@ -238,6 +232,13 @@ class ModelToolSurfaceAdapter:
                 ],
             ),
         ]
+        if "inspect_evidence" in self.runtime_tools:
+            definitions.insert(0, self._tool("inspect_evidence", "read", "allow", "inspect_evidence",
+                       {"evidence_ref": "exact reference from review_evidence catalog or verification_origins",
+                        "offset": "optional 0-based character offset, default 0",
+                        "limit": "optional page size 1..4000 characters, default 4000"},
+                       ["Frozen historical context only; no arbitrary paths or other runs.",
+                        "Use next_offset to continue. Truncation and full source hash are explicit."]))
         return definitions
 
     def _tool(
