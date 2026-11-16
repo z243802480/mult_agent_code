@@ -317,7 +317,8 @@ class ReviewCommand:
         review_context["tool_observations"] = load_raw_tool_observations(run_dir)
         artifacts["review_focus"] = collect_review_focus(
             RuntimeContext(self.root, run_id, policy, self.validator), artifacts,
-            review_context["goal_spec"], review_context["task_plan"], review_context["tool_observations"],
+            review_context["goal_spec"], review_context["task_plan"],
+            self._read_jsonl(run_dir / "tool_observations.jsonl", "tool_observation"),
         )
         artifact_path = run_dir / (artifacts["evidence_id"] + ".json")
         self.store.write(artifact_path, artifacts, "review_artifacts")
