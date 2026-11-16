@@ -1412,7 +1412,7 @@
         "S130"
       ],
       "reference_brief": "benchmarks/reference_briefs/S131-content-preservation-contract.md",
-      "status": "Engineering accepted: optional source-bound whole-line preservation enforced at completion, durable across same-run repair; v2oracle accepts legal API/variable alternatives and rejects predicate/content drift.26new cases; Windowsfull1923/5skip/42excluded, WSL129, Ruff/type/fivebenchmarks pass.9a0cb3e Verify43135211339 all3jobs/UI green. New real GoalSpec adoption/enforcement proof NOT RUN; original S130 rejection unchanged. Next: one clean-baseline post-fix controlled trial."
+      "status": "Engineering regression accepted; four frozen-source real trials not independently accepted. Final D2313ff7+v3 native completed206.10s; real explicit method revision adopted once with original failure/user check preserved; 19models/32joined/32charged/25units, content/scope/accounting pass. New title underline25 vs26characters remains defective. v3 also overexecutes unchanged old examples; independent v4 fixes scope/title bounds with17controls, frozen old results unchanged. Windowsfull1941/5skip/42excluded496.28s, WSL86+18, Ruff/type/fivebenchmarks pass. Verify disabled_manually, remote NOT RUN. No formalReview/Accept. Next verify existing Review on a readonly known-format-defect copy before changing shared acceptance responsibility; new tasks use frozen v4; no same-task rerun to green or RST-specific runtime patch."
     }
   ]
 }

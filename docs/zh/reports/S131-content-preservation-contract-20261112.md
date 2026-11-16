@@ -1,5 +1,7 @@
 # S131 — 源绑定整行保留约束与验收器控制样本
 
+后续状态（2026-11-16）：[四轮真实对照及修复](S131-postfix-real-comparison-20261116.md)见新报告；以下保持11月12日工程快照。
+
 2026-11-12。[brief](../../../benchmarks/reference_briefs/S131-content-preservation-contract.md)。源自S130新目标的110处原例弱化和验收器缺陷；原失败、原oracle与审批记录保留。本片不新增编排、维护命令或语言/模型黑名单。
 
 ## 内容要求进入完成契约
