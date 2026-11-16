@@ -87,7 +87,9 @@ class ReviewTools:
 
     def describe(self) -> dict:
         names = [name for name in REVIEW_TOOLS if name != "inspect_evidence" or self.evidence is not None]
-        surface = model_tool_surface_for_task(names, self.task)
+        surface = model_tool_surface_for_task(
+            names, self.task, allow_shell=bool(self.context.policy.get("permissions", {}).get("allow_shell")),
+        )
         return {"tools": [tool for tool in surface["tools"] if tool["task_allowed"]], "max_iterations": 8,
                 "total_seconds": self.total_seconds, "command_max_seconds": 60,
                 "execution_root": "disposable filtered project copy; never promoted",

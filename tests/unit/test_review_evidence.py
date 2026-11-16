@@ -132,3 +132,15 @@ def test_payload_preserves_page_as_text():
     content = '"\\n' * 1000
     payload = _model_facing_payload("inspect_evidence", {"content": content, "next_offset": 3000})
     assert payload.split("\n", 1)[1] == content
+
+
+def test_review_machine_description_matches_execution_permissions_without_grant(tmp_path):
+    tools = setup(tmp_path)
+    snapshot(tools)
+    by_name = lambda: {t["name"]: t for t in tools.describe()["tools"]}
+    assert by_name()["run_tests"]["permission"] == "ask"
+    assert by_name()["inspect_evidence"]["permission"] == "allow"
+    tools.context.policy["permissions"]["allow_shell"] = False
+    assert by_name()["run_tests"]["permission"] == "deny"
+    assert not invoke(tools, "run_tests", {"command": command("print('not authorized')")})[0].ok
+    tools.finish("completed")
