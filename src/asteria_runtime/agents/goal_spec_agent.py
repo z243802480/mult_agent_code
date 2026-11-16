@@ -322,6 +322,9 @@ You must:
 
 Execution environment: {json.dumps(command_execution_context(), ensure_ascii=False)}
 
+Populate content_preservation from explicit requests to keep existing content of named files
+when adding material; use entries with path and mode=existing_lines. Otherwise keep it empty.
+
 Project context:
 {json.dumps(self._prompt_project_context(project_context), ensure_ascii=False, indent=2)}
 
@@ -335,6 +338,7 @@ Return this exact JSON shape:
   "assumptions": [],
   "constraints": [],
   "edit_boundary": {{"mode": "open|restricted", "paths": []}},
+  "content_preservation": [],
   "non_goals": [],
   "expanded_requirements": [
     {{
