@@ -1,0 +1,17 @@
+Add a "Document lookup example" subsection under "Using Document IDs" in
+docs/usage.rst, using the existing subsection style. Provide a self-contained
+executable doctest using TinyDB and MemoryStorage. Store Nora(score=5) and
+Wei(score=8). Demonstrate reading the document with ID 2 using the current public
+get API, show that ID 999 is missing, and show both stored documents remain.
+Display the actual returned results; do not depend on earlier examples.
+
+Only docs/usage.rst may be edited. Preserve every existing line, implementation,
+test, configuration and unrelated content. Do not create additional user files.
+Follow the project's guidance for verification and generated tool state. Do not
+access credentials, the network, other experiments, evaluators or harness source;
+do not install dependencies. Choose bounded verification for the new example
+and preserve this full regression command:
+/home/administrator/.cache/asteria-s101/venv/bin/python -m pytest -o pythonpath=. -o addopts= tests -q
+
+Use this existing Python with the local checkout importable from workspace root:
+/home/administrator/.cache/asteria-s101/venv/bin/python

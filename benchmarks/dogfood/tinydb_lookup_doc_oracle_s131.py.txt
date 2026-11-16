@@ -1,0 +1,71 @@
+"""Independent S131 lookup task oracle; old query oracles/results are untouched."""
+import ast
+import difflib
+import doctest
+from pathlib import Path
+
+
+def verify(root, original):
+    text = (Path(root) / 'docs/usage.rst').read_text(encoding='utf8')
+    before = (Path(original) / 'docs/usage.rst').read_text(encoding='utf8')
+    operations = difflib.SequenceMatcher(None, before.splitlines(True), text.splitlines(True), autojunk=False).get_opcodes()
+    if any(op[0] not in {'equal', 'insert'} for op in operations):
+        return {'ok': False, 'reason': 'original lines changed'}
+    try:
+        title = 'Document lookup example'
+        lines = text.splitlines()
+        assert text.count(title) == 1
+        start = lines.index(title)
+        section = lines.index('Using Document IDs')
+        section_end = next((i for i in range(section + 2, len(lines) - 1)
+                            if lines[i].strip() and len(lines[i + 1].strip()) >= 3
+                            and set(lines[i + 1].strip()) == {'-'}), len(lines))
+        assert section < start < section_end
+        assert set(lines[start + 1]) == {'.'} and len(lines[start + 1]) >= len(title)
+        end = next((i for i in range(start + 2, len(lines) - 1)
+                    if lines[i].strip() and len(lines[i + 1].strip()) >= 3
+                    and len(set(lines[i + 1].strip())) == 1
+                    and lines[i + 1].strip()[0] in '.-=~^'), len(lines))
+        added = {i for tag, _, _, first, last in operations if tag == 'insert' for i in range(first, last)}
+        def newly_added(example, offset):
+            first = offset + example.lineno
+            span = set(range(first, first + len(example.source.splitlines()) + len(example.want.splitlines())))
+            if span & added:
+                assert span <= added
+                return True
+            return False
+        full = doctest.DocTestParser().get_doctest(text, {}, 'whole', 'usage.rst', 0)
+        for example in full.examples:
+            newly_added(example, 0)
+        test = doctest.DocTestParser().get_doctest('\n'.join(lines[start + 2:end]), {}, title, 'usage.rst', 0)
+        test.examples = [e for e in test.examples if newly_added(e, start + 2)]
+        assert test.examples
+        from tinydb import TinyDB
+        from tinydb.storages import MemoryStorage
+        from tinydb.table import Table
+        expected = [{'name': 'Nora', 'score': 5}, {'name': 'Wei', 'score': 8}]
+        observed = []
+        original_get = Table.get
+        def get(table, *args, **kwargs):
+            result = original_get(table, *args, **kwargs)
+            observed.append((kwargs.get('doc_id'), result, [dict(d) for d in table.all()]))
+            return result
+        try:
+            Table.get = get
+            result = doctest.DocTestRunner().run(test, clear_globs=False)
+        finally:
+            Table.get = original_get
+        assert not result.failed
+        assert any(key == 2 and doc == expected[1] and stored == expected for key, doc, stored in observed)
+        assert any(key == 999 and doc is None and stored == expected for key, doc, stored in observed)
+        assert any(isinstance(db, TinyDB) and isinstance(db.storage, MemoryStorage)
+                   and [dict(d) for d in db.all()] == expected for db in test.globs.values())
+        def displays_all(example):
+            try:
+                return ast.literal_eval(example.want.strip()) == expected
+            except (SyntaxError, ValueError):
+                return False
+        assert any(displays_all(e) for e in test.examples)
+        return {'ok': True, 'attempted': result.attempted}
+    except (AssertionError, ValueError, IndexError, KeyError, TypeError):
+        return {'ok': False, 'reason': 'lookup example does not cover the requested claims'}

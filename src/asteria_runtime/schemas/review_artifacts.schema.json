@@ -88,6 +88,137 @@
     },
     "captured_at": {
       "type": "string"
+    },
+    "review_basis": {
+      "type": "object",
+      "required": [
+        "original_request",
+        "goal_interpretation",
+        "project_guidance",
+        "workspace_scan_coverage"
+      ],
+      "properties": {
+        "original_request": {
+          "type": "object",
+          "required": [
+            "source",
+            "content"
+          ],
+          "properties": {
+            "source": {
+              "const": "goal_spec.original_goal"
+            },
+            "content": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "goal_interpretation": {
+          "type": "object",
+          "required": [
+            "origin_status",
+            "producer_record",
+            "source_labels_are_model_claims",
+            "semantics_verified_by_runtime"
+          ],
+          "properties": {
+            "origin_status": {
+              "enum": [
+                "verified",
+                "unverified"
+              ]
+            },
+            "producer_record": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "source_labels_are_model_claims": {
+              "const": true
+            },
+            "semantics_verified_by_runtime": {
+              "const": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "project_guidance": {
+          "type": "object",
+          "required": [
+            "path",
+            "content",
+            "status",
+            "content_sha256",
+            "temporal_scope"
+          ],
+          "properties": {
+            "path": {
+              "const": "AGENTS.md"
+            },
+            "content": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "absent",
+                "partial",
+                "complete"
+              ]
+            },
+            "content_sha256": {
+              "type": "string"
+            },
+            "temporal_scope": {
+              "const": "current_workspace_at_review"
+            }
+          },
+          "additionalProperties": false
+        },
+        "workspace_scan_coverage": {
+          "type": "object",
+          "required": [
+            "mechanism",
+            "max_scan_files",
+            "excluded_directories",
+            "excluded_suffixes",
+            "exclusions_grant_permission",
+            "limitations"
+          ],
+          "properties": {
+            "mechanism": {
+              "const": "stat_only"
+            },
+            "max_scan_files": {
+              "type": "integer"
+            },
+            "excluded_directories": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "excluded_suffixes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "exclusions_grant_permission": {
+              "const": false
+            },
+            "limitations": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

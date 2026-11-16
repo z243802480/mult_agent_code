@@ -14,7 +14,7 @@ from asteria_runtime.core.agent_harness import (
 from asteria_runtime.core.active_next_step import capability_feedback_active_next_step
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.budget import BudgetController
-from asteria_runtime.core.review_artifacts import collect_review_artifacts
+from asteria_runtime.core.review_artifacts import collect_review_artifacts, review_basis
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
@@ -293,6 +293,13 @@ class ReviewCommand:
             RuntimeContext(self.root, run_id, policy, self.validator),
             review_context["goal_spec"], review_context["task_plan"],
         )
+        guidance = next(s for s in prompt_envelope.envelope.sections if s.name == "project_guidance")
+        artifacts["review_basis"] = review_basis(
+            review_context["goal_spec"], guidance=guidance.content,
+            guidance_present=bool(guidance.evidence_refs),
+        )
+        if artifacts["review_basis"]["project_guidance"]["status"] == "partial":
+            artifacts["complete"] = False
         artifact_path = run_dir / (artifacts["evidence_id"] + ".json")
         self.store.write(artifact_path, artifacts, "review_artifacts")
         review_context["current_artifacts"] = artifacts

@@ -10,6 +10,7 @@ from asteria_runtime.models.base import ChatResponse, TokenUsage
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from tests.integration.test_review_command import FakeDocPlanClient, FakeDocReadbackExecuteClient
+from asteria_runtime.core.review_artifacts import MAX_GUIDANCE_BYTES
 
 
 class Reviewer:
@@ -93,3 +94,37 @@ def test_client_initialization_failure_is_unavailable_without_fabricated_model_a
     assert result.status == "partial" and result.score is None
     assert after["model_calls"] == before["model_calls"]
     assert report["trajectory_eval"]["review_model_initialization_error"] == {"error_type": "RuntimeError"}
+
+
+def test_review_binds_actual_user_guidance_and_scanner_limits_without_changing_authorization(tmp_path):
+    run_id, run = prepare(tmp_path)
+    guidance = "Never write generated caches. Keep required checks and explicit scope."
+    (tmp_path / "AGENTS.md").write_text(guidance, encoding="utf8")
+    before_goal = (run / "goal_spec.json").read_bytes()
+    before_board = (run / "task_plan.json").read_bytes()
+    client = Reviewer()
+    ReviewCommand(tmp_path, run_id=run_id, model_client=client).run()
+    payload = json.loads(client.requests[0].messages[-1].content)
+    basis = payload["current_artifacts"]["review_basis"]
+    assert basis["original_request"]["content"] == "create a documentation artifact"
+    assert basis["project_guidance"]["content"] == guidance
+    assert basis["project_guidance"]["status"] == "complete"
+    assert basis["goal_interpretation"]["origin_status"] == "verified"
+    assert basis["goal_interpretation"]["semantics_verified_by_runtime"] is False
+    assert basis["workspace_scan_coverage"]["exclusions_grant_permission"] is False
+    assert (run / "goal_spec.json").read_bytes() == before_goal
+    assert (run / "task_plan.json").read_bytes() == before_board
+    report = json.loads((run / "eval_report.json").read_text(encoding="utf8"))
+    snapshot = json.loads(Path(report["artifact_eval"]["current_artifacts_evidence"]["evidence_ref"]).read_text(encoding="utf8"))
+    assert snapshot["review_basis"] == basis
+
+
+def test_partial_project_guidance_cannot_be_treated_as_complete_review(tmp_path):
+    run_id, run = prepare(tmp_path)
+    (tmp_path / "AGENTS.md").write_text("a" * (MAX_GUIDANCE_BYTES + 1), encoding="utf8")
+    result = ReviewCommand(tmp_path, run_id=run_id, model_client=Reviewer()).run()
+    assert result.status == "partial" and result.score is None
+    report = json.loads((run / "eval_report.json").read_text(encoding="utf8"))
+    snapshot = json.loads(Path(report["artifact_eval"]["current_artifacts_evidence"]["evidence_ref"]).read_text(encoding="utf8"))
+    assert snapshot["review_basis"]["project_guidance"]["status"] == "partial"
+    assert len(snapshot["review_basis"]["project_guidance"]["content"]) == MAX_GUIDANCE_BYTES

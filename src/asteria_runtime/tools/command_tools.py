@@ -7,7 +7,7 @@ import sys
 
 from asteria_runtime.core.process_fence import run_fenced
 from asteria_runtime.core.runtime_context import RuntimeContext
-from asteria_runtime.core.workspace_snapshot import changed_paths, snapshot_workspace
+from asteria_runtime.core.workspace_snapshot import changed_paths, observation_coverage, snapshot_workspace
 from asteria_runtime.core.sandbox_launch import run_sandboxed
 from asteria_runtime.core.sandbox_provision import (
     SandboxContext,
@@ -121,10 +121,12 @@ class RunCommandTool:
     def _workspace_observation(self, context: RuntimeContext, before: dict | None) -> dict:
         after = snapshot_workspace(context.root)
         if before is None or after is None:
-            return {"workspace_scan": "unavailable", "workspace_changes": None}
+            return {"workspace_scan": "unavailable", "workspace_changes": None,
+                    "workspace_scan_coverage": observation_coverage()}
         paths = changed_paths(before, after)
         return {
             "workspace_scan": "stat_only",
+            "workspace_scan_coverage": observation_coverage(),
             "changed_files": paths,
             "workspace_changes": {
                 "created": [p for p in paths if p not in before],

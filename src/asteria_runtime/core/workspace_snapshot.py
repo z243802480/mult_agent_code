@@ -45,6 +45,20 @@ MAX_SCAN_FILES = 5000
 Snapshot = dict[str, tuple[int, int]]
 
 
+def observation_coverage() -> dict:
+    """Describe the scanner's blind spots without granting permission for them."""
+    return {
+        "mechanism": "stat_only", "max_scan_files": MAX_SCAN_FILES,
+        "excluded_directories": sorted(_SKIP_DIRS), "excluded_suffixes": sorted(_SKIP_SUFFIXES),
+        "exclusions_grant_permission": False,
+        "limitations": [
+            "Compared mtime and size, not file contents; excluded paths were not observed.",
+            "No reported changes does not establish that excluded paths or the whole process were unchanged.",
+            "A single listing or timestamp is not a before/after comparison or an authorization verdict.",
+        ],
+    }
+
+
 def snapshot_workspace(root: Path, max_files: int = MAX_SCAN_FILES) -> Snapshot | None:
     """Map of relative posix path -> (mtime_ns, size), or None when the workspace is too big."""
     base = Path(root)

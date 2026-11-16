@@ -8,6 +8,7 @@ from asteria_runtime.core.execution_environment import command_execution_context
 from asteria_runtime.core.design_intel_contract import apply_research_type_to_goal_spec
 from asteria_runtime.core.execution_preferences import normalize_execution_preferences
 from asteria_runtime.core.edit_boundary import validate_edit_boundary
+from asteria_runtime.core.goal_provenance import proposal_origin
 from asteria_runtime.core.content_preservation import normalize_content_preservation
 from asteria_runtime.core.verification_guidance import ARTIFACT_VERIFICATION_GUIDANCE
 from asteria_runtime.core.verification_revision import model_strategy_origin
@@ -77,7 +78,7 @@ class GoalSpecAgent:
                         if isinstance(exc, GoalSpecError) else
                         "Model GoalSpec shape could not be repaired safely; deterministic fallback was used."
                     )
-                    data = self._normalize(data, goal)
+                    data = self._normalize(data, goal, proposal_kind="runtime_fallback")
                     self.validator.validate("goal_spec", data)
                     return data
                 request = replace(request, messages=[
@@ -146,8 +147,9 @@ class GoalSpecAgent:
             },
         }
 
-    def _normalize(self, data: dict, original_goal: str) -> dict:
+    def _normalize(self, data: dict, original_goal: str, *, proposal_kind: str = "model_proposal") -> dict:
         normalized = dict(data)
+        normalized.pop("proposal_origin", None)  # Producer facts are runtime-owned.
         normalized["schema_version"] = str(normalized.get("schema_version") or "0.1.0")
         normalized["goal_id"] = str(normalized.get("goal_id") or "goal-0001")
         normalized["original_goal"] = original_goal
@@ -191,6 +193,7 @@ class GoalSpecAgent:
                 intent["value"] for intent in normalized["output_intents"]
                 if intent["obligation"] == "required"
             ]
+        normalized["proposal_origin"] = proposal_origin(normalized, proposal_kind)
         return normalized
 
     def _requirements(self, value: object, fallback_description: str) -> list[dict]:
@@ -286,6 +289,10 @@ You must:
   a different, larger feature. When the goal is small and concrete, keep the spec small and concrete;
   add at most minimal, obviously-implied requirements. Do NOT invent an unrelated module.
 - Separate assumptions, constraints, non-goals, and expanded requirements.
+- These fields are your interpretation, not new user instructions. Ground each restriction
+  and acceptance condition in the original request or supplied project guidance. Do not turn
+  a ban on extra deliverables into a broader ban on all incidental tool activity. Preserve
+  explicit prohibitions, including generated files, and existing runtime permissions.
 - Classify every output_intents entry as required, optional, or allowed. Required means the
   user requires that deliverable; allowed is only permission to edit, never a completion promise.
   Optional implementation choices remain optional at goal understanding time; the planner may
@@ -393,6 +400,8 @@ Return this exact JSON shape:
                     "task_failures",
                     "design_intel_research",
                     "goal_spec_route_plan",
+                    "root_guidance",
+                    "project_commands",
                 )
                 if runtime_context.get(key)
             }

@@ -257,6 +257,39 @@
         },
         "additionalProperties": false
       }
+    },
+    "proposal_origin": {
+      "type": "object",
+      "required": [
+        "producer",
+        "kind",
+        "goal_id",
+        "original_goal_sha256",
+        "proposal_sha256"
+      ],
+      "properties": {
+        "producer": {
+          "const": "goal_spec_agent"
+        },
+        "kind": {
+          "enum": [
+            "model_proposal",
+            "runtime_fallback"
+          ]
+        },
+        "goal_id": {
+          "type": "string"
+        },
+        "original_goal_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        "proposal_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

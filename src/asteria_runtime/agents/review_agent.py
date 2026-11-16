@@ -350,6 +350,22 @@ You must:
   Missing, omitted or partial artifacts remain unverified; do not invent unseen content.
 - Keep the requested scope: distinguish defects in the requested changes from unrelated,
   pre-existing issues. Do not invent new acceptance requirements or mandatory tools/checks.
+- Use current_artifacts.review_basis to distinguish the original request, current project
+  guidance, and the model's goal interpretation. A verified producer record establishes who
+  emitted the proposal, not that every constraint or source=user label was authorized.
+  Check added restrictions against the original request and project rules; do not silently
+  promote model assumptions into user obligations or weaken explicit user/project prohibitions.
+  Legacy or changed producer records remain unverified, not implicitly user-authored.
+  Check whether task-specific project guidance applies to this current request; do not reopen
+  unrelated earlier objectives. Resolve task-scope conflicts against the current explicit user
+  request while preserving runtime permissions and security rules. Current guidance is not proof
+  of which guidance was present during a historical action.
+- Separate current artifact quality from historical process claims. Cite actual comparisons
+  or concrete action evidence for alleged changes: a single timestamp/listing establishes
+  presence or metadata, not a before/after content difference or a scope violation.
+  Workspace scan exclusions are observation blind spots, not permission grants or automatic
+  violations. Keep unobserved effects unknown. Interpret generated tool state against the
+  actual requested boundary; explicit restrictions still apply even to excluded paths.
 - Use the supplied logs and task board as evidence.
 - Compare the requested artifacts and observable claims with the actual checks and their output.
   Passing tests alone do not verify documentation examples or displayed results; file existence

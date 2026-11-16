@@ -4,6 +4,9 @@ from pathlib import Path
 
 from asteria_runtime.core.task_contract import check_completion_contract
 from asteria_runtime.core.workspace_snapshot import changed_paths, snapshot_workspace
+from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.tools.command_tools import RunCommandTool
 
 
 def _touch(path: Path, content: str = "x") -> None:
@@ -59,3 +62,19 @@ def test_contract_carries_unscoped_changed_files_as_disclosure_not_violation(
     )
     assert check.ok
     assert check.to_dict()["unscoped_changed_files"] == ["stray_data.bin"]
+
+
+def test_shell_observation_discloses_unobserved_cache_without_exempting_user_files(tmp_path):
+    before = snapshot_workspace(tmp_path)
+    _touch(tmp_path / ".pytest_cache" / "v" / "cache" / "nodeids")
+    _touch(tmp_path / "user-result.bin")
+    context = RuntimeContext(tmp_path, "run-scan", {}, SchemaValidator(Path("schemas")))
+    data = RunCommandTool()._workspace_observation(context, before)
+    assert data["workspace_changes"]["created"] == ["user-result.bin"]
+    coverage = data["workspace_scan_coverage"]
+    assert ".pytest_cache" in coverage["excluded_directories"]
+    assert coverage["exclusions_grant_permission"] is False
+    assert data["workspace_scan"] == "stat_only"
+    unavailable = RunCommandTool()._workspace_observation(context, None)
+    assert unavailable["workspace_changes"] is None
+    assert unavailable["workspace_scan_coverage"] == coverage

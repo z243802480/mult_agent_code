@@ -7,14 +7,39 @@ import hashlib
 from uuid import uuid4
 
 from asteria_runtime.core.content_preservation import PROTECTED
+from asteria_runtime.core.goal_provenance import proposal_origin_status
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.task_contract import looks_like_file_path
+from asteria_runtime.core.workspace_snapshot import observation_coverage
 from asteria_runtime.tools.file_tools import ReadFileTool
 from asteria_runtime.utils.time import now_iso
 
 MAX_FILES = 16
 MAX_FILE_BYTES = 65_536
 MAX_TOTAL_CONTENT_BYTES = 196_608
+MAX_GUIDANCE_BYTES = 16_384
+
+
+def review_basis(goal: dict, *, guidance: str, guidance_present: bool) -> dict:
+    """Expose provenance and observation limits, without deciding domain semantics."""
+    encoded = guidance.encode("utf8") if guidance_present else b""
+    content = encoded[:MAX_GUIDANCE_BYTES].decode("utf8", errors="ignore")
+    return {
+        "original_request": {"source": "goal_spec.original_goal", "content": goal.get("original_goal", "")},
+        "goal_interpretation": {
+            "origin_status": proposal_origin_status(goal),
+            "producer_record": goal.get("proposal_origin"),
+            "source_labels_are_model_claims": True,
+            "semantics_verified_by_runtime": False,
+        },
+        "project_guidance": {
+            "path": "AGENTS.md", "content": content,
+            "status": "absent" if not guidance_present else "partial" if len(encoded) > MAX_GUIDANCE_BYTES else "complete",
+            "content_sha256": hashlib.sha256(content.encode("utf8")).hexdigest(),
+            "temporal_scope": "current_workspace_at_review",
+        },
+        "workspace_scan_coverage": observation_coverage(),
+    }
 
 
 def collect_review_artifacts(context: RuntimeContext, goal: dict, board: dict) -> dict:
