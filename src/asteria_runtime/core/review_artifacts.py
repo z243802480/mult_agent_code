@@ -20,6 +20,22 @@ MAX_TOTAL_CONTENT_BYTES = 196_608
 MAX_GUIDANCE_BYTES = 16_384
 
 
+def constrain_review_approval(report: dict, artifacts: dict) -> None:
+    """A model verdict cannot waive missing evidence or an explicit permission ceiling."""
+    if report["overall"]["status"] != "pass":
+        return
+    reasons = []
+    if not artifacts["complete"]:
+        reasons.append("Current artifact evidence is incomplete; missing or partial content cannot establish full requirement coverage.")
+    outside = artifacts.get("review_basis", {}).get("observed_outside_current_edit_boundary", [])
+    if outside:
+        reasons.append("Recorded changes outside the explicit goal edit boundary require authorization clarification: " + ", ".join(outside))
+    if reasons:
+        report["trajectory_eval"]["model_overall_before_evidence_check"] = dict(report["overall"])
+        report["goal_eval"]["requirement_coverage"] = None
+        report["overall"] = {"status": "partial", "score": None, "reason": " ".join(reasons)}
+
+
 def review_basis(goal: dict, *, guidance: str, guidance_present: bool) -> dict:
     """Expose provenance and observation limits, without deciding domain semantics."""
     encoded = guidance.encode("utf8") if guidance_present else b""

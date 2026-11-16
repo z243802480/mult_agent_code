@@ -69,9 +69,12 @@ def test_actual_successful_shell_check_outside_goal_boundary_does_not_auto_final
     from asteria_runtime.commands.review_command import ReviewCommand
     from tests.integration.test_review_current_artifacts import Reviewer
     reviewer = Reviewer()
-    ReviewCommand(tmp_path, result.run_id, model_client=reviewer).run()
+    review = ReviewCommand(tmp_path, result.run_id, model_client=reviewer).run()
+    assert review.status == "partial" and review.score is None
     payload = json.loads(reviewer.requests[0].messages[-1].content)
     assert payload["current_artifacts"]["review_basis"]["observed_outside_current_edit_boundary"] == ["extra.bin"]
+    report = store.read(run / "eval_report.json", "eval_report")
+    assert report["trajectory_eval"]["model_overall_before_evidence_check"]["status"] == "pass"
 
 
 @pytest.mark.parametrize("restricted", [True, False])

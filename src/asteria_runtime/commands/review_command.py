@@ -14,7 +14,7 @@ from asteria_runtime.core.agent_harness import (
 from asteria_runtime.core.active_next_step import capability_feedback_active_next_step
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.budget import BudgetController
-from asteria_runtime.core.review_artifacts import collect_review_artifacts, review_basis
+from asteria_runtime.core.review_artifacts import collect_review_artifacts, constrain_review_approval, review_basis
 from asteria_runtime.core.edit_boundary import observed_outside_edit_boundary
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.policy_config import load_policy_config
@@ -358,13 +358,7 @@ class ReviewCommand:
             "evidence_ref": str(artifact_path), "evidence_id": artifacts["evidence_id"],
             "complete": artifacts["complete"],
         }
-        if not artifacts["complete"] and eval_report["overall"]["status"] == "pass":
-            eval_report["trajectory_eval"]["model_overall_before_evidence_check"] = dict(eval_report["overall"])
-            eval_report["goal_eval"]["requirement_coverage"] = None
-            eval_report["overall"] = {
-                "status": "partial", "score": None,
-                "reason": "Current artifact evidence is incomplete; missing or partial content cannot establish full requirement coverage.",
-            }
+        constrain_review_approval(eval_report, artifacts)
         assessment = eval_report["trajectory_eval"].get("review_assessment", {})
         eval_report["trajectory_eval"]["review_tier"] = {
             "mode": "model" if assessment.get("status") == "assessed" else "unavailable",
