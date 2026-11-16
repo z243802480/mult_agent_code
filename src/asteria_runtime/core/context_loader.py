@@ -6,6 +6,7 @@ from typing import Any
 
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
+from asteria_runtime.core.execution_environment import command_execution_context
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -41,6 +42,7 @@ class ContextLoader:
     def load(self, run_id: str | None = None) -> dict:
         agent_dir = self.root / ".asteria"
         return {
+            "execution_environment": command_execution_context(self.root),
             "memory": self._memory(agent_dir),
             "latest_snapshot": self._latest_snapshot(agent_dir, run_id),
             "latest_handoff": self._latest_handoff(agent_dir),

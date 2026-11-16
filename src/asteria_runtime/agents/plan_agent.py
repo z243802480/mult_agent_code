@@ -223,6 +223,8 @@ You must:
         execution_profile: str,
     ) -> str:
         workspace_files = self._workspace_file_paths(runtime_context)
+        environment = runtime_context.get("execution_environment")
+        environment = environment if isinstance(environment, dict) else command_execution_context()
         guidance = runtime_context.get("root_guidance") or {}
         guidance_block = ""
         if isinstance(guidance, dict) and isinstance(guidance.get("content"), str):
@@ -238,7 +240,7 @@ You must:
 {guidance_block}
 
 Execution profile: {execution_profile}
-Execution environment: {json.dumps(command_execution_context(), ensure_ascii=False)}
+Execution environment: {json.dumps(environment, ensure_ascii=False)}
 Configured project commands (preserve applicable checks):
 {json.dumps(runtime_context.get("project_commands", {}), ensure_ascii=False)}
 Existing workspace files:

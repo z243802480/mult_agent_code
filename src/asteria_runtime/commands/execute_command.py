@@ -1051,6 +1051,10 @@ class ExecuteCommand:
             # default) / CloudSessionExecutor (North Star stub). The dispatch card shows immediately
             # (a long expert run is otherwise silent); the child's own narration/tools stay in the
             # Inspector (subagent_role); only the returned summary rides back up.
+            child_runtime_context = {
+                **child_runtime_context,
+                "execution_environment": command_execution_context(child_context.root),
+            }
             child_system, child_user = self._model_driven_prompts(
                 child_task,
                 goal_spec,
@@ -1889,7 +1893,9 @@ class ExecuteCommand:
             },
             "memory_protocol": memory_protocol,
             "project": project_config,
-            "execution_environment": command_execution_context(self.root),
+            "execution_environment": (
+                runtime_context.get("execution_environment") or command_execution_context(self.root)
+            ),
             "tool_contracts": tool_definitions_for(available_tools),
             "runtime_context": execution_prompt_view(
                 runtime_context, project_guidance=project_guidance

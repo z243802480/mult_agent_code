@@ -317,10 +317,13 @@ You must:
 """ + "\n" + ARTIFACT_VERIFICATION_GUIDANCE
 
     def _user_prompt(self, goal: str, project_context: dict) -> str:
+        runtime = project_context.get("runtime_context")
+        environment = runtime.get("execution_environment") if isinstance(runtime, dict) else None
+        environment = environment if isinstance(environment, dict) else command_execution_context()
         return f"""User goal:
 {goal}
 
-Execution environment: {json.dumps(command_execution_context(), ensure_ascii=False)}
+Execution environment: {json.dumps(environment, ensure_ascii=False)}
 
 Populate content_preservation from explicit requests to keep existing content of named files
 when adding material; use entries with path and mode=existing_lines. Otherwise keep it empty.
