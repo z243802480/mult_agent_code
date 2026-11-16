@@ -143,10 +143,12 @@ def tool_definitions_for(
                     "type": "object",
                     "properties": {
                         "command": {"type": "string"},
+                        "verification_ref": {"type": "string", "description": "Current-task registered method reference; use instead of command."},
                         "timeout_seconds": {"type": "integer", "minimum": 1,
                                             "description": "Optional test deadline in seconds; default 120."},
                     },
-                    "required": ["command"],
+                    "oneOf": [{"required": ["command"], "not": {"required": ["verification_ref"]}},
+                              {"required": ["verification_ref"], "not": {"required": ["command"]}}],
                 },
             },
         },
@@ -155,14 +157,23 @@ def tool_definitions_for(
         "type": "function",
         "function": {
             "name": "revise_verification",
-            "description": "Explicitly revise a defective planner method after failed and corrected "
-                           "executions. Keeps original failure, acceptance and user/project checks.",
+            "description": "Revise an eligible planner method using its verification_ref and failed/passed "
+                           "execution receipt IDs, or exact legacy command strings. Keeps original failure, "
+                           "acceptance and user/project checks.",
             "parameters": {
                 "type": "object",
                 "properties": {name: {"type": "string"} for name in (
                     "original_command", "replacement_command", "reason", "coverage",
+                    "original_verification_ref", "failed_tool_call_id", "passed_tool_call_id",
                 )},
-                "required": ["original_command", "replacement_command", "reason", "coverage"],
+                "required": ["reason", "coverage"],
+                "oneOf": [
+                    {"required": ["original_command", "replacement_command"],
+                     "not": {"anyOf": [{"required": [name]} for name in (
+                         "original_verification_ref", "failed_tool_call_id", "passed_tool_call_id")]}},
+                    {"required": ["original_verification_ref", "failed_tool_call_id", "passed_tool_call_id"],
+                     "not": {"anyOf": [{"required": [name]} for name in ("original_command", "replacement_command")]}},
+                ],
             },
         },
     }

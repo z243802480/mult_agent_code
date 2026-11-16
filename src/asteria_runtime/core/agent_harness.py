@@ -1100,6 +1100,8 @@ def _model_facing_payload(tool_name: str, data: dict[str, Any]) -> str:
         if isinstance(paths, list) and paths:
             return _clip("\n".join(str(p) for p in paths))
         return ""
+    if tool_name == "revise_verification":
+        return _clip(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
     if tool_name in {"recall_memory", "todo_read", "diff_workspace"}:
         for key in ("content", "text", "diff", "items"):
             value = data.get(key)

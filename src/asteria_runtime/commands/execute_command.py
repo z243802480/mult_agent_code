@@ -80,6 +80,7 @@ from asteria_runtime.core.run_config import effective_policy_for_run
 from asteria_runtime.storage import audit_chain
 from asteria_runtime.core.runtime_profile_builder import RuntimeProfileBuilder
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.verification_references import verification_methods
 from asteria_runtime.core.runtime_hooks import RuntimeHookDecision, RuntimeHookManager
 from asteria_runtime.core.runtime_policy import (
     RuntimeRequestPolicy,
@@ -891,6 +892,7 @@ class ExecuteCommand:
             can_delegate=True,
             prior_progress=prior_progress,
             project_guidance=project_guidance,
+            verification_context=context,
         )
         model_tier = str(runtime_context.get("execution_model_tier") or "strong")
         max_subagent_depth = self._max_subagent_depth(context.policy)
@@ -1827,6 +1829,7 @@ class ExecuteCommand:
         can_delegate: bool = False,
         prior_progress: str | None = None,
         project_guidance: str | None = None,
+        verification_context: RuntimeContext | None = None,
     ) -> tuple[str, str]:
         """Build the 立真身 turn envelope: rich task/goal/project/mounted context, but NO
         ``next_action`` enum / decision-table contract (that closed enum IS the FSM the
@@ -1922,6 +1925,7 @@ class ExecuteCommand:
                 "expected_artifacts": task.get("expected_artifacts", []),
                 "validation_commands": task.get("validation_commands", []),
                 "verification_policy": dict(task.get("verification_policy") or {}),
+                "verification_methods": verification_methods(task, verification_context),
                 "acceptance": task.get("acceptance", []),
             },
             "memory_protocol": memory_protocol,

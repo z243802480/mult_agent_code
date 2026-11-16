@@ -149,6 +149,7 @@ class ModelToolSurfaceAdapter:
                 "ask" if self.allow_shell else "deny",
                 ["run_tests", "run_command"],
                 {"command": "test command or configured test suite",
+                   "verification_ref": "optional current-task verification_methods reference instead of command; executes registered text exactly",
                  "timeout_seconds": "optional positive seconds; default 120; use the suite's observed runtime"},
                 ["Verification output is summarized; raw stdout remains evidence/Inspector."],
             ),
@@ -179,6 +180,9 @@ class ModelToolSurfaceAdapter:
                 {
                     "original_command": "exact failed planner-proposed method",
                     "replacement_command": "exact corrected command already executed successfully",
+                      "original_verification_ref": "alternative to command strings: current registered original method reference",
+                      "failed_tool_call_id": "required with original_verification_ref: failed execution receipt ID",
+                      "passed_tool_call_id": "required with original_verification_ref: later successful replacement receipt ID",
                     "reason": "why the method is defective, not a reason to ignore artifact defects",
                     "coverage": "how the replacement preserves the same claims and requirements",
                 },

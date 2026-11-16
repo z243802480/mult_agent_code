@@ -280,6 +280,16 @@
                 "type": "string",
                 "minLength": 1
               },
+              "reference_binding": {
+                "type": "object",
+                "required": ["original_verification_ref", "failed_tool_call_id", "passed_tool_call_id"],
+                "properties": {
+                  "original_verification_ref": {"type": "string", "minLength": 1},
+                  "failed_tool_call_id": {"type": "string", "minLength": 1},
+                  "passed_tool_call_id": {"type": "string", "minLength": 1}
+                },
+                "additionalProperties": false
+              },
               "passed_observation_id": {
                 "type": "string",
                 "minLength": 1

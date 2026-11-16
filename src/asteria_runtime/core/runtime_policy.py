@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from asteria_runtime.core.edit_boundary import edit_boundary_allows
 from asteria_runtime.core.execution_permission_request import requested_execution
+from asteria_runtime.core.verification_references import resolve_verification_args
 from asteria_runtime.core.agent_tool_surface import MODEL_TO_RUNTIME_TOOL_ALIASES
 from asteria_runtime.storage.file_backup import FileBackupStore
 from typing import Callable
@@ -135,20 +136,24 @@ class ToolPermissionPolicy:
             tool_name = MODEL_TO_RUNTIME_TOOL_ALIASES.get(call["tool_name"], call["tool_name"])
             if tool_name not in {"run_command", "run_tests"}:
                 continue
-            command = str(call.get("args", {}).get("command") or "")
+            try:
+                args = resolve_verification_args(context, task, tool_name, call.get("args") or {})
+            except (PermissionError, ValueError, OSError):
+                continue  # Gateway records the refused reference; do not approve an unresolved command.
+            command = str(args.get("command") or "")
             if not command:
                 continue
-            prior = self.execution_decision(context, task, tool_name, call.get("args") or {})
+            prior = self.execution_decision(context, task, tool_name, args)
             if (prior and (prior.get("metadata") or {}).get("explicit_request")
                     and prior["status"] in {"resolved", "defaulted"}
                     and prior.get("selected_option_id") != "approve_once"):
                 continue  # The gateway returns a denial, not another identical prompt.
             denial = self.shell_denial(context.policy, command)
             if denial is None or self.has_execution_approval(
-                context, task, tool_name, call["args"]
+                context, task, tool_name, args
             ):
                 continue
-            return self._create_execution_decision(context, task, tool_name, call["args"], denial)
+            return self._create_execution_decision(context, task, tool_name, args, denial)
         return None
 
     def context_with_approval(

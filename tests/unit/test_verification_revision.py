@@ -234,7 +234,12 @@ def test_revision_is_exposed_in_json_and_native_surfaces_only_with_a_backend():
     assert tools["revise_verification"]["status"] == "available"
     native = tool_definitions_for(["revise_verification"])
     assert native[0]["function"]["name"] == "revise_verification"
-    assert set(native[0]["function"]["parameters"]["required"]) == set(ARGS)
+    parameters = native[0]["function"]["parameters"]
+    assert set(parameters["required"]) == {"reason", "coverage"}
+    assert [set(branch["required"]) for branch in parameters["oneOf"]] == [
+        {"original_command", "replacement_command"},
+        {"original_verification_ref", "failed_tool_call_id", "passed_tool_call_id"},
+    ]
     assert tool_definitions_for([]) == []
 
 

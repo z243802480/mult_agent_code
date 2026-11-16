@@ -7,6 +7,7 @@ import sys
 
 from asteria_runtime.core.process_fence import run_fenced
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.verification_references import current_reference_task, resolve_verification_args
 from asteria_runtime.core.workspace_snapshot import changed_paths, observation_coverage, snapshot_workspace
 from asteria_runtime.core.sandbox_launch import run_sandboxed
 from asteria_runtime.core.sandbox_provision import (
@@ -195,11 +196,21 @@ class RunTestsTool:
         context: RuntimeContext,
         command: str | None = None,
         timeout_seconds: int | None = None,
+        verification_ref: str | None = None,
     ) -> ToolResult:
+        if verification_ref is not None:
+            task = current_reference_task(context)
+            requested = {"verification_ref": verification_ref,
+                         **({"command": command} if command is not None else {}),
+                         **({"timeout_seconds": timeout_seconds} if timeout_seconds is not None else {})}
+            resolved = resolve_verification_args(context, task, self.name, requested)
+            command = resolved["command"]
         test_command = command or context.policy.get("commands", {}).get("test") or "python -m pytest"
         result = self.command_tool.run(
             context,
             test_command,
             timeout_seconds=timeout_seconds,
         )
+        if verification_ref is not None:
+            result.data["verification_ref"] = verification_ref
         return result
