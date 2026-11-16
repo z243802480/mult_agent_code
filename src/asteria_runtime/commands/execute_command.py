@@ -916,8 +916,33 @@ class ExecuteCommand:
             if item
         ]
         announced_verification_failures: set[int] = set()
+        from asteria_runtime.core.verification_feedback import boundary_effects, boundary_feedback
+
+        announced_effects: set[tuple] = set()
+        final_effect_reminder_sent = False
 
         def _hook(event_name: str, payload: dict) -> TurnControl:
+            nonlocal final_effect_reminder_sent
+            effects = boundary_effects(task, payload.get("observations") or (), context.root)
+            new_effects = []
+            if event_name == "post_tool_observation":
+                for effect in effects:
+                    key = tuple(effect.values())
+                    if key not in announced_effects:
+                        announced_effects.add(key)
+                        new_effects.append(effect)
+            hold_for_effects = event_name == "pre_final" and bool(effects) and not final_effect_reminder_sent
+            if hold_for_effects:
+                final_effect_reminder_sent = True
+            if new_effects:
+                self._record_progress(
+                    context, task, channel="progress", event_type="message", phase="execute",
+                    status="running", title="检测到范围外变化",
+                    summary="实际变化涉及：" + "、".join(e["path"] for e in new_effects[:8])
+                    + "。已反馈模型核对验证范围；需要权限的动作必须另行批准。",
+                    display_level="main", transcript_kind="verification",
+                    data={"observed_boundary_effects": new_effects},
+                )
             failures = []
             # Declared checks already have a post-loop execution boundary. Legacy
             # tasks need the same latest-outcome facts before leaving this loop.
@@ -942,6 +967,7 @@ class ExecuteCommand:
                     "expected_artifacts": expected_artifacts,
                     "methodology_skill_names": skill_names,
                     "unresolved_verification_commands": failed_commands,
+                    "observed_boundary_effects": new_effects or (effects if hold_for_effects else []),
                 },
             )
             if decision.continue_turn and failed_commands:
@@ -983,8 +1009,11 @@ class ExecuteCommand:
                     },
                 )
             return TurnControl(
-                additional_context=decision.additional_context,
-                continue_turn=decision.continue_turn,
+                additional_context="\n".join(part for part in (
+                    decision.additional_context,
+                    boundary_feedback(new_effects or effects) if new_effects or hold_for_effects else "",
+                ) if part),
+                continue_turn=decision.continue_turn or hold_for_effects,
             )
 
         def _prepare_child(args: dict) -> tuple[Any, str, dict, dict] | _SubagentResult:

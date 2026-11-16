@@ -166,6 +166,16 @@ def tool_definitions_for(
             },
         },
     }
+    specs["request_execution_permission"] = {
+        "type": "function", "function": {
+            "name": "request_execution_permission",
+            "description": "Ask consent for exact execution args; never executes. Pending requests pause before this batch.",
+            "parameters": {"type": "object", "properties": {
+                "tool_name": {"type": "string", "enum": ["run_command", "run_tests"]},
+                "args": {"type": "object"}, "reason": {"type": "string"},
+            }, "required": ["tool_name", "args", "reason"]},
+        },
+    }
     native = [specs[name] for name in available_tools if name in specs]
     if extra_specs:
         native.extend(extra_specs)

@@ -329,6 +329,13 @@ def run_model_driven_turn(
             ChatMessage(role="user", content=_observation_feedback(observations, transport))
         )
         observation_feedback_index.append((len(messages) - 1, observations))
+        if hook is not None:
+            control = hook("post_tool_observation", {
+                "iteration": iteration, "task": task,
+                "observations": tuple(all_observations), "new_observations": tuple(observations),
+            })
+            if control.additional_context:
+                messages.append(ChatMessage(role="user", content=control.additional_context))
         # Boundary, not cognition (ADR-0016): when the accumulated history outgrows its char
         # budget, collapse the OLDEST observation payloads to summaries. Per-observation payloads
         # are already clipped at 6KB (agent_harness._clip); this bounds their SUM — the one axis

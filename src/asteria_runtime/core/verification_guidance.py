@@ -5,6 +5,11 @@ ARTIFACT_VERIFICATION_GUIDANCE = """Verification coverage:
   For documentation with executable examples or displayed results, check the setup, calls and
   claimed output against the actual implementation using a bounded runnable check when possible.
   Plain prose needs appropriate inspection, not an invented executable test.
+- Before executing generated or selected verification input, inspect what will actually run:
+  establish its exact start/end, finite case count, setup and expected effects. Assert selection
+  bounds before executing it. An approximate match or a broad command name does not establish
+  coverage. If the selection is uncertain, narrow or change the method before executing more
+  content; do not silently include unrelated setup, examples or project state.
 - Preserve required project/user checks. Discover available tools and project conventions before
   choosing supplemental checks; keep all reads, writes and commands within the existing permission
   and task scope. Do not assume a checker exists, install dependencies, weaken a failing check or
@@ -23,6 +28,8 @@ ARTIFACT_VERIFICATION_GUIDANCE = """Verification coverage:
   side effects before executing them; use an authorized temporary environment when necessary.
   Inspect reported workspace changes against the edit boundary, including files created by
   checks. Do not silently delete pre-existing files or bypass permissions to clean up.
+  Report observed boundary incidents immediately. Request exact command authorization with
+  request_execution_permission when needed; waiting or refusal is not successful completion.
 - A shell exit status of zero describes that command, not every pipeline stage or the truth of
   a self-authored checker. Read the original output and propagate failures in executable checks.
   Once required checks and scoped claims are covered, summarize evidence and limitations;

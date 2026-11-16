@@ -186,6 +186,14 @@ class ModelToolSurfaceAdapter:
                  "preserves original failures, acceptance and user/project checks."],
             ),
             self._tool(
+                "request_execution_permission", "planning", "allow", "request_execution_permission",
+                {"tool_name": "run_command or run_tests", "args": "exact execution args object",
+                 "reason": "why this concrete action needs user authorization"},
+                ["Requests consent without executing; pending requests pause the entire batch.",
+                 "After decide/resume, inspect the decision and execute only the approved exact action.",
+                 "Does not expand task capabilities, goal edit boundaries or global policy."],
+            ),
+            self._tool(
                 "remember",
                 "memory",
                 "allow",

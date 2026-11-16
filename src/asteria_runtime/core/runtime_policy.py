@@ -5,6 +5,8 @@ from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from asteria_runtime.core.edit_boundary import edit_boundary_allows
+from asteria_runtime.core.execution_permission_request import requested_execution
+from asteria_runtime.core.agent_tool_surface import MODEL_TO_RUNTIME_TOOL_ALIASES
 from asteria_runtime.storage.file_backup import FileBackupStore
 from typing import Callable
 
@@ -66,6 +68,12 @@ class ToolPermissionPolicy:
     def enforce_tool_permission_profile(
         self, task: dict, tool_name: str, args: dict, context: RuntimeContext | None = None,
     ) -> None:
+        if context is not None and tool_name in {"run_command", "run_tests"}:
+            decision = self.execution_decision(context, task, tool_name, args)
+            if (decision and (decision.get("metadata") or {}).get("explicit_request")
+                    and decision["status"] in {"resolved", "defaulted"}
+                    and decision.get("selected_option_id") != "approve_once"):
+                raise PermissionError("The requested exact execution was declined; choose another authorized method")
         write_tools = {"write_file", "apply_patch", "restore_backup"}
         if tool_name not in write_tools:
             self._enforce_read_scope(task, tool_name, args)
@@ -110,13 +118,31 @@ class ToolPermissionPolicy:
         task: dict,
         context: RuntimeContext,
     ) -> dict | None:
+        for call in action.get("tool_calls", []):
+            if call.get("tool_name") != "request_execution_permission":
+                continue
+            try:
+                target, args, reason = requested_execution(call.get("args") or {})
+            except (ValueError, TypeError):
+                continue  # The tool reports invalid proposals as ordinary observations.
+            if not {target, "request_execution_permission"} <= set(task.get("allowed_tools") or []):
+                continue
+            existing = self.execution_decision(context, task, target, args)
+            if existing and existing["status"] in {"resolved", "defaulted"}:
+                continue
+            return self._create_execution_decision(context, task, target, args, reason, explicit_request=True)
         for call in [*action.get("tool_calls", []), *action.get("verification", [])]:
-            tool_name = call["tool_name"]
+            tool_name = MODEL_TO_RUNTIME_TOOL_ALIASES.get(call["tool_name"], call["tool_name"])
             if tool_name not in {"run_command", "run_tests"}:
                 continue
             command = str(call.get("args", {}).get("command") or "")
             if not command:
                 continue
+            prior = self.execution_decision(context, task, tool_name, call.get("args") or {})
+            if (prior and (prior.get("metadata") or {}).get("explicit_request")
+                    and prior["status"] in {"resolved", "defaulted"}
+                    and prior.get("selected_option_id") != "approve_once"):
+                continue  # The gateway returns a denial, not another identical prompt.
             denial = self.shell_denial(context.policy, command)
             if denial is None or self.has_execution_approval(
                 context, task, tool_name, call["args"]
@@ -171,12 +197,15 @@ class ToolPermissionPolicy:
         tool_name: str,
         args: dict,
     ) -> bool:
+        decision = self.execution_decision(context, task, tool_name, args)
+        return bool(decision and decision["status"] in {"resolved", "defaulted"}
+                    and decision.get("selected_option_id") == "approve_once")
+
+    def execution_decision(self, context: RuntimeContext, task: dict, tool_name: str, args: dict) -> dict | None:
         if context.run_dir is None:
-            return False
-        for decision in self._matching_decisions(context.run_dir, task, tool_name, args):
-            if decision["status"] in {"resolved", "defaulted"}:
-                return decision.get("selected_option_id") == "approve_once"
-        return False
+            return None
+        matches = self._matching_decisions(context.run_dir, task, tool_name, args)
+        return matches[-1] if matches else None
 
     def args_fingerprint(self, args: dict) -> str:
         return json.dumps(args, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -238,6 +267,7 @@ class ToolPermissionPolicy:
         tool_name: str,
         args: dict,
         denial: str,
+        *, explicit_request: bool = False,
     ) -> dict:
         if context.run_id is None or context.run_dir is None:
             raise RuntimeError("Cannot create execution decision without a run directory.")
@@ -253,7 +283,8 @@ class ToolPermissionPolicy:
             "status": "pending",
             "question": (
                 f"Approve one-time execution for task {task['task_id']}? "
-                f"Policy blocked `{tool_name}` because: {denial}"
+                + (f"Agent requested `{tool_name}` because: {denial}. Command: {args.get('command', '')}" if explicit_request
+                   else f"Policy blocked `{tool_name}` because: {denial}")
             ),
             "recommended_option_id": "skip",
             "options": [
@@ -276,6 +307,7 @@ class ToolPermissionPolicy:
             "created_at": now_iso(),
             "metadata": {
                 "kind": "execution_policy_approval",
+                "explicit_request": explicit_request,
                 "task_id": task["task_id"],
                 "tool_name": tool_name,
                 "args_fingerprint": self.args_fingerprint(args),

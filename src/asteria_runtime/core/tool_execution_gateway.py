@@ -235,6 +235,7 @@ class ToolExecutionGateway:
                     telemetry={"duration_ms": duration_ms},
                     file_changes=file_changes,
                 )
+                observation = replace(observation, data={**observation.data, "tool_call_id": tool_call_id})
                 if tool_name == "read_file" and isinstance(args.get("path"), str):
                     observation = replace(observation, data={
                         **observation.data, "path": observation.data.get("path", args["path"]),

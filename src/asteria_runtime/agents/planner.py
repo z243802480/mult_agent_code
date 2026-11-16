@@ -1250,6 +1250,7 @@ class RequirementPlanner:
             "run_command",
             "run_tests",
             "revise_verification",
+            "request_execution_permission",
         ]
         if kind in {"diagnostic", "verification", "research", "decision"}:
             return readonly
@@ -1265,6 +1266,7 @@ class RequirementPlanner:
                 "restore_backup",
                 "run_command",
                 "revise_verification",
+                "request_execution_permission",
                 "todo_read",
                 "todo_write",
                 "remember",
@@ -1282,6 +1284,7 @@ class RequirementPlanner:
             "run_command",
             "run_tests",
             "revise_verification",
+            "request_execution_permission",
             "todo_read",
             "todo_write",
             "remember",

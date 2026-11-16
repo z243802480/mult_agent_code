@@ -92,6 +92,26 @@ def _run(model, tools, *, task=None, transport="tool_use", **kw):
     )
 
 
+@pytest.mark.parametrize("transport", ["json", "tool_use"])
+def test_post_tool_feedback_reaches_next_model_request_without_inventing_actions(transport):
+    responses = [_resp("Inspect", ("read_file", {"path": "sample.txt"})), _resp("Done")]
+    if transport == "json":
+        responses = [_json_resp("Inspect", [{"tool_name": "read_file", "args": {"path": "sample.txt"}}]),
+                     _json_resp("Done", done=True)]
+    model = FakeModelClient(responses)
+    tools = FakeToolRunner([[FakeToolResult(ok=False, data={"workspace_changes": {"created": ["side.bin"]}})]])
+    seen = []
+    def hook(name, payload):
+        if name == "post_tool_observation":
+            seen.append(payload)
+            return TurnControl(additional_context="Specific observed effects need attention.")
+        return TurnControl()
+    result = _run(model, tools, transport=transport, hook=hook)
+    assert result.status == "completed" and len(model.requests) == 2 and len(tools.calls_seen) == 1
+    assert seen[0]["new_observations"][0].data["workspace_changes"]["created"] == ["side.bin"]
+    assert any(m.content == "Specific observed effects need attention." for m in model.requests[1].messages)
+
+
 def test_completes_when_model_stops_calling_tools() -> None:
     model = FakeModelClient(
         [
