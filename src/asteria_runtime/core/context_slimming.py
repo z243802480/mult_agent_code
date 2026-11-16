@@ -88,6 +88,8 @@ def review_context_policy(review_context: dict[str, Any]) -> dict[str, Any]:
     )
     return {
         "mode": fast_path.context_mode,
+        "applies_to": "context_size_only",
+        "review_mode": "model",
         "fast_path": fast_path.to_dict(),
         "reason": _policy_reason(fast_path),
     }
@@ -145,7 +147,7 @@ def _review_target_files(goal_spec: dict[str, Any], task_plan: dict[str, Any]) -
 
 def _policy_reason(fast_path: FastPathPolicy) -> str:
     if fast_path.context_mode == "slim":
-        return "Low-risk fast-path review uses slim context; raw evidence remains in persisted run files."
+        return "Slim context preserves current artifacts and recent history; classification does not approve semantic coverage."
     return "Focused context keeps more evidence because the task is complex or high risk."
 
 

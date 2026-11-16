@@ -126,6 +126,9 @@ class ModelCallLogger:
             "worker_invocation_id": request.metadata.get("worker_invocation_id"),
         }
         estimate = estimate_request_context(request)
+        for name in ("review_artifacts_evidence_id", "review_artifacts_evidence_ref"):
+            if isinstance(request.metadata.get(name), str):
+                record[name] = request.metadata[name]
         record["context_estimate"] = estimate.to_dict()
         if role_contract is not None:
             record["agent_role_contract"] = role_contract

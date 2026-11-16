@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from asteria_runtime.agents import review_agent as review_agent_module
 from asteria_runtime.agents.review_agent import ReviewAgent
-from asteria_runtime.models.base import ChatRequest, ChatResponse
+from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
@@ -52,12 +54,12 @@ def test_overall_uses_real_correctness_score_over_constant() -> None:
     model_with_score = agent._overall({"status": "pass", "score": 0.95}, "pass", real)
     assert model_with_score["score"] == 0.95
 
-    # Pure-deterministic review (model absent) -> the graded correctness verdict is authoritative.
+    # Missing semantic judgment remains unavailable even with measured execution results.
     deterministic = agent._overall(None, "pass", real)
     assert deterministic["status"] == "partial"
-    assert deterministic["score"] == 0.5
-    assert deterministic["reason"].startswith("2/4 verification passed")
-    assert "not artifact or requirement coverage" in deterministic["reason"]
+    assert deterministic["score"] is None
+    assert "unavailable" in deterministic["reason"]
+    assert "do not establish artifact or requirement coverage" in deterministic["reason"]
 
     # ADR-0016 §3: no executable verification AND no model score -> score is None ("unverified"),
     # NOT a fabricated 0.9/0.6/0.2 constant. The status still reflects the deterministic verdict, and
@@ -68,7 +70,7 @@ def test_overall_uses_real_correctness_score_over_constant() -> None:
     assert "unverified" in unverified_model["reason"].lower()
     unverified_deterministic = agent._overall(None, "partial", None)
     assert unverified_deterministic["score"] is None
-    assert "unverified" in unverified_deterministic["reason"].lower()
+    assert "unavailable" in unverified_deterministic["reason"].lower()
 
 
 def test_fallback_total_budget_seconds_parsing() -> None:
@@ -78,6 +80,25 @@ def test_fallback_total_budget_seconds_parsing() -> None:
     # Non-positive disables the cap; booleans fall back to the default.
     assert agent._fallback_total_budget_seconds({"review_fallback_total_seconds": 0}) is None
     assert agent._fallback_total_budget_seconds({"review_fallback_total_seconds": True}) == 120.0
+
+
+@pytest.mark.parametrize("content", ["not JSON", "{}", '{"overall":{"status":"unknown"}}'])
+def test_missing_semantic_judgment_never_promotes_green_execution_checks(content):
+    class InvalidReviewer:
+        calls = 0
+        def chat(self, request):
+            self.calls += 1
+            return ChatResponse(content=content, finish_reason="stop", usage=TokenUsage(1, 1, 2),
+                                model_provider="fake", model_name="invalid-review-fixture", raw_response={})
+    client = InvalidReviewer()
+    agent = ReviewAgent(client, SchemaValidator(Path("schemas")))
+    report = agent.evaluate(_review_context(
+        deterministic_checks={"task_completion_rate": 1.0, "blocked_task_count": 0, "verification_pass_rate": 1.0},
+        correctness_signal={"status": "pass", "score": 1.0, "reason": "All commands passed"},
+    ), "run-unavailable-review")
+    assert client.calls == 1
+    assert report["overall"]["status"] == "partial" and report["overall"]["score"] is None
+    assert report["goal_eval"]["requirement_coverage"] is None
 
 
 def test_review_fallback_stops_after_budget_exceeded(monkeypatch) -> None:

@@ -276,6 +276,12 @@
     },
     "summary": {
       "type": "string"
+    },
+    "review_artifacts_evidence_id": {
+      "type": "string"
+    },
+    "review_artifacts_evidence_ref": {
+      "type": "string"
     }
   }
 }

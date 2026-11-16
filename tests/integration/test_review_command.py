@@ -337,9 +337,11 @@ def test_review_command_writes_eval_and_markdown_reports(tmp_path: Path) -> None
     assert active_goal["current_result"]["review"] == "passed"
 
 
-def test_review_command_uses_deterministic_first_for_fast_path_without_model_client(
-    tmp_path: Path,
+def test_review_command_uses_model_for_single_file_semantic_review(
+    tmp_path: Path, monkeypatch,
 ) -> None:
+    for name in ("AGENT_MODEL_PROVIDER", "AGENT_MODEL_STRONG_PROVIDER", "AGENT_MODEL_MEDIUM_PROVIDER", "AGENT_MODEL_CHEAP_PROVIDER"):
+        monkeypatch.setenv(name, "fake")
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a reviewed module", model_client=FakePlanClient()).run()
     execute = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeExecuteClient()).run()
@@ -351,23 +353,26 @@ def test_review_command_uses_deterministic_first_for_fast_path_without_model_cli
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
     review_tier = eval_report["trajectory_eval"]["review_tier"]
-    assert review_tier["mode"] == "deterministic_first"
-    assert review_tier["accepted_without_model"] is True
-    assert review_tier["fast_path"]["task_kind"] == "simple_file"
-    assert eval_report["goal_eval"]["requirement_coverage"] is None
+    assert review_tier["mode"] == "model"
+    assert review_tier["accepted_without_model"] is False
+    assert eval_report["goal_eval"]["requirement_coverage"] == 1.0  # Explicit fake reviewer judgment.
     assert eval_report["goal_eval"]["task_completion_rate"] == 1.0
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
-    assert cost_report["model_calls"] == 5
+    assert cost_report["model_calls"] == 6
+    review_call = json.loads((run_dir / "model_calls.jsonl").read_text(encoding="utf8").splitlines()[-1])
+    assert review_call["review_artifacts_evidence_id"] == eval_report["artifact_eval"]["current_artifacts_evidence"]["evidence_id"]
     user_progress = [
         json.loads(line)
         for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    assert any(event["title"] == "确定性评审通过" for event in user_progress)
+    assert not any(event["title"] == "确定性评审通过" for event in user_progress)
 
 
-def test_review_command_accepts_recovered_fast_path_worker_failure_without_model_call(
-    tmp_path: Path,
+def test_review_command_reviews_recovered_worker_with_model(
+    tmp_path: Path, monkeypatch,
 ) -> None:
+    for name in ("AGENT_MODEL_PROVIDER", "AGENT_MODEL_STRONG_PROVIDER", "AGENT_MODEL_MEDIUM_PROVIDER", "AGENT_MODEL_CHEAP_PROVIDER"):
+        monkeypatch.setenv(name, "fake")
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a reviewed module", model_client=FakePlanClient()).run()
     execute = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeExecuteClient()).run()
@@ -399,15 +404,17 @@ def test_review_command_accepts_recovered_fast_path_worker_failure_without_model
     assert result.status == "pass"
     eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
     review_tier = eval_report["trajectory_eval"]["review_tier"]
-    assert review_tier["mode"] == "deterministic_first"
-    assert review_tier["accepted_without_model"] is True
+    assert review_tier["mode"] == "model"
+    assert review_tier["accepted_without_model"] is False
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
-    assert cost_report["model_calls"] == 5
+    assert cost_report["model_calls"] == 6
 
 
-def test_review_command_accepts_doc_fast_path_readback_without_model_call(
-    tmp_path: Path,
+def test_review_command_uses_model_for_doc_readback(
+    tmp_path: Path, monkeypatch,
 ) -> None:
+    for name in ("AGENT_MODEL_PROVIDER", "AGENT_MODEL_STRONG_PROVIDER", "AGENT_MODEL_MEDIUM_PROVIDER", "AGENT_MODEL_CHEAP_PROVIDER"):
+        monkeypatch.setenv(name, "fake")
     InitCommand(tmp_path).run()
     plan = PlanCommand(
         tmp_path,
@@ -427,53 +434,10 @@ def test_review_command_accepts_doc_fast_path_readback_without_model_call(
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
     review_tier = eval_report["trajectory_eval"]["review_tier"]
-    assert review_tier["mode"] == "deterministic_first"
-    assert review_tier["accepted_without_model"] is True
-    assert review_tier["fast_path"]["task_kind"] == "doc_update"
+    assert review_tier["mode"] == "model"
+    assert review_tier["accepted_without_model"] is False
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
-    assert cost_report["model_calls"] == 5
-
-
-def test_review_command_requires_command_verification_for_bugfix_fast_path(
-    tmp_path: Path,
-) -> None:
-    blockers = ReviewCommand(tmp_path)._tiered_review_blockers(
-        {
-            "task_completion_rate": 1.0,
-            "blocked_task_count": 0,
-            "verification_call_count": 1,
-            "verification_pass_rate": 1.0,
-            "command_verification_call_count": 0,
-            "command_verification_pass_rate": 0.0,
-            "unrecovered_failed_worker_result_count": 0,
-            "merge_gate_block_count": 0,
-            "pending_runtime_request_count": 0,
-            "cost_status": "within_budget",
-        },
-        fast_path_task_kind="bug_fix",
-    )
-
-    assert "missing_command_verification_call" in blockers
-
-
-def test_fast_path_overall_score_is_unverified_without_executable_verification(
-    tmp_path: Path,
-) -> None:
-    # ADR-0016 §3: a fast-path run with NO executable verification (doc/creative) must NOT report a
-    # fabricated 0.9 green score — the status stays the deterministic "pass" invariant but the score
-    # is None ("unverified"), matching ReviewAgent._overall's de-fabrication.
-    command = ReviewCommand(tmp_path)
-
-    unverified = command._fast_path_overall(None)
-    assert unverified["status"] == "pass"
-    assert unverified["score"] is None
-    assert "unverified" in unverified["reason"].lower()
-
-    # With real executable verification evidence, the score IS the real pass rate (not a constant).
-    verified = command._fast_path_overall({"status": "pass", "score": 0.5, "reason": "1/2 passed"})
-    assert verified["status"] == "pass"
-    assert verified["score"] == 0.5
-    assert "not artifact or requirement coverage" in verified["reason"]
+    assert cost_report["model_calls"] == 6
 
 
 def test_review_command_treats_discarded_replanned_worker_failure_as_recovered(
@@ -573,10 +537,11 @@ def test_review_command_falls_back_to_deterministic_report_for_non_json_response
 
     result = ReviewCommand(tmp_path, run_id=plan.run_id, model_client=FakeNonJsonReviewClient()).run()
 
-    assert result.status == "pass"
+    assert result.status == "partial"
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
-    assert eval_report["overall"]["status"] == "pass"
+    assert eval_report["overall"]["status"] == "partial"
+    assert eval_report["overall"]["score"] is None
     assert "deterministic runtime checks" in eval_report["overall"]["reason"]
     assert "review_model_parse_error" in eval_report["trajectory_eval"]
 

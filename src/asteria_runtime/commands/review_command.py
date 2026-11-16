@@ -14,8 +14,8 @@ from asteria_runtime.core.agent_harness import (
 from asteria_runtime.core.active_next_step import capability_feedback_active_next_step
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.budget import BudgetController
-from asteria_runtime.core.fast_path_policy import classify_fast_path
-from asteria_runtime.core.verification_guidance import VERIFICATION_SCOPE_NOTE
+from asteria_runtime.core.review_artifacts import collect_review_artifacts
+from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
 from asteria_runtime.core.real_provider_matrix import (
@@ -289,6 +289,14 @@ class ReviewCommand:
         )
 
         review_context = self._review_context(agent_dir, run_dir, run_id)
+        artifacts = collect_review_artifacts(
+            RuntimeContext(self.root, run_id, policy, self.validator),
+            review_context["goal_spec"], review_context["task_plan"],
+        )
+        artifact_path = run_dir / (artifacts["evidence_id"] + ".json")
+        self.store.write(artifact_path, artifacts, "review_artifacts")
+        review_context["current_artifacts"] = artifacts
+        review_context["current_artifacts_ref"] = str(artifact_path)
         review_context["prompt_envelope"] = prompt_envelope.context_ref()
         review_context["tool_observations"] = load_raw_tool_observations(run_dir)
         review_context["latest_observation_plan"] = (
@@ -311,48 +319,46 @@ class ReviewCommand:
             phase="review",
             status="running",
             title="评审分析中",
-            summary="正在用分层评审策略分析执行证据，判断目标完成情况。",
+            summary="正在核对当前产物、原始需求和执行证据，判断目标完成情况。",
             display_level="main",
         )
-        eval_report = self._deterministic_tiered_eval_report(review_context, run_id)
-        if eval_report is not None:
-            event_logger.record(
-                run_id,
-                "tiered_review_deterministic_pass",
-                "ReviewCommand",
-                "Deterministic-first review accepted the fast-path run without a model call.",
-                eval_report["trajectory_eval"].get("review_tier", {}),
+        # Execution checks measure execution, not semantic requirement coverage.
+        initialization_error = None
+        try:
+            client = self._model_client(run_dir, budget)
+        except Exception as exc:
+            client = None
+            initialization_error = {"error_type": type(exc).__name__}
+        reviewer = ReviewAgent(client, self.validator)
+        model_review_context = slim_review_context(review_context) if self.model_client is None else review_context
+        try:
+            eval_report = reviewer.evaluate(model_review_context, run_id)
+        except Exception:
+            self.store.write(
+                cost_report_path,
+                self._merge_cost_reports(budget.cost_report(), self._read_cost(cost_report_path, run_id)),
+                "cost_report",
             )
-            progress.record(
-                run_id=run_id,
-                channel="validation",
-                event_type="validation_result",
-                phase="review",
-                status="completed",
-                title="确定性评审通过",
-                summary="执行证据已满足快路径评审条件，无需调用强模型复审。",
-                data={"validation": eval_report["trajectory_eval"].get("review_tier", {})},
-                display_level="main",
-            )
-        else:
-            reviewer = ReviewAgent(self._model_client(run_dir, budget), self.validator)
-            model_review_context = (
-                slim_review_context(review_context)
-                if self.model_client is None
-                else review_context
-            )
-            try:
-                eval_report = reviewer.evaluate(model_review_context, run_id)
-            except Exception:
-                self.store.write(
-                    cost_report_path,
-                    self._merge_cost_reports(
-                        budget.cost_report(),
-                        self._read_cost(cost_report_path, run_id),
-                    ),
-                    "cost_report",
-                )
-                raise
+            raise
+        if initialization_error is not None:
+            eval_report["trajectory_eval"]["review_model_initialization_error"] = initialization_error
+        eval_report["artifact_eval"]["current_artifacts_evidence"] = {
+            "evidence_ref": str(artifact_path), "evidence_id": artifacts["evidence_id"],
+            "complete": artifacts["complete"],
+        }
+        if not artifacts["complete"] and eval_report["overall"]["status"] == "pass":
+            eval_report["trajectory_eval"]["model_overall_before_evidence_check"] = dict(eval_report["overall"])
+            eval_report["goal_eval"]["requirement_coverage"] = None
+            eval_report["overall"] = {
+                "status": "partial", "score": None,
+                "reason": "Current artifact evidence is incomplete; missing or partial content cannot establish full requirement coverage.",
+            }
+        assessment = eval_report["trajectory_eval"].get("review_assessment", {})
+        eval_report["trajectory_eval"]["review_tier"] = {
+            "mode": "model" if assessment.get("status") == "assessed" else "unavailable",
+            "accepted_without_model": False,
+            "reason": "Semantic review uses current artifact evidence; execution checks alone cannot approve the result.",
+        }
         eval_report["trajectory_eval"] = dict(eval_report.get("trajectory_eval") or {})
         eval_report["trajectory_eval"]["route_health"] = review_context["route_health"]
         eval_report["trajectory_eval"]["model_selection"] = review_context["model_selection"]
@@ -479,130 +485,6 @@ class ReviewCommand:
             ),
             failure_classification=failure_classification,
         )
-
-    def _deterministic_tiered_eval_report(self, review_context: dict, run_id: str) -> dict | None:
-        if self.model_client is not None:
-            return None
-        goal_spec = review_context.get("goal_spec")
-        task_plan = review_context.get("task_plan")
-        checks = review_context.get("deterministic_checks")
-        cost_report = review_context.get("cost_report")
-        if not isinstance(goal_spec, dict) or not isinstance(task_plan, dict):
-            return None
-        if not isinstance(checks, dict) or not isinstance(cost_report, dict):
-            return None
-        fast_path = classify_fast_path(
-            str(goal_spec.get("original_goal") or goal_spec.get("normalized_goal") or ""),
-            target_files=self._review_target_files(goal_spec, task_plan),
-        )
-        if fast_path.risk_tier == "high":
-            return None
-        blockers = self._tiered_review_blockers(
-            checks,
-            review_tier=fast_path.review_tier,
-            fast_path_task_kind=fast_path.task_kind,
-        )
-        if blockers:
-            return None
-        report = {
-            "schema_version": "0.1.0",
-            "run_id": run_id,
-            "goal_eval": {"requirement_coverage": None, "task_completion_rate": 1.0},
-            "artifact_eval": {"artifacts_present": True, "logs_present": True},
-            "outcome_eval": {"verification_pass_rate": 1.0, "run_success": True},
-            "trajectory_eval": {
-                "blocked_task_count": 0,
-                "review_tier": {
-                    "mode": "deterministic_first",
-                    "accepted_without_model": True,
-                    "fast_path": fast_path.to_dict(),
-                    "reason": "Fast-path run completed with deterministic verification evidence.",
-                },
-            },
-            "cost_eval": {
-                "status": cost_report.get("status", "within_budget"),
-                "model_calls": cost_report.get("model_calls", 0),
-                "tool_calls": cost_report.get("tool_calls", 0),
-            },
-            "overall": self._fast_path_overall(review_context.get("correctness_signal")),
-        }
-        self.validator.validate("eval_report", report)
-        return report
-
-    def _fast_path_overall(self, correctness: dict | None) -> dict:
-        # ADR-0016 §3: the fast-path status ("pass") is a real deterministic invariant (all active
-        # tasks done, no blockers), but the SCORE must be evidence, never a fabricated constant.
-        # Use the real verification pass rate when the run ran executable verification; when it did
-        # NOT (e.g. a doc/creative fast-path with no run_tests/run_command), the score is None
-        # ("unverified") — the same de-fabrication applied to ReviewAgent._overall, not a fake 0.9.
-        base_reason = (
-            "Deterministic-first review passed: all active tasks are done, "
-            "verification passed, and no unresolved runtime blockers were found."
-        )
-        if isinstance(correctness, dict):
-            return {
-                "status": "pass",
-                "score": float(correctness["score"]),
-                "reason": f"{base_reason} Score is the real verification pass rate "
-                f"({float(correctness['score']):.2f}). {VERIFICATION_SCOPE_NOTE}",
-            }
-        return {
-            "status": "pass",
-            "score": None,
-            "reason": (
-                f"{base_reason} Unverified: no executable verification (run_tests/run_command) ran, "
-                "so the score is not a real pass rate; needs an explicit human accept."
-            ),
-        }
-
-    def _review_target_files(self, goal_spec: dict, task_plan: dict) -> list[str]:
-        files: list[str] = []
-        for item in goal_spec.get("target_outputs") or []:
-            if isinstance(item, str) and item:
-                files.append(item)
-        for task in task_plan.get("tasks") or []:
-            if not isinstance(task, dict):
-                continue
-            for item in task.get("expected_artifacts") or []:
-                if isinstance(item, str) and item:
-                    files.append(item)
-        return list(dict.fromkeys(files))
-
-    def _tiered_review_blockers(
-        self,
-        checks: dict,
-        *,
-        review_tier: str = "deterministic",
-        fast_path_task_kind: str | None = None,
-    ) -> list[str]:
-        blockers: list[str] = []
-        if float(checks.get("task_completion_rate") or 0) < 1.0:
-            blockers.append("task_completion_incomplete")
-        if int(checks.get("blocked_task_count") or 0) > 0:
-            blockers.append("blocked_tasks_present")
-        requires_command_verification = fast_path_task_kind in {
-            "bug_fix",
-            "single_file_bugfix",
-        }
-        if review_tier in {"deterministic", "deterministic_then_medium"} and not requires_command_verification:
-            if int(checks.get("verification_call_count") or 0) <= 0:
-                blockers.append("missing_verification_call")
-            if float(checks.get("verification_pass_rate") or 0) < 1.0:
-                blockers.append("verification_not_fully_passing")
-        else:
-            if int(checks.get("command_verification_call_count") or 0) <= 0:
-                blockers.append("missing_command_verification_call")
-            if float(checks.get("command_verification_pass_rate") or 0) < 1.0:
-                blockers.append("command_verification_not_fully_passing")
-        if int(checks.get("unrecovered_failed_worker_result_count") or 0) > 0:
-            blockers.append("failed_worker_results_present")
-        if int(checks.get("merge_gate_block_count") or 0) > 0:
-            blockers.append("merge_gate_blocks_present")
-        if int(checks.get("pending_runtime_request_count") or 0) > 0:
-            blockers.append("pending_runtime_requests_present")
-        if str(checks.get("cost_status") or "within_budget") not in {"within_budget", "healthy"}:
-            blockers.append("cost_not_within_budget")
-        return blockers
 
     def _result_blockers(
         self,
