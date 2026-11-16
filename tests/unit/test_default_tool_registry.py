@@ -12,6 +12,7 @@ def test_default_tool_registry_contains_mvp_tools() -> None:
         "read_file",
         "recall_memory",
         "remember",
+        "request_execution_permission",
         "restore_backup",
         "revise_verification",
         "run_command",

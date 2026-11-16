@@ -35,6 +35,7 @@ def test_agent_harness_builds_model_visible_capability_manifest() -> None:
             "read_file",
             "recall_memory",
             "remember",
+            "request_execution_permission",
             "revise_verification",
             "run_command",
             "search_text",

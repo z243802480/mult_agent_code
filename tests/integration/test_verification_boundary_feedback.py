@@ -4,15 +4,19 @@ import sys
 import pytest
 
 from asteria_runtime.commands.decide_command import DecideCommand
+from asteria_runtime.commands.accept_command import AcceptCommand
 from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.commands.resume_command import ResumeCommand
+from asteria_runtime.commands.review_command import ReviewCommand
 from tests.integration.test_completion_verification_feedback import CHECK, call, prepare, response
+from tests.integration.test_review_current_artifacts import Reviewer
 
 
 def scoped(root):
     run_id, run, store = prepare(root)
     goal = store.read(run / "goal_spec.json", "goal_spec")
     goal["edit_boundary"] = {"mode": "restricted", "paths": ["src/notes_tool.py"]}
+    goal["target_outputs"] = ["src/notes_tool.py"]
     store.write(run / "goal_spec.json", goal, "goal_spec")
     return run_id, run, store
 
@@ -100,3 +104,14 @@ def test_requested_exact_execution_pauses_deduplicates_and_resumes_with_real_dec
     checks = [o for o in observations if o["tool_name"] == "run_tests"]
     assert checks and all(o["ok"] == (choice == "approve_once") for o in checks)
     assert not (run / "runtime_requests.jsonl").exists()  # No legacy action FSM or auto scope expansion.
+    before_tools = (run / "tool_calls.jsonl").read_bytes()
+    reviewer = Reviewer()
+    review = ReviewCommand(tmp_path, run_id=run_id, model_client=reviewer).run()
+    assert review.status == "pass"
+    payload = json.loads(reviewer.requests[0].messages[-1].content)
+    assert payload["current_artifacts"]["review_basis"]["observed_outside_current_edit_boundary"] == []
+    assert any(f.get("content", "").strip() == "VALUE = 1" for f in payload["current_artifacts"]["files"])
+    accepted = AcceptCommand(tmp_path, run_id=run_id, skip_review=True).run()
+    assert accepted.accepted
+    assert json.loads((run / "run.json").read_text(encoding="utf8"))["current_phase"] == "ACCEPTED"
+    assert (run / "tool_calls.jsonl").read_bytes() == before_tools

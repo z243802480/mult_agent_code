@@ -56,6 +56,7 @@ def test_tool_surface_contract_is_ready_when_all_model_primitives_have_backends(
             "todo_write",
             "remember",
             "recall_memory",
+            "request_execution_permission",
             "revise_verification",
         ],
         allow_shell=True,

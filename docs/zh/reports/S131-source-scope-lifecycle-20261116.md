@@ -1,5 +1,7 @@
 # S131 — 约束来源、缓存口径与新目标完整流程
 
+> 后续状态见 [有界验证/授权闭环报告](S131-bounded-verification-loop-20261116.md)（1.2.232–1.2.233）。本报告保留前次来源/范围拒绝链快照；下一项已实际推进，不能把本报告的“待做”当当前状态。
+
 2026-11-16。执行真源仍为总计划 §16.2，[brief](../../../benchmarks/reference_briefs/S131-content-preservation-contract.md)。本轮接续[Review实证](S131-review-artifact-proof-20261116.md)；旧四轮编码失败及其账本不改。
 
 ## 当前结论
