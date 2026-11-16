@@ -47,10 +47,15 @@ def test_default_review_reaches_model_with_current_content_despite_green_histori
     assert exposed_schema == SchemaValidator(Path("schemas")).schema("eval_report")
     assert "overall" in exposed_schema["required"]
     payload = json.loads(client.requests[0].messages[-1].content)
-    assert payload["deterministic_checks"]["task_completion_rate"] == 1
+    if "review_input_projection" in payload:
+        assert "deferred_evidence_ref" in payload["deterministic_checks"]
+    else:
+        assert payload["review_tools"]["tools"] == []
+        assert payload["deterministic_checks"]["task_completion_rate"] == 1
     assert payload["current_artifacts"]["files"][0]["content"].splitlines() == path.read_text(encoding="utf8").splitlines()
     store = JsonStore(SchemaValidator(Path("schemas")))
     report = store.read(run / "eval_report.json", "eval_report")
+    assert report["goal_eval"]["task_completion_rate"] == 1
     evidence = report["artifact_eval"]["current_artifacts_evidence"]
     assert client.requests[0].metadata["review_artifacts_evidence_id"] == evidence["evidence_id"]
     assert client.requests[0].metadata["review_artifacts_evidence_ref"] == evidence["evidence_ref"]

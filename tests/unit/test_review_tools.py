@@ -24,13 +24,13 @@ def command(code):
     return f'"{sys.executable}" -c "{code}"'
 
 
-def setup(root, **kwargs):
+def setup(root, *, content="ANSWER = 41\n", **kwargs):
     root = root.resolve()
     validator = SchemaValidator(Path("schemas"))
     policy = merge_policy_defaults({})
     policy["permissions"]["allow_shell"] = True
     policy["permission_mode"] = "auto"
-    (root / "answer.py").write_text("ANSWER = 41\n", encoding="utf8")
+    (root / "answer.py").write_text(content, encoding="utf8")
     ctx = RuntimeContext(root, "run-review", policy, validator, budget=BudgetController(policy, "run-review"))
     goal = {"target_outputs": ["answer.py"]}
     artifacts = collect_review_artifacts(ctx, goal, {})

@@ -13,8 +13,9 @@ from asteria_runtime.tools.base import ToolResult
 MAX_SECTION_CHARS = 262_144
 MAX_SNAPSHOT_CHARS = 1_048_576
 MAX_INDEX_ROWS = 64
-INLINE_SECTION_CHARS = 8_000
-INLINE_HISTORY_CHARS = 24_000
+GOAL_AUTHORITY_FIELDS = {"schema_version", "goal_id", "original_goal", "edit_boundary", "content_preservation"}
+TASK_SCOPE_FIELDS = {"task_id", "task_kind", "risk", "parallel_safety", "depends_on", "read_scope",
+                     "write_scope", "edit_boundary", "allowed_tools", "allowed_mcp", "allowed_skills"}
 
 
 def _json(value) -> str:
@@ -81,36 +82,57 @@ class ReviewEvidence:
                     if origin["tool_call_id"] == row["tool_call_id"]:
                         origin["evidence_ref"] = ref
         self.view = deepcopy(review_context)
-        history_remaining = INLINE_HISTORY_CHARS
+        deferred_paths = []
 
         def project(container: dict, key: str, path: str) -> None:
-            nonlocal history_remaining
             if key not in container:
                 return
-            text = _json(container[key])
             reference = self._freeze(path, container[key])
-            if len(text) > INLINE_SECTION_CHARS or len(text) > history_remaining:
-                container[key] = {"deferred_evidence_ref": reference, "characters": len(text),
-                                  "source": "historical_context_not_current_review_conclusion"}
-            else:
-                history_remaining -= len(text)
+            section = self.sections[reference]
+            container[key] = {"deferred_evidence_ref": reference, "characters": section["characters"],
+                              "stored_characters": section["stored_characters"], "truncated": section["truncated"],
+                              "source": "process_evidence_not_current_artifact_verdict"}
+            deferred_paths.append(path)
+
+        for key, kept in (("goal_spec", GOAL_AUTHORITY_FIELDS), ("task_plan", {"schema_version"})):
+            original = self.view.get(key)
+            if isinstance(original, dict):
+                project(self.view, key, key)
+                self.view[key].update({k: v for k, v in original.items() if k in kept})
+                if key == "task_plan":
+                    self.view[key]["projection"] = "runtime_scopes_only"
+                    self.view[key]["tasks"] = [{k: v for k, v in task.items() if k in TASK_SCOPE_FIELDS}
+                                               for task in original.get("tasks", []) if task.get("status") != "discarded"]
+        focus = (self.view.get("current_artifacts") or {}).get("review_focus")
+        if isinstance(focus, dict):
+            criteria = focus.get("criteria")
+            if isinstance(criteria, list):
+                project(focus, "criteria", "current_artifacts.review_focus.criteria")
+                focus["all_criteria_evidence"] = focus["criteria"]
+                focus["criteria"] = [c for c in criteria if c.get("source_kind") in
+                                     {"user_request", "current_project_guidance"}]
+            project(focus, "task_evidence", "current_artifacts.review_focus.task_evidence")
 
         trajectory = self.view.get("trajectory")
         if isinstance(trajectory, dict):
             for key in list(trajectory):
-                if key in {"route_health", "model_selection"}:
-                    continue
                 value = trajectory[key]
                 if key == "runtime_os_evidence" and isinstance(value, dict):
                     for child in list(value):
-                        if child != "summary":
-                            project(value, child, f"trajectory.{key}.{child}")
+                        project(value, child, f"trajectory.{key}.{child}")
                 else:
                     project(trajectory, key, f"trajectory.{key}")
         for key in ("tool_observations", "tool_observation_actions", "latest_observation_plan",
-                    "collaboration_summary", "latest_real_provider_matrix"):
+                    "collaboration_summary", "latest_real_provider_matrix", "deterministic_checks",
+                    "correctness_signal", "route_health", "model_selection"):
             project(self.view, key, key)
-        self.view["review_evidence"] = {"verification_origins": self.origins, "catalog": self.catalog(),
+        origin_ref = self._freeze("verification_origins", self.origins)
+        manifest = {"mode": "current_artifact_first", "deferred_paths": deferred_paths,
+                    "runtime_normalization": "original_complete_context"}
+        manifest_ref = self._freeze("input_projection", manifest)
+        self.view["review_input_projection"] = {**manifest, "manifest_ref": manifest_ref}
+        self.view["review_evidence"] = {"verification_origins": {"deferred_evidence_ref": origin_ref,
+                                         "requirement_coverage": "unassessed"}, "catalog": self.catalog(),
                                         "source_snapshot_id": snapshot_id}
         self.path = context.run_dir / f"{snapshot_id}-evidence.json" if context.run_dir else None
         if self.path is not None:

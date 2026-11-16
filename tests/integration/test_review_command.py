@@ -143,6 +143,25 @@ class FakeDocReadbackExecuteClient:
 class FakeReviewClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         payload = json.loads(request.messages[-1].content)
+        # White-box persistence assertions, not a simulated model tool grant.
+        sections = {}
+        if "review_input_projection" in payload:
+            snapshot_path = Path(payload["current_artifacts_ref"])
+            stored = json.loads(snapshot_path.with_name(snapshot_path.stem + "-evidence.json").read_text(encoding="utf8"))
+            sections = {s["evidence_ref"]: s for s in stored["sections"]}
+            assert "deferred_evidence_ref" in payload["deterministic_checks"]
+            assert payload["review_input_projection"]["mode"] == "current_artifact_first"
+        def original(value):
+            if isinstance(value, dict) and "deferred_evidence_ref" in value:
+                section = sections[value["deferred_evidence_ref"]]
+                assert not section["truncated"]
+                return json.loads(section["content"])
+            if isinstance(value, dict):
+                return {key: original(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [original(item) for item in value]
+            return value
+        payload = original(payload)
         assert "runtime_os_evidence" in payload["trajectory"]
         assert "prompt_envelope" in payload
         assert "capability_manifest" in payload["prompt_envelope"]

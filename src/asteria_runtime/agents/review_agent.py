@@ -168,8 +168,8 @@ class ReviewAgent:
     def _evaluate_with_tools(self, review_context: dict, run_id: str) -> dict:
         assert self.tools is not None and self.model_client is not None
         tools = self.tools
-        review_context = tools.bind_evidence(review_context)
-        review_context = {**review_context, "review_tools": tools.describe()}
+        model_review_context = tools.bind_evidence(review_context)
+        model_review_context = {**model_review_context, "review_tools": tools.describe()}
         role = role_contract_for(role="ReviewAgent", purpose="run_review", policy=tools.context.policy)
         result = None
         call_errors = []
@@ -189,7 +189,7 @@ class ReviewAgent:
             for tier in self._fallback_tiers(review_context):
                 if tools.exhausted() or tools.model_calls >= 8:
                     break
-                request = self._request(review_context, run_id, tier, role.to_dict())
+                request = self._request(model_review_context, run_id, tier, role.to_dict())
                 try:
                     result = run_model_driven_turn(
                         model_client=tools.bounded_client(self.model_client), tool_runner=tools,

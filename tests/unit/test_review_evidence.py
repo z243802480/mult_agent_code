@@ -62,10 +62,13 @@ def test_scoped_owner_and_paging_bounds(tmp_path):
     tools.finish("completed")
 
 
-def test_no_tools_retains_original_context_and_small_history_stays_inline(tmp_path):
+def test_small_history_is_on_demand_and_no_tools_retains_original_context(tmp_path):
     tools = setup(tmp_path)
     source = {"trajectory": {"events": ["small"]}}
-    assert tools.bind_evidence(source)["trajectory"] == source["trajectory"]
+    view = tools.bind_evidence(source)
+    ref = view["trajectory"]["events"]["deferred_evidence_ref"]
+    assert json.loads(tools.evidence.sections[ref]["content"]) == ["small"]
+    assert source == {"trajectory": {"events": ["small"]}}
     tools.allowed.clear()
     assert tools.bind_evidence(source) is source
     tools.finish("completed")
@@ -107,11 +110,14 @@ def test_model_reads_history_then_executes_independent_check_and_coverage_stays_
                              "overall": {"status": "fail", "score": 0, "reason": "Fresh assertion failed"}})
 
     report = ReviewAgent(Model(), tools.context.validator, tools).evaluate(
-        {"trajectory": {"events": ["unique-original" * 2000]}}, "run-review")
+        {"trajectory": {"events": ["unique-original" * 2000]},
+         "deterministic_checks": {"task_completion_rate": 1, "verification_pass_rate": 0.75}}, "run-review")
     assert report["overall"]["status"] == "fail"
     assert report["goal_eval"]["requirement_coverage"] == 0.8
     assert report["goal_eval"]["requirement_coverage_source"] == "model_assessment"
     assert report["goal_eval"]["requirement_coverage_runtime_verified"] is False
+    assert report["goal_eval"]["task_completion_rate"] == 1
+    assert report["outcome_eval"]["verification_pass_rate"] == 0.75
     assert report["trajectory_eval"]["review_validation"]["evidence_read_count"] == 1
     assert report["trajectory_eval"]["review_validation"]["command_check_count"] == 1
     assert (tmp_path / "answer.py").read_text() == "ANSWER = 41\n"
@@ -132,6 +138,68 @@ def test_payload_preserves_page_as_text():
     content = '"\\n' * 1000
     payload = _model_facing_payload("inspect_evidence", {"content": content, "next_offset": 3000})
     assert payload.split("\n", 1)[1] == content
+
+
+def test_process_judgments_are_not_prefilled_but_scope_current_facts_and_evidence_survive(tmp_path):
+    tools = setup(tmp_path)
+    original_scope = {"task_id": "t", "read_scope": ["answer.py"], "write_scope": [], "allowed_tools": ["read_file"]}
+    for judgment in ["INHERITED_PASS", "INHERITED_FAIL"]:
+        source = {"goal_spec": {"original_goal": "ANSWER must equal 42; equivalent expressions are valid",
+                                "normalized_goal": judgment, "edit_boundary": {"mode": "restricted", "paths": ["answer.py"]}},
+                  "task_plan": {"tasks": [{**original_scope, "status": "done", "acceptance": [judgment]},
+                                          {"task_id": "old", "status": "discarded", "write_scope": ["obsolete/"]}]},
+                  "trajectory": {"events": [judgment], "runtime_os_evidence": {"summary": {"reason": judgment}}},
+                  "deterministic_checks": {"task_completion_rate": 1}, "correctness_signal": {"reason": judgment},
+                  "current_artifacts": {"files": ["complete current artifact"], "review_basis": {"runtime_budget": {"limit": 8}},
+                    "review_focus": {"criteria": [{"source_kind": "user_request", "text": "ANSWER must equal 42"},
+                                                  {"source_kind": "model_proposal", "text": judgment}]}},
+                  "cost_report": {"model_calls": 2}, "policy": {"permissions": {"allow_shell": False}}}
+        before = json.dumps(source, sort_keys=True)
+        view = tools.bind_evidence(source)
+        assert judgment not in json.dumps(view)
+        assert view["goal_spec"]["original_goal"] == source["goal_spec"]["original_goal"]
+        assert view["goal_spec"]["edit_boundary"] == source["goal_spec"]["edit_boundary"]
+        assert view["task_plan"]["tasks"] == [original_scope]
+        for key in ["policy", "cost_report"]:
+            assert view[key] == source[key]
+        for key in ["files", "review_basis"]:
+            assert view["current_artifacts"][key] == source["current_artifacts"][key]
+        assert view["current_artifacts"]["review_focus"]["criteria"] == source["current_artifacts"]["review_focus"]["criteria"][:1]
+        for key in ["goal_spec", "task_plan", "deterministic_checks", "correctness_signal"]:
+            ref = view[key]["deferred_evidence_ref"]
+            assert json.loads(tools.evidence.sections[ref]["content"]) == source[key]
+        assert json.dumps(source, sort_keys=True) == before
+        assert view["review_input_projection"]["runtime_normalization"] == "original_complete_context"
+    tools.finish("completed")
+
+
+@pytest.mark.parametrize("expression,valid", [("42", True), ("6 * 7", True), ("-(6 * 7)", False)])
+def test_independent_check_accepts_equivalent_expression_and_rejects_real_defect(tmp_path, expression, valid):
+    tools = setup(tmp_path, content=f"ANSWER = {expression}\n")
+
+    class Model:
+        turn = 0
+
+        def chat(self, request):
+            self.turn += 1
+            if self.turn == 1:
+                payload = json.loads(request.messages[1].text())
+                assert "INHERITED_UNQUALIFIED_PASS" not in json.dumps(payload)
+                assert payload["current_artifacts"]["files"][0]["status"] == "complete"
+                assert payload["current_artifacts"]["files"][0]["content"].splitlines() == [f"ANSWER = {expression}"]
+                return response({"tool_calls": [{"tool_name": "run_tests", "args": {
+                    "command": command("from answer import ANSWER; assert ANSWER == 42, 'value mismatch'")}}]})
+            assert ("exited 0" if valid else "value mismatch") in request.messages[-1].text()
+            return response({"overall": {"status": "pass" if valid else "fail", "score": int(valid), "reason": "Current value checked"}})
+
+    source = {"goal_spec": {"original_goal": "ANSWER must equal 42; equivalent expressions are valid"},
+              "current_artifacts": tools.artifacts,
+              "trajectory": {"events": ["INHERITED_UNQUALIFIED_PASS"]},
+              "deterministic_checks": {"task_completion_rate": 1}}
+    report = ReviewAgent(Model(), tools.context.validator, tools).evaluate(source, "run-review")
+    assert report["overall"]["status"] == ("pass" if valid else "fail")
+    assert report["trajectory_eval"]["review_validation"]["command_check_count"] == 1
+    assert (tmp_path / "answer.py").read_text() == f"ANSWER = {expression}\n"
 
 
 def test_review_machine_description_matches_execution_permissions_without_grant(tmp_path):
