@@ -68,7 +68,11 @@ def test_revision_is_explicit_and_preserves_required_checks_and_freshness(tmp_pa
                                       + ("AUTHORITY_TAIL_ONLY" if long_guidance else ""), encoding="utf8")
     InitCommand(tmp_path).run()
     planner = Planner()
-    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=planner).run()
+    # This scenario protects an actual user check. A model's strategy alone is
+    # revisable on newly sourced goals; it must not stand in for user authority.
+    plan = PlanCommand(
+        tmp_path, f"create a tiny notes tool and preserve this check: {CHECK}", model_client=planner,
+    ).run()
     assert "verification_authority" not in planner.planning_prompt
     assert "AUTHORITY_TAIL_ONLY" not in planner.planning_prompt
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
