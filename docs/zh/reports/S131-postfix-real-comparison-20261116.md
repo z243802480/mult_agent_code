@@ -72,3 +72,5 @@ WSL 证据目录均在 `~/.cache/asteria-evaluations/`：A 为 `s131-postfix-que
 GitHub API 实查 Verify workflow 的状态为 **disabled_manually**，已核对的四个提交均没有 Verify run 或 check-run；因此远端验证 **NOT RUN**，不借用旧 `9a0cb3e` 的绿色 CI。本轮没有调整工作流开关或配置密钥。
 
 下一步保留 ACTIVE_SLICE=S131：用 D 的只读副本核实现有 Review 能否识别真实格式缺陷，再决定是否修共享验收覆盖的责任链；不预设一定缺功能、不向 runtime 加 RST 专用补丁。后续新任务用冻结 v4，不再同题刷绿。只有完整独立验收合格才正式 Review/Accept；shell 外搬移仍单列，不放宽破坏性 shell 权限，不外推小时级自主能力。
+
+后续快照（2026-11-16）：上述下一项已执行，详见[Review实证与责任链修复](S131-review-artifact-proof-20261116.md)。基线0模型直接通过两个真实负控，修复后已识别短标题线和错章节；产物正控仍有历史缓存范围疑义，整组未全过。以上原四轮结果/正式Review与Accept未运行的事实不改；后续只在独立副本Review，不给原失败补签。
