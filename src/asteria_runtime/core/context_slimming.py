@@ -28,6 +28,12 @@ def project_review_evidence(review_context: dict[str, Any]) -> dict[str, Any]:
     persisted ledgers are untouched. This also applies to focused/high-risk reviews.
     """
     projected = deepcopy(review_context)
+    if "current_artifacts" in projected:
+        current = projected.pop("current_artifacts")
+        if isinstance(current, dict) and "review_focus" in current:
+            focus = current.pop("review_focus")
+            current = {"review_focus": focus, **current}
+        projected = {"current_artifacts": current, **projected}
     removed = {"row_summaries": 0, "commands": 0, "rendered_payloads": 0}
     trajectory = projected.get("trajectory")
     groups = [projected.get("tool_observations")]

@@ -267,6 +267,211 @@
         }
       },
       "additionalProperties": false
+    },
+    "review_focus": {
+      "type": "object",
+      "required": [
+        "changes",
+        "criteria",
+        "task_evidence",
+        "omitted_criteria",
+        "omitted_write_observations",
+        "semantic_coverage",
+        "original_request_ref",
+        "baseline_scope",
+        "omitted_tasks"
+      ],
+      "properties": {
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "current_content_sha256",
+              "status",
+              "baseline",
+              "diff",
+              "omitted_diff_bytes",
+              "reason"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "current_content_sha256": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "unavailable",
+                  "complete",
+                  "partial"
+                ]
+              },
+              "baseline": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "required": [
+                  "source",
+                  "backup_id",
+                  "manifest_ref",
+                  "task_id",
+                  "tool_call_id",
+                  "observation_id",
+                  "existed",
+                  "content_sha256"
+                ],
+                "properties": {
+                  "source": {
+                    "enum": [
+                      "recorded_pre_tool_backup"
+                    ]
+                  },
+                  "backup_id": {
+                    "type": "string"
+                  },
+                  "manifest_ref": {
+                    "type": "string"
+                  },
+                  "task_id": {
+                    "type": "string"
+                  },
+                  "tool_call_id": {
+                    "type": "string"
+                  },
+                  "observation_id": {
+                    "type": "string"
+                  },
+                  "existed": {
+                    "type": "boolean"
+                  },
+                  "content_sha256": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "diff": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "omitted_diff_bytes": {
+                "type": "integer"
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "text",
+              "source_ref",
+              "source_kind",
+              "task_id",
+              "truncated"
+            ],
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "source_ref": {
+                "type": "string"
+              },
+              "source_kind": {
+                "enum": [
+                  "model_proposal",
+                  "task_contract"
+                ]
+              },
+              "task_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "truncated": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "task_evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "task_id",
+              "observation_ids",
+              "omitted_observations",
+              "relation"
+            ],
+            "properties": {
+              "task_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "observation_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "omitted_observations": {
+                "type": "integer"
+              },
+              "relation": {
+                "enum": [
+                  "same_task_only_not_criterion_coverage"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "omitted_criteria": {
+          "type": "integer"
+        },
+        "omitted_write_observations": {
+          "type": "integer"
+        },
+        "semantic_coverage": {
+          "enum": [
+            "unassessed"
+          ]
+        },
+        "original_request_ref": {
+          "enum": [
+            "review_basis.original_request"
+          ]
+        },
+        "baseline_scope": {
+          "type": "string"
+        },
+        "omitted_tasks": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

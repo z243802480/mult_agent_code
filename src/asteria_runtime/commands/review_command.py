@@ -15,6 +15,7 @@ from asteria_runtime.core.active_next_step import capability_feedback_active_nex
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.budget import BudgetController, budget_evidence
 from asteria_runtime.core.review_artifacts import collect_review_artifacts, constrain_review_approval, review_basis
+from asteria_runtime.core.review_focus import collect_review_focus
 from asteria_runtime.core.edit_boundary import observed_outside_edit_boundary
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.policy_config import load_policy_config
@@ -313,12 +314,16 @@ class ReviewCommand:
         )
         if artifacts["review_basis"]["project_guidance"]["status"] == "partial":
             artifacts["complete"] = False
+        review_context["tool_observations"] = load_raw_tool_observations(run_dir)
+        artifacts["review_focus"] = collect_review_focus(
+            RuntimeContext(self.root, run_id, policy, self.validator), artifacts,
+            review_context["goal_spec"], review_context["task_plan"], review_context["tool_observations"],
+        )
         artifact_path = run_dir / (artifacts["evidence_id"] + ".json")
         self.store.write(artifact_path, artifacts, "review_artifacts")
         review_context["current_artifacts"] = artifacts
         review_context["current_artifacts_ref"] = str(artifact_path)
         review_context["prompt_envelope"] = prompt_envelope.context_ref()
-        review_context["tool_observations"] = load_raw_tool_observations(run_dir)
         review_context["latest_observation_plan"] = (
             latest_observation_next_action_plan(run_dir, self.validator) or {}
         )
