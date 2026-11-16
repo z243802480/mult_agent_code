@@ -87,3 +87,7 @@ aaeada5最终完整1976/5跳过/42排除460.38秒通过后，用户本轮“再�
 参考[Anthropic长任务harness](https://www.anthropic.com/research/effective-harnesses-for-long-running-agents)对需求与实际验证的区分、[OpenAI harness工程](https://openai.com/index/harness-engineering/)对可观察事实/反馈环的建设，借机制不复制实现。先做有效profile覆盖、未知预算、scope/单位、per-call与worker限额区别、Review输入/持久快照绑定、行为检查不等于结构覆盖及自拟方法合法替代指导的回归；保留旧9d样本不改。确定性合格和真实机制变化后，只对同一冻结名表目标/通用指导/原v1及修正v2判据/13控/预算登记一次干净后修复对照，不提示标题或评估答案，不中途反馈/清理/换题刷绿；独立合格后标准Review一次，工程保护后pass才用新鲜报告Accept。
 
 实现相关Windows/WSL各40项通过；Review预算快照追加明确current_review_start并验证schema绑定，Windows相关+文档25项通过。原9d只读审计记录profile=1/16/3、实际任务25模型/外层1迭代、当前有效200模型/1000加权单位/outer32；当前policy不能补签历史CLI。没有放宽任何真实预算/权限。新采样独立验收以已提交的名表oracle v2为准（支持合法单例多输出）；原v1保留诊断，13控及两版文件分别冻结，不再运行后放宽判据。全部输入仍在模型工作区外；正式Review/Accept只在独立合格后进行。
+
+f5be13c单次253.72秒/23模型完成，范围/旧行/项目测试过，恢复合法多行示例，但标题29字点线28，仍独立拒收，正式Accept未跑。失败原生现场/判据/结果已冻结。为核实本刀预算事实在真实评审中的消费，追加登记一次标准Review负控（正常输入，不给缺陷或oracle答案；独立失败故不Accept）。若真实Review产生可执行修复意见，可在独立复制的失败现场走现有Resume反馈闭环一次；原工作区/失败现场不改、不重开干净目标采样、不给工程师的标题答案。续作与原生失败分开记账；续作也须独立全部合格及新鲜Review pass才Accept。若Review漏检或无可执行反馈，据实停在缺口，不强制生成修复任务求绿。
+
+本刀收尾：Windows完整1991/5跳过/42排除483.94秒、两端相关40及追加25Win/2WSL、Ruff/类型/五基准通过。真实方法修订1次成功，原失败和完整pytest保持；实际新增区间独立9示例通过，标题仍拒收。标准Review20.98秒1模型给pass/0.98，真实漏检，无follow-up故无Resume/Accept。新绑定预算快照确为共享200/1000加权单位、当前within_budget、outer1，不再拿旧profile/GoalSpec作实限，但不宣称稳定语义纠偏。累计24MiniMax791855入21362出、41本地/41观察/41收费24单位精确对账，原样本/源/fixture/runtime/项目/账本前缀保持。下一核实当前改动聚焦和逐项要求证据的可见性，明确模型覆盖主张非独立证明；先分离控制再改通用事实输入，不堆提醒或加格式/provider特判、不无修改重采样。详见docs/zh/reports/S131-verification-coverage-budget-20261116.md。
