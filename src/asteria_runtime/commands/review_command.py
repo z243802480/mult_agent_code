@@ -256,11 +256,9 @@ class ReviewCommand:
             validator=self.validator,
         )
         cost_report_path = run_dir / "cost_report.json"
-        budget = BudgetController.from_report(
-            policy,
-            self._read_cost(cost_report_path, run_id),
-            run_id=run_id,
-        )
+        # Review spends the same goal budget as execution. Recover durable ledger floors and
+        # checkpoint reservations before dispatch, including after a killed/stale review.
+        budget = BudgetController.from_run(policy, run_dir, self.validator)
         event_logger = EventLogger(run_dir / "events.jsonl", self.validator)
 
         run["status"] = "running"

@@ -200,7 +200,7 @@ class ReviewAgent:
                         final_response=terminal,
                     )
                 except Exception as exc:  # provider boundary; never replay a tool-bearing review
-                    call_errors.append({"model_tier": tier, "error_type": type(exc).__name__})
+                    call_errors.append({"model_tier": tier, "error_type": type(exc).__name__, "summary": str(exc)})
                     if tools.dispatched:
                         break
                     continue
@@ -227,6 +227,12 @@ class ReviewAgent:
         }
         if call_errors:
             report["trajectory_eval"]["review_model_call_errors"] = call_errors
+            report["trajectory_eval"]["review_fallback"] = {
+                "used": result is None, "source": "deterministic_checks" if result is None else "model_tier_retry",
+                "attempted_tiers": [item["model_tier"] for item in call_errors],
+                "selected_tier": None if result is None else tier,
+                "reason": call_errors[0]["summary"],
+            }
         protocol_errors = [event.text for event in result.events if event.kind == "protocol_error"] if result else []
         if protocol_errors:
             report["trajectory_eval"]["review_model_parse_error"] = protocol_errors[-1]

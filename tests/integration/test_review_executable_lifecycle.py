@@ -11,6 +11,11 @@ from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.commands.review_command import ReviewCommand
 from tests.integration.test_review_command import FakePlanClient, FakeExecuteClient
 from tests.unit.test_review_tools import response
+from tests.integration.test_review_current_artifacts import prepare, Reviewer
+from asteria_runtime.core.budget import BudgetController
+from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 @pytest.mark.parametrize("defect", [False, True])
@@ -63,3 +68,27 @@ def test_model_selects_new_check_consumes_result_and_fresh_accept_respects_verdi
     if not defect:
         assert AcceptCommand(tmp_path, run_id=run_id, skip_review=True).run().accepted
         assert (tmp_path / "reviewed_module.py").read_bytes() == original
+
+
+def test_review_recovers_durable_usage_and_checkpoints_before_spending_again(tmp_path):
+    run_id, run = prepare(tmp_path)
+    validator = SchemaValidator(Path("schemas"))
+    store = JsonStore(validator)
+    before = store.read(run / "cost_report.json", "cost_report")
+    assert before["model_calls"] > 0 and before["tool_calls"] > 0
+    policy = load_policy_config(tmp_path / ".asteria", validator)
+    # Simulate a stale cost checkpoint after a killed process; the append-only ledgers survive.
+    store.write(run / "cost_report.json", BudgetController(policy, run_id).cost_report(), "cost_report")
+
+    class Model(Reviewer):
+        def chat(self, request):
+            checkpoint = store.read(run / "cost_report.json", "cost_report")
+            assert checkpoint["model_calls"] == before["model_calls"] + 1
+            assert checkpoint["tool_calls"] == before["tool_calls"]
+            return super().chat(request)
+
+    result = ReviewCommand(tmp_path, run_id=run_id, model_client=Model()).run()
+    assert result.status == "pass"
+    final = store.read(run / "cost_report.json", "cost_report")
+    assert final["model_calls"] == before["model_calls"] + 1
+    assert final["tool_calls"] == before["tool_calls"]
