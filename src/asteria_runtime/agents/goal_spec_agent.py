@@ -10,6 +10,7 @@ from asteria_runtime.core.execution_preferences import normalize_execution_prefe
 from asteria_runtime.core.edit_boundary import validate_edit_boundary
 from asteria_runtime.core.content_preservation import normalize_content_preservation
 from asteria_runtime.core.verification_guidance import ARTIFACT_VERIFICATION_GUIDANCE
+from asteria_runtime.core.verification_revision import model_strategy_origin
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
@@ -176,6 +177,7 @@ class GoalSpecAgent:
             normalized["edit_boundary"] = validate_edit_boundary(normalized["edit_boundary"])
         if "content_preservation" in normalized:
             normalized["content_preservation"] = normalize_content_preservation(normalized["content_preservation"])
+        normalized["verification_strategy_origin"] = model_strategy_origin(normalized)
         if "output_intents" in normalized:
             # The model supplies semantics; the runtime only projects validated labels.
             # Keep the complete proposal for audit and preserve literal names verbatim.

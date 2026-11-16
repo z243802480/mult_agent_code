@@ -118,6 +118,17 @@
         "type": "string"
       }
     },
+    "verification_strategy_origin": {
+      "type": "object",
+      "required": ["producer", "goal_id", "original_goal_sha256", "strategy_sha256"],
+      "properties": {
+        "producer": {"const": "goal_spec_agent"},
+        "goal_id": {"type": "string"},
+        "original_goal_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "strategy_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      },
+      "additionalProperties": false
+    },
     "verification_strategy": {
       "type": "array",
       "items": {

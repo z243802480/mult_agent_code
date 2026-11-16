@@ -18,6 +18,28 @@ def authority_digest(value: object) -> str:
     ).encode("utf-8")).hexdigest()
 
 
+def model_strategy_origin(goal: dict) -> dict:
+    """Runtime records producer facts; model-returned authority labels are ignored.
+
+    These digests bind persisted provenance, not an adversarial-file signature.
+    Old/manual goals without this record retain the conservative authority rules.
+    """
+    return {
+        "producer": "goal_spec_agent",
+        "goal_id": goal["goal_id"],
+        "original_goal_sha256": authority_digest(goal["original_goal"]),
+        "strategy_sha256": authority_digest(goal["verification_strategy"]),
+    }
+
+
+def _has_model_strategy_origin(goal: dict) -> bool:
+    if (not isinstance(goal.get("goal_id"), str)
+            or not isinstance(goal.get("original_goal"), str)
+            or not isinstance(goal.get("verification_strategy"), list)):
+        return False
+    return goal.get("verification_strategy_origin") == model_strategy_origin(goal)
+
+
 def _authority_strings(value: object) -> list[str]:
     if isinstance(value, str):
         return [value]
@@ -62,9 +84,13 @@ def method_provenance(commands: list[str], goal: dict, runtime_context: dict) ->
     if guidance and not isinstance(content, str):
         return None
     project_commands = runtime_context["project_commands"]
-    authority = [*_authority_strings(goal), *_authority_strings(project_commands), content or ""]
-    configured = [*_authority_strings(goal.get("verification_strategy", [])),
-                  *_authority_strings(project_commands)]
+    model_strategy = _has_model_strategy_origin(goal)
+    requirements = ({k: v for k, v in goal.items()
+                     if k not in {"verification_strategy", "verification_strategy_origin"}}
+                    if model_strategy else goal)
+    authority = [*_authority_strings(requirements), *_authority_strings(project_commands), content or ""]
+    strategies = _authority_strings(goal.get("verification_strategy", []))
+    configured = _authority_strings(project_commands)
     # Literal occurrence is deliberately conservative: no shell parsing, command-name
     # heuristics or model-declared 'optional' flags can override higher-level text.
     return {
@@ -73,7 +99,12 @@ def method_provenance(commands: list[str], goal: dict, runtime_context: dict) ->
         "project_commands_sha256": authority_digest(project_commands),
         "revisable_commands": [c for c in commands
                                if not any(c in text for text in authority)
-                               and not any(text.strip() and text.strip() in c for text in configured)],
+                               and not any(text.strip() and text.strip() in c for text in configured)
+                               # A fresh exact model method may be revised. A wrapper around a
+                               # strategy check remains protected, including literal user checks.
+                               and not any(text.strip() and text.strip() in c
+                                           and (not model_strategy or text.strip() != c)
+                                           for text in strategies)],
     }
 
 

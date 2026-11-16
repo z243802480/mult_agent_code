@@ -21,6 +21,7 @@ from asteria_runtime.core.context_budget import slim_workspace_files
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.context_prompt_view import execution_prompt_view
 from asteria_runtime.core.execution_environment import command_execution_context
+from asteria_runtime.core.verification_guidance import ARTIFACT_VERIFICATION_GUIDANCE
 from asteria_runtime.core.expert_registry import expert_roles, resolve_expert
 from asteria_runtime.core.worker_executor import (
     SubagentOutcome,
@@ -1855,7 +1856,9 @@ class ExecuteCommand:
             "- Only finish (done=true, empty tool_calls) once the expected artifact exists AND you "
             "have verified it.\n"
             "- narration is one short sentence in the user's language describing THIS step."
-        ) + self._methodology_guidance(runtime_context, can_delegate=can_delegate)
+        ) + "\n\n" + ARTIFACT_VERIFICATION_GUIDANCE + self._methodology_guidance(
+            runtime_context, can_delegate=can_delegate,
+        )
         # The workspace's own conventions are authoritative — carry AGENTS.md into the system prompt
         # (like Claude Code does with CLAUDE.md) so the doer follows the project's rules, not just the
         # generic ones. It is the user's own trusted file; absent it, the prompt is unchanged.

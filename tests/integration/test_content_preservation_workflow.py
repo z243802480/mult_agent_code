@@ -8,6 +8,7 @@ from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.commands.replan_command import ReplanCommand
+from asteria_runtime.core.verification_guidance import ARTIFACT_VERIFICATION_GUIDANCE
 from tests.integration.test_completion_verification_feedback import call, response
 from tests.integration.test_execute_command import FakePlanClient
 
@@ -42,9 +43,11 @@ class Writer:
     def __init__(self, content):
         self.content = content
         self.turn = 0
+        self.requests = []
 
     def chat(self, request):
         self.turn += 1
+        self.requests.append(request)
         return (
             response([call("write_file", path="note.txt", content=self.content)])
             if self.turn == 1
@@ -69,7 +72,9 @@ def test_plan_capture_execute_gate_and_replan_keep_original_baseline(tmp_path, d
     run = tmp_path / ".asteria" / "runs" / plan.run_id
     snapshot = (run / "content_preservation.json").read_bytes()
     content = "first # changed\nsecond\nnew section\n" if damage else "first\nnew section\nsecond\n"
-    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=Writer(content)).run()
+    writer = Writer(content)
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=writer).run()
+    assert ARTIFACT_VERIFICATION_GUIDANCE in writer.requests[0].messages[0].content
     assert result.completed == int(not damage)
     assert result.blocked == int(damage)
     evidence = [
