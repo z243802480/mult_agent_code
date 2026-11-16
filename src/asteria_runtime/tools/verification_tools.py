@@ -80,7 +80,7 @@ class ReviseVerificationTool:
         board["tasks"] = [revised if t["task_id"] == context.task_id else t for t in board["tasks"]]
         store.write(path, board, "task_board")
         return ToolResult(
-            ok=True, summary="Revised planner method; original failure retained, requirements unchanged",
+            ok=True, summary="Revised planner method; original failure retained; coverage unverified",
             data={"task_id": context.task_id,
                   "verification_methods": verification_methods(revised, context), "revision": revision},
         )

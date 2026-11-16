@@ -43,8 +43,11 @@ def test_default_review_reaches_model_with_current_content_despite_green_histori
     monkeypatch.setattr(module, "create_model_client", lambda *args: client)
     result = ReviewCommand(tmp_path, run_id=run_id).run()
     assert result.status == "fail" and len(client.requests) == 1
-    exposed_schema = json.loads(client.requests[0].messages[0].content.split("EvalReport JSON schema:\n", 1)[1])
-    assert exposed_schema == SchemaValidator(Path("schemas")).schema("eval_report")
+    exposed_schema = json.loads(client.requests[0].messages[0].content.split("Review judgment JSON schema:\n", 1)[1])
+    persisted_schema = SchemaValidator(Path("schemas")).schema("eval_report")
+    assert exposed_schema["required"] == ["overall"]
+    assert exposed_schema["properties"]["overall"] == persisted_schema["properties"]["overall"]
+    assert len(persisted_schema["required"]) == 8
     assert "overall" in exposed_schema["required"]
     payload = json.loads(client.requests[0].messages[-1].content)
     if "review_input_projection" in payload:

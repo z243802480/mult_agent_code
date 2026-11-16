@@ -276,6 +276,15 @@
                 "type": "string",
                 "minLength": 1
               },
+              "coverage_assessment": {
+                "type": "object",
+                "required": ["source", "runtime_verified"],
+                "properties": {
+                  "source": {"type": "string", "enum": ["agent_statement"]},
+                  "runtime_verified": {"type": "boolean", "enum": [false]}
+                },
+                "additionalProperties": false
+              },
               "failed_observation_id": {
                 "type": "string",
                 "minLength": 1

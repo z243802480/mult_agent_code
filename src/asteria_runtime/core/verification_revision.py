@@ -169,6 +169,7 @@ def revise_method(
     updated_policy.setdefault("method_revisions", []).append({
         "original_command": original, "replacement_command": replacement,
         "reason": reason.strip(), "coverage": coverage.strip(),
+        "coverage_assessment": {"source": "agent_statement", "runtime_verified": False},
         "failed_observation_id": own[failed[0]]["observation_id"],
         "passed_observation_id": own[passed[0]]["observation_id"],
         "created_at": now_iso(),

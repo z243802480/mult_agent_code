@@ -36,7 +36,7 @@ REVIEW_TOOLS = ["read_file", "list_files", "find_files", "search_text", "run_tes
 REVIEW_TURN_CONTRACT = (
     'For an intermediate tool turn return {"narration":"...","tool_calls":'
     '[{"tool_name":"<available tool>","args":{...}}],"done":false}. '
-    'For the final turn return the EvalReport JSON directly, without tool_calls. '
+    'For the final turn return the review judgment JSON directly, without tool_calls. '
     'Return one JSON object per turn. Tool definitions and execution limits are in review_tools.'
 )
 
