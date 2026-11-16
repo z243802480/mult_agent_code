@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from asteria_runtime.core.execution_permission_request import execution_args_schema
+
 
 MAINSTREAM_AGENT_TOOL_PRIMITIVES = [
     "read_file",
@@ -139,7 +141,7 @@ class ModelToolSurfaceAdapter:
                 "execute",
                 "ask" if self.allow_shell else "deny",
                 "run_command",
-                {"command": "bounded non-destructive command", "summary": "expected outcome",
+                {"command": "bounded non-destructive command",
                  "timeout_seconds": "optional positive seconds; default 60; allow enough time for the actual command"},
                 ["Use dedicated read/search/edit/test tools before shell fallbacks."],
             ),
@@ -191,7 +193,8 @@ class ModelToolSurfaceAdapter:
             ),
             self._tool(
                 "request_execution_permission", "planning", "allow", "request_execution_permission",
-                {"tool_name": "run_command or run_tests", "args": "exact execution args object",
+                {"tool_name": "run_command or run_tests",
+                 "args": {name: execution_args_schema(name) for name in ("run_command", "run_tests")},
                  "reason": "why this concrete action needs user authorization"},
                 ["Requests consent without executing; pending requests pause the entire batch.",
                  "After decide/resume, inspect the decision and execute only the approved exact action.",

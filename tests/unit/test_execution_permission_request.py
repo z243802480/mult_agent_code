@@ -7,6 +7,9 @@ from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.runtime_policy import ToolPermissionPolicy
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.core.execution_permission_request import requested_execution, execution_args_schema
+from asteria_runtime.core.agent_tool_surface import model_tool_surface
+from asteria_runtime.core.worker_transport import tool_definitions_for
 
 
 def test_consent_is_exact_task_action_and_arguments_not_global_permission(tmp_path):
@@ -53,3 +56,32 @@ def test_unlisted_execution_cannot_request_a_capability_grant(tmp_path):
         action={"tool_calls": [request]}, task={"task_id": "task-1", "allowed_tools": []}, context=context,
     ) is None
     assert not (tmp_path / "decisions.jsonl").exists()
+
+
+@pytest.mark.parametrize("tool", ["run_command", "run_tests"])
+def test_machine_args_match_strict_request_boundary_and_report_unknown_field_without_rewriting(tmp_path, tool):
+    schema = tool_definitions_for(["request_execution_permission"])[0]["function"]["parameters"]
+    branch = next(b["properties"] for b in schema["oneOf"] if b["properties"]["tool_name"]["enum"] == [tool])
+    assert branch["args"] == execution_args_schema(tool)
+    assert branch["args"]["additionalProperties"] is False
+    assert branch["args"]["required"] == ["command"]
+    surface = {t["name"]: t for t in model_tool_surface(["run_command", "request_execution_permission"], allow_shell=True)}
+    assert surface["request_execution_permission"]["parameter_contract"]["args"][tool] == branch["args"]
+    assert "summary" not in surface["shell"]["parameter_contract"]
+    args = {"command": 'python -c "print(1)"', "summary": "explanation belongs in reason", "timeout_seconds": 10}
+    proposal = {"tool_name": tool, "args": args, "reason": "exact request"}
+    before = deepcopy(proposal)
+    with pytest.raises(ValueError, match="Unsupported execution args.*summary"):
+        requested_execution(proposal)
+    assert proposal == before
+    validator = SchemaValidator(Path("schemas"))
+    ctx = RuntimeContext(tmp_path, "r", {"permissions": {"allow_shell": False}}, validator, run_dir_override=tmp_path)
+    assert ToolPermissionPolicy(tmp_path, validator).create_policy_decision_if_needed(
+        action={"tool_calls": [{"tool_name": "request_execution_permission", "args": proposal}]},
+        task={"task_id": "t", "allowed_tools": ["request_execution_permission", tool]}, context=ctx) is None
+    assert not (tmp_path / "decisions.jsonl").exists()
+    valid = {"tool_name": tool, "args": {"command": args["command"], "timeout_seconds": 10}, "reason": "exact request"}
+    assert requested_execution(valid) == (tool, valid["args"], "exact request")
+    if tool == "run_tests":
+        with pytest.raises(ValueError, match="expected_returncodes"):
+            requested_execution({**valid, "args": {**valid["args"], "expected_returncodes": [1]}})

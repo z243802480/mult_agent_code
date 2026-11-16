@@ -120,7 +120,7 @@ def collect_review_focus(context: RuntimeContext, artifacts: dict, goal: dict,
     criteria: list[dict] = []
     omitted_criteria = 0
     remaining_criteria = MAX_CRITERIA_CHARS
-    def add(text: object, source: str, kind: str, task_id: str | None = None) -> None:
+    def add(text: object, source: str, kind: str, task_id: str | None = None, *, source_partial: bool = False) -> None:
         nonlocal omitted_criteria, remaining_criteria
         if isinstance(text, str) and text.strip():
             if len(criteria) >= MAX_CRITERIA or remaining_criteria <= 0:
@@ -130,7 +130,11 @@ def collect_review_focus(context: RuntimeContext, artifacts: dict, goal: dict,
             remaining_criteria -= len(shown)
             criteria.append({"text": shown, "source_ref": source,
                              "source_kind": kind, "task_id": task_id,
-                             "truncated": len(shown) < len(text)})
+                             "truncated": len(shown) < len(text) or source_partial})
+    add(goal.get("original_goal"), "goal_spec.original_goal", "user_request")
+    guidance = (artifacts.get("review_basis") or {}).get("project_guidance") or {}
+    add(guidance.get("content"), "review_basis.project_guidance.content", "current_project_guidance",
+        source_partial=guidance.get("status") == "partial")
     for i, requirement in enumerate(goal.get("expanded_requirements", [])):
         add(requirement.get("description"), f"goal_spec.expanded_requirements[{i}].description", "model_proposal")
         for j, text in enumerate(requirement.get("acceptance", [])):

@@ -396,6 +396,8 @@
               },
               "source_kind": {
                 "enum": [
+                  "user_request",
+                  "current_project_guidance",
                   "model_proposal",
                   "task_contract"
                 ]

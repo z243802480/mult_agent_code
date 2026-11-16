@@ -47,10 +47,14 @@ def test_actual_effects_feedback_is_immediate_bounded_and_never_cleans_files(tmp
     assert result.blocked == int(outside)
     assert result.completed == int(not outside)
     messages = [m.content for m in client.requests[1].messages if m.role == "user"]
-    notices = [m for m in messages if m.startswith("Observed workspace effects outside")]
+    notices = [json.loads(m)["workspace_effect_observations"] for m in messages
+               if m.startswith('{"workspace_effect_observations"')]
     assert len(notices) == int(outside)
     if outside:
-        assert "probe-state.bin" in notices[0] and "request_execution_permission" in notices[0]
+        assert notices[0]["effects"][0]["path"] == "probe-state.bin"
+        assert notices[0]["authorization_assessment"] == "not_determined_by_path_observation"
+        assert notices[0]["generated_state_classification"] == "unassessed"
+        assert notices[0]["cleanup_permission"] == "not_granted_by_observation"
         assert (tmp_path / "probe-state.bin").read_text(encoding="utf8") == "side effect"
         assert len(client.requests) <= 4  # Immediate feedback + a single final reminder, not a retry FSM.
     hooks = [json.loads(s) for s in (run / "runtime_hooks.jsonl").read_text(encoding="utf8").splitlines()]

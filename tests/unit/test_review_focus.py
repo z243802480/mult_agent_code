@@ -44,6 +44,23 @@ def test_diff_uses_first_recorded_active_backup_across_multiple_edits_and_is_rea
     assert {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in tmp_path.rglob("*") if p.is_file()} == before
 
 
+def test_original_request_and_guidance_precede_model_interpretation_without_rewriting(tmp_path, monkeypatch):
+    ctx = context(tmp_path)
+    raw = "Retain values AND signs.\nKeep ordinary generated tool state; do not remove data."
+    goal = {"original_goal": raw, "expanded_requirements": [{"description": "Only values matter"}],
+            "target_outputs": ["result.custom"]}
+    artifacts = {"files": [], "review_basis": {"project_guidance": {
+        "content": "Generation does not authorize removal.", "status": "partial"}}}
+    monkeypatch.setattr(module, "MAX_CRITERIA", 2)
+    focus = module.collect_review_focus(ctx, artifacts, goal, {}, [])
+    assert focus["criteria"][0] == {"text": raw, "source_ref": "goal_spec.original_goal",
+                                      "source_kind": "user_request", "task_id": None, "truncated": False}
+    assert focus["criteria"][1]["text"] == "Generation does not authorize removal."
+    assert focus["criteria"][1]["source_kind"] == "current_project_guidance"
+    assert focus["criteria"][1]["truncated"] is True
+    assert focus["omitted_criteria"] == 1 and focus["semantic_coverage"] == "unassessed"
+
+
 def test_created_artifact_has_real_absent_baseline(tmp_path):
     ctx = context(tmp_path)
     change = collect(ctx, [write(ctx, "created\n", 1)])["changes"][0]

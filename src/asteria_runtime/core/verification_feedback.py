@@ -26,15 +26,12 @@ def boundary_effects(task: dict, observations: tuple | list, root: Path) -> list
 def boundary_feedback(effects: list[dict]) -> str:
     import json
 
-    return (
-        "Observed workspace effects outside the explicit goal edit boundary: "
-        + json.dumps({"effects": effects[:16], "omitted_count": max(0, len(effects) - 16)}, ensure_ascii=False)
-        + ". These are recorded effects, including effects of failed commands; later green "
-        "checks do not resolve them. Stop broadening the probe. Select verification whose inputs "
-        "and side effects are bounded by the actual request. Do not delete, move, restore or "
-        "otherwise rewrite these paths without authorization. If a concrete command needs consent, "
-        "use request_execution_permission with its exact tool_name/args and reason. A request is "
-        "not permission, and command approval does not expand the goal edit boundary. Preserve "
-        "and disclose the incident and any remaining blocker before finishing. Complete tool "
-        "observations remain in runtime evidence; omitted paths are not cleared."
-    )
+    return json.dumps({"workspace_effect_observations": {
+        "effects": effects[:16], "omitted_count": max(0, len(effects) - 16),
+        "comparison": "outside_authored_edit_boundary",
+        "authorization_assessment": "not_determined_by_path_observation",
+        "generated_state_classification": "unassessed",
+        "cleanup_permission": "not_granted_by_observation",
+        "authority": "unchanged_current_user_request_and_project_guidance",
+        "original_observations_retained": True,
+    }}, ensure_ascii=False)

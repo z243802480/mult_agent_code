@@ -939,9 +939,9 @@ class ExecuteCommand:
             if new_effects:
                 self._record_progress(
                     context, task, channel="progress", event_type="message", phase="execute",
-                    status="running", title="检测到范围外变化",
+                    status="running", title="记录到工作区变化",
                     summary="实际变化涉及：" + "、".join(e["path"] for e in new_effects[:8])
-                    + "。已反馈模型核对验证范围；需要权限的动作必须另行批准。",
+                    + "。原始观察已保留；路径变化本身不判定生成状态性质或授予清理权限。",
                     display_level="main", transcript_kind="verification",
                     data={"observed_boundary_effects": new_effects},
                 )

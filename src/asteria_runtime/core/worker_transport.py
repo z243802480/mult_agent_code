@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from asteria_runtime.core.execution_permission_request import execution_args_schema
+
 
 def resolve_worker_transport(
     *,
@@ -191,8 +193,10 @@ def tool_definitions_for(
             "description": "Ask consent for exact execution args; never executes. Pending requests pause before this batch.",
             "parameters": {"type": "object", "properties": {
                 "tool_name": {"type": "string", "enum": ["run_command", "run_tests"]},
-                "args": {"type": "object"}, "reason": {"type": "string"},
-            }, "required": ["tool_name", "args", "reason"]},
+                "args": execution_args_schema("run_command"), "reason": {"type": "string"},
+            }, "required": ["tool_name", "args", "reason"],
+                "oneOf": [{"properties": {"tool_name": {"enum": [name]}, "args": execution_args_schema(name)}}
+                          for name in ("run_command", "run_tests")]},
         },
     }
     native = [specs[name] for name in available_tools if name in specs]

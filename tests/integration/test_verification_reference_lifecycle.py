@@ -1,5 +1,6 @@
 import json
 from dataclasses import replace
+import sys
 
 import pytest
 
@@ -29,8 +30,11 @@ def objects(text):
 
 
 @pytest.mark.parametrize("valid", [True, False])
-def test_execute_reference_failure_revision_updated_index_required_check_review_and_accept(tmp_path, valid):
+@pytest.mark.parametrize("generated", [True, False])
+def test_execute_reference_failure_revision_updated_index_required_check_review_and_accept(tmp_path, valid, generated):
     InitCommand(tmp_path).run()
+    if generated:
+        (tmp_path / "AGENTS.md").write_text("Verification may create ordinary generated tool state. Do not delete data.\n")
 
     class ReferencePlanner(Planner):
         def chat(self, request):
@@ -38,6 +42,8 @@ def test_execute_reference_failure_revision_updated_index_required_check_review_
             if request.purpose == "goal_spec":
                 goal = json.loads(result.content)
                 goal["target_outputs"] = ["src/notes_tool.py"]
+                if generated:
+                    goal["edit_boundary"] = {"mode": "restricted", "paths": ["src/notes_tool.py"]}
                 return replace(result, content=json.dumps(goal))
             return result
 
@@ -52,7 +58,7 @@ def test_execute_reference_failure_revision_updated_index_required_check_review_
 
         def chat(self, request):
             self.turn += 1
-            payloads = objects(request.messages[-1].text())
+            payloads = [p for m in request.messages if m.role == "user" for p in objects(m.text())]
             if self.turn == 1:
                 seed = json.loads(request.messages[1].text())
                 methods = seed["task_contract"]["verification_methods"]
@@ -60,16 +66,23 @@ def test_execute_reference_failure_revision_updated_index_required_check_review_
                 return response([call("write_file", path="src/notes_tool.py", content="VALUE = 1\n"),
                                  call("run_tests", verification_ref=self.original_ref)])
             if self.turn == 2:
-                self.failed_id = next(p["tool_call_id"] for p in payloads if p.get("verification_ref") == self.original_ref)
-                return response([call("run_tests", command=CORRECTED)])
+                self.failed_id = next(p["tool_call_id"] for p in payloads
+                                      if p.get("verification_ref") == self.original_ref and "tool_call_id" in p)
+                state = [call("run_command", command=f'"{sys.executable}" -c "from pathlib import Path; '
+                              "Path('probe-state.bin').write_text('generated')\"")] if generated else []
+                return response([*state, call("run_tests", command=CORRECTED)])
             if self.turn == 3:
-                self.passed_id = next(p["tool_call_id"] for p in payloads if p.get("returncode") == 0)
+                self.passed_id = [p["tool_call_id"] for p in payloads if p.get("returncode") == 0 and "tool_call_id" in p][-1]
+                if generated:
+                    notice = next(p["workspace_effect_observations"] for p in payloads if "workspace_effect_observations" in p)
+                    assert notice["cleanup_permission"] == "not_granted_by_observation"
+                    assert notice["authorization_assessment"] == "not_determined_by_path_observation"
                 return response([call("revise_verification", original_verification_ref=self.original_ref,
                     failed_tool_call_id=self.failed_id, passed_tool_call_id=self.passed_id,
                     reason="The registered method raises without checking the produced value",
                     coverage="Check the same value and retain the independently required project command")])
             if self.turn == 4:
-                updated = next(p["verification_methods"] for p in payloads if "verification_methods" in p)
+                updated = [p["verification_methods"] for p in payloads if "verification_methods" in p][-1]
                 assert self.original_ref not in {m["verification_ref"] for m in updated}
                 required = next(m["verification_ref"] for m in updated if m["command"] == CHECK)
                 calls = [] if valid else [call("write_file", path="src/notes_tool.py", content="VALUE = 0\n")]
@@ -89,6 +102,16 @@ def test_execute_reference_failure_revision_updated_index_required_check_review_
         assert task[key] == before[key]
     observations = [json.loads(s) for s in (run / "tool_observations.jsonl").read_text(encoding="utf8").splitlines()]
     assert next(o for o in observations if o["tool_call_id"] == model.failed_id)["ok"] is False
+    if generated:
+        assert (tmp_path / "probe-state.bin").read_text() == "generated"
+        assert not (run / "decisions.jsonl").exists()
     if valid:
-        assert ReviewCommand(tmp_path, plan.run_id, model_client=Reviewer()).run().status == "pass"
-        assert AcceptCommand(tmp_path, plan.run_id, skip_review=True).run().accepted
+        review = ReviewCommand(tmp_path, plan.run_id, model_client=Reviewer()).run()
+        # Generation does not itself waive the persisted goal ceiling. Revision can
+        # succeed while Review conservatively retains an unresolved scope conflict.
+        assert review.status == ("partial" if generated else "pass")
+        if generated:
+            report = json.loads((run / "eval_report.json").read_text())
+            assert "probe-state.bin" in report["overall"]["reason"]
+        else:
+            assert AcceptCommand(tmp_path, plan.run_id, skip_review=True).run().accepted
