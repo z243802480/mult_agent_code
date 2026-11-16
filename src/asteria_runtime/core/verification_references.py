@@ -32,6 +32,27 @@ def verification_methods(task: dict, context: RuntimeContext | None) -> list[dic
     return methods
 
 
+def execution_method_receipt(task: dict, context: RuntimeContext, tool_name: str, data: dict) -> dict:
+    """Associate an executed command with the task snapshot, never grant revision.
+
+    An exact command entry and a reference entry identify the same recorded method.
+    Membership/eligibility still require fresh authority checks at revision time;
+    neither they nor the exit status establish requirement coverage.
+    """
+    if tool_name not in VERIFICATION_TOOLS or type(data.get("returncode")) is not int:
+        return {}
+    command = data.get("requested_command") or data.get("command")
+    if not isinstance(command, str) or not command.strip():
+        return {}
+    receipt = {"method_relation": "unregistered_or_unknown", "requirement_coverage": "unassessed"}
+    match = next((m for m in verification_methods(task, context) if m["command"] == command.strip()), None)
+    if match is not None:
+        receipt.update({"method_relation": "current_declared_task_method",
+                        "verification_ref": match["verification_ref"],
+                        "revision_eligibility": match["revision_eligibility"]})
+    return receipt
+
+
 def current_reference_task(context: RuntimeContext, task_id: str | None = None) -> dict:
     expected = task_id or context.task_id
     if (not context.run_id or context.run_dir is None or not expected

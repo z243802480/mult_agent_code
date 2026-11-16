@@ -14,7 +14,7 @@ from asteria_runtime.core.agent_tool_surface import adapt_model_tool_call
 from asteria_runtime.core.capability_decision_recorder import CapabilityDecisionRecorder
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.tool_call_identity import new_tool_call_id
-from asteria_runtime.core.verification_references import resolve_verification_args
+from asteria_runtime.core.verification_references import execution_method_receipt, resolve_verification_args
 from asteria_runtime.core.runtime_hooks import RuntimeHookManager
 from asteria_runtime.core.runtime_policy import ToolPermissionPolicy
 from asteria_runtime.core.task_contract import allows_expected_failure
@@ -216,6 +216,9 @@ class ToolExecutionGateway:
                     agent_id=self.agent_id,
                     **self._tool_args(tool_name, requested_args),
                 )
+                receipt = execution_method_receipt(task, context, tool_name, getattr(result, "data", {}) or {})
+                if receipt:
+                    result.data = {**result.data, "verification_method": receipt}
                 if self._accepts_diagnostic_failure(task, tool_name, result):
                     result.ok = True
                     result.error = None

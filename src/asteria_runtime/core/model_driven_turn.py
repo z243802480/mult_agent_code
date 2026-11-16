@@ -529,7 +529,7 @@ def _observation_feedback(
     blocks: list[str] = []
     for obs in observations:
         block = _clip_text(obs.model_summary(), _SUMMARY_MAX_CHARS)
-        receipt = {key: obs.data[key] for key in ("tool_call_id", "verification_ref", "returncode")
+        receipt = {key: obs.data[key] for key in ("tool_call_id", "verification_ref", "returncode", "verification_method")
                    if key in obs.data}
         if receipt:
             block += "\nExecution receipt: " + json.dumps(receipt, ensure_ascii=False, separators=(",", ":"))
