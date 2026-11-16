@@ -54,6 +54,17 @@ class EvidenceAwareReviewModel:
 
     def chat(self, request):
         review_context = json.loads(request.messages[-1].content)
+        # White-box workflow fixture: verify raw history remains persisted; this
+        # does not simulate a real model independently choosing to inspect it.
+        if review_context.get("review_input_projection"):
+            artifact = Path(review_context["current_artifacts_ref"])
+            stored = json.loads(artifact.with_name(artifact.stem + "-evidence.json").read_text(encoding="utf8"))
+            sections = {s["evidence_ref"]: s for s in stored["sections"]}
+            for parent, key in ((review_context["trajectory"], "task_execution_evidence"),
+                                (review_context["trajectory"], "model_selection"), (review_context, "model_selection")):
+                section = sections[parent[key]["deferred_evidence_ref"]]
+                assert not section["truncated"]
+                parent[key] = json.loads(section["content"])
         evidence = review_context["trajectory"]["task_execution_evidence"]
         self.seen_evidence_summary = any(
             item.get("summary") == "minimal run evidence" for item in evidence

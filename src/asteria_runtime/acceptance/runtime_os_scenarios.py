@@ -308,11 +308,47 @@ class RuntimeEvidenceReviewClient:
     def __init__(self) -> None:
         self.consumed_runtime_evidence = False
         self.consumed_failure_next_hint = False
+        self.evidence_pages: dict[str, str] = {}
 
     def chat(self, request: Any) -> Any:
         from asteria_runtime.models.base import ChatResponse, TokenUsage
 
-        payload = json.loads(request.messages[-1].content)
+        payload = json.loads(request.messages[1].content)
+        # This deterministic acceptance client must consume deferred history through
+        # the same scoped tool as a model, rather than assume it is prefilled.
+        wanted = {"deterministic_checks", "trajectory.worker_results", "trajectory.runtime_os_evidence.summary"}
+        pending = []
+        for section in payload.get("review_evidence", {}).get("catalog", []):
+            ref = section["evidence_ref"]
+            if ref.split("/", 1)[-1] in wanted:
+                pending.append((ref, section["stored_characters"]))
+        for message in request.messages[2:]:
+            lines = message.content.splitlines()
+            for index, line in enumerate(lines[:-1]):
+                try:
+                    metadata = json.loads(line)
+                except (ValueError, TypeError):
+                    continue
+                if isinstance(metadata, dict) and metadata.get("evidence_ref") in {p[0] for p in pending}:
+                    ref = metadata["evidence_ref"]
+                    offset = metadata["offset"]
+                    current = self.evidence_pages.get(ref, "")
+                    if offset == len(current):
+                        self.evidence_pages[ref] = current + lines[index + 1]
+        calls = [{"tool_name": "inspect_evidence", "args": {"evidence_ref": ref,
+                 "offset": len(self.evidence_pages.get(ref, "")), "limit": 4000}}
+                 for ref, size in pending if len(self.evidence_pages.get(ref, "")) < size]
+        if calls:
+            return ChatResponse(content=json.dumps({"tool_calls": calls}), finish_reason="stop",
+                                usage=TokenUsage(1, 1, 2), model_provider="runtime-acceptance",
+                                model_name="runtime-evidence-review", raw_response={})
+        for ref, _ in pending:
+            value = json.loads(self.evidence_pages[ref])
+            target = payload
+            parts = ref.split("/", 1)[-1].split(".")
+            for key in parts[:-1]:
+                target = target[key]
+            target[parts[-1]] = value
         trajectory = payload.get("trajectory", {})
         checks = payload.get("deterministic_checks", {})
         observations = payload.get("tool_observations")
