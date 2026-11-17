@@ -27,6 +27,28 @@
         "properties": {"tool_call_id": {"type": "string"}, "observation_id": {"type": "string"}, "tool_name": {"type": "string"}, "ok": {"type": "boolean"}, "status": {"type": "string"}}}
     },
     "errors": {"type": "array", "items": {"type": "string"}},
-    "limits": {"type": "object"}
+    "limits": {"type": "object"},
+    "model_requests": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["request_number", "status", "scope", "messages_sha256", "observations"],
+      "properties": {
+        "request_number": {"type": "integer", "minimum": 1},
+        "status": {"enum": ["pending", "returned", "failed"]},
+        "scope": {"enum": ["request_assembly_only"]},
+        "messages_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "observations": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["tool_call_id", "tool_name", "payload_included", "payload_sha256"],
+          "properties": {
+            "tool_call_id": {"type": "string"}, "tool_name": {"type": "string"},
+            "payload_included": {"type": "boolean"},
+            "payload_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "evidence_ref": {"type": "string"}, "offset": {"type": "integer", "minimum": 0},
+            "next_offset": {"type": ["integer", "null"], "minimum": 0},
+            "stored_characters": {"type": "integer", "minimum": 0}, "truncated": {"type": "boolean"}
+          }
+        }}
+      }
+    }}
   }
 }

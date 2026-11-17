@@ -61,6 +61,8 @@ class ReviewTools:
         self.errors: list[str] = []
         self.stop_reason = "not_started"
         self.model_calls = 0
+        self.model_requests: list[dict] = []
+        self._feedback: list = []
         self.dispatched = False
         self.evidence: ReviewEvidence | None = None
         self.path = context.run_dir / f"{artifacts['evidence_id']}-validation.json" if context.run_dir else None
@@ -114,9 +116,42 @@ class ReviewTools:
                 metadata = dict(request.metadata)
                 metadata["deadline_ms"] = min(int(metadata.get("deadline_ms") or seconds * 1000), seconds * 1000)
                 seconds = max(1, metadata["deadline_ms"] // 1000)
-                return client.chat(replace(request, timeout_seconds=seconds, metadata=metadata))
+                bounded = replace(request, timeout_seconds=seconds, metadata=metadata)
+                receipt = owner._request_receipt(bounded)
+                owner.model_requests.append(receipt)
+                owner._save()
+                try:
+                    response = client.chat(bounded)
+                except Exception:
+                    receipt["status"] = "failed"
+                    owner._save()
+                    raise
+                receipt["status"] = "returned"
+                owner._save()
+                return response
 
         return Client()
+
+    def _request_receipt(self, request: ChatRequest) -> dict:
+        from asteria_runtime.core.model_driven_turn import _observation_feedback
+        messages = [m.text() for m in request.messages if m.role == "user"]
+        included = []
+        for observed in self._feedback:
+            def block(payloads):
+                rendered = _observation_feedback([observed], "json", include_payloads=payloads,
+                                                json_turn_contract=REVIEW_TURN_CONTRACT)
+                return rendered.split("\n", 1)[1].rsplit("\n", 1)[0]
+            full = any(block(True) in text for text in messages)
+            if not full and not any(block(False) in text for text in messages):
+                continue
+            data = observed.data
+            included.append({"tool_call_id": data["tool_call_id"], "tool_name": observed.tool_name,
+                "payload_included": full and bool(observed.payload),
+                "payload_sha256": hashlib.sha256(observed.payload.encode("utf8")).hexdigest(),
+                **{k: data[k] for k in ("evidence_ref", "offset", "next_offset", "stored_characters", "truncated") if k in data}})
+        return {"request_number": self.model_calls, "status": "pending", "scope": "request_assembly_only",
+                "messages_sha256": hashlib.sha256(json.dumps([m.to_payload() for m in request.messages],
+                    ensure_ascii=False, sort_keys=True).encode("utf8")).hexdigest(), "observations": included}
 
     def _prepare(self) -> RuntimeContext:
         if self.copy_context is not None:
@@ -212,6 +247,7 @@ class ReviewTools:
         for result in results:
             observed = getattr(result, "harness_observation", None)
             if observed is not None:
+                self._feedback.append(observed)
                 self.observations.append({"tool_call_id": observed.data.get("tool_call_id"),
                                           "tool_name": observed.tool_name, "ok": observed.ok})
         self._save()
@@ -263,6 +299,7 @@ class ReviewTools:
                 "copy_created": self.copy_context is not None, "source_manifest": self.manifest,
                 "source_manifest_sha256": hashlib.sha256(json.dumps(self.manifest, sort_keys=True).encode()).hexdigest(),
                 "observations": self.observations, "errors": self.errors,
+                "model_requests": self.model_requests,
                 "limits": self.describe()}
         if self.path is not None:
             JsonStore(self.context.validator).write(self.path, data, "review_validation")

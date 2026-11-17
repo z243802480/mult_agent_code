@@ -13,6 +13,7 @@ from asteria_runtime.tools.base import ToolResult
 MAX_SECTION_CHARS = 262_144
 MAX_SNAPSHOT_CHARS = 1_048_576
 MAX_INDEX_ROWS = 64
+MAX_CURRENT_METHODS = 8
 GOAL_AUTHORITY_FIELDS = {"schema_version", "goal_id", "original_goal", "edit_boundary", "content_preservation"}
 TASK_SCOPE_FIELDS = {"task_id", "task_kind", "risk", "parallel_safety", "depends_on", "read_scope",
                      "write_scope", "edit_boundary", "allowed_tools", "allowed_mcp", "allowed_skills"}
@@ -81,6 +82,7 @@ class ReviewEvidence:
                 for origin in self.origins["records"]:
                     if origin["tool_call_id"] == row["tool_call_id"]:
                         origin["evidence_ref"] = ref
+        methods = self._methods(observations)
         self.view = deepcopy(review_context)
         deferred_paths = []
 
@@ -133,6 +135,7 @@ class ReviewEvidence:
         self.view["review_input_projection"] = {**manifest, "manifest_ref": manifest_ref}
         self.view["review_evidence"] = {"verification_origins": {"deferred_evidence_ref": origin_ref,
                                          "requirement_coverage": "unassessed"}, "catalog": self.catalog(),
+                                        "verification_methods": methods,
                                         "source_snapshot_id": snapshot_id}
         self.path = context.run_dir / f"{snapshot_id}-evidence.json" if context.run_dir else None
         if self.path is not None:
@@ -153,9 +156,40 @@ class ReviewEvidence:
                                   "content_sha256": hashlib.sha256(content.encode("utf8")).hexdigest()}
         return ref
 
+    def _methods(self, observations: list[dict]) -> dict:
+        """Link exact recorded commands to observations; membership is not coverage."""
+        by_call = {row["tool_call_id"]: row for row in observations[-MAX_INDEX_ROWS:]
+                   if row.get("run_id") == self.context.run_id}
+        grouped: dict[str, dict] = {}
+        for origin in self.origins["records"]:
+            if not origin.get("evidence_ref"):
+                continue  # Ambiguous or omitted observations must not gain a new binding.
+            key = origin["command_sha256"]
+            if not key:
+                continue
+            data = (by_call[origin["tool_call_id"]].get("observation") or {}).get("data") or {}
+            command = data.get("requested_command") or data.get("command")
+            method = grouped.setdefault(key, {"command": command, "command_sha256": key,
+                "temporal_scope": "historical_execution", "requirement_coverage": "unassessed", "observations": []})
+            method["observations"].append(dict(origin))
+        entries = []
+        for key, method in grouped.items():
+            ref = self._freeze("method/" + key, method)
+            records = method["observations"]
+            current = any(r["method_relation"] == "current_declared_task_method" and not r["task_discarded"] for r in records)
+            entries.append({"method_ref": ref, "command_sha256": key, "current_declared_method": current,
+                            "observation_ref": records[-1]["evidence_ref"]})
+            for origin in self.origins["records"]:
+                if origin.get("evidence_ref") and origin["command_sha256"] == key:
+                    origin["method_ref"] = ref
+        index_ref = self._freeze("verification_methods", entries) if entries else None
+        current_methods = [entry for entry in entries if entry["current_declared_method"]]
+        return {"current": current_methods[-MAX_CURRENT_METHODS:], "omitted_current": max(0, len(current_methods) - MAX_CURRENT_METHODS),
+                "all_methods_ref": index_ref, "method_count": len(entries), "requirement_coverage": "unassessed"}
+
     def catalog(self) -> list[dict]:
         return [{k: v for k, v in s.items() if k != "content"} for s in self.sections.values()
-                if "/observation/" not in s["evidence_ref"]]
+                if "/observation/" not in s["evidence_ref"] and "/method/" not in s["evidence_ref"]]
 
     def input_view(self) -> dict:
         return deepcopy(self.view)
