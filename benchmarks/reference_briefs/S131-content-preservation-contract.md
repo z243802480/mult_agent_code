@@ -1,5 +1,5 @@
 # S131 — 内容保留与验证判据契约审计
-### 2026-11-17 前置拒绝与验证新鲜性（本刀登记，未验收）
+### 2026-11-17 前置拒绝与验证新鲜性（工程已验；真实整链仍开）
 
 基线0009712。只读核实上轮最新正向：网关在enforce_tool_permission_profile因编辑边界拒绝apply_patch，尚未进入registry.call；现有观察没有分派事实，task_verification仅按工具名将其当可能写入，导致随后revise_verification陈旧拒绝。零计费/status不足以单独证明未执行，旧记录不回填为新证据。
 
@@ -9,6 +9,10 @@
 
 冻结源码后新登记各一次真实坏件标准Review与同原目标/指导/基线/v1/v2/13控/32轮900秒正向。不得提供缺陷/oracle/在途解答/清理批准，不无改重采；原生完成且独立合格才标准Review/新鲜Accept，暂停则据实NOT RUN。保存全部旧账本/DB/待批/4001预留，按实际结果更新计划与记忆，不将机制修复签为语义覆盖。
 
+
+本刀冻结acd2c89：13条分派回归/新增4整链组合，最终Windows2179过7skip42排除579.69秒、WSL108过57.75秒、Windows整链21过28.75秒/静态/五基准过。真实新观察同组旧逻辑陈旧/新逻辑新鲜，revision真成功但独立必跑仍缺；旧paused观察无分派字段仍保守，旧60文件hash/db/审批保持。未放宽权限或方法来源，未改shell/提示/模型JSON。
+
+新坏件31.52秒7模型5查阅0执行仍pass1漏标题29/线28、不Accept；正向288.84秒21模型，独立9/项目271+1skip/809旧行与范围过、added0，但方法多次失败/另有退出0却0示例，无真实修订。另完整命令的引号内Python比较被原ShellGuard当重定向，预检pending、paused/DECISION，Review/Accept NOT RUN。31工具均dispatched，本场未触发前置拒绝清理，不能签自然新鲜性修复使用；不代批或重采。只读通用比较最小例复现误判，真越界重定向仍拒；未改守卫，下一核实跨shell引用/嵌套/审批闭环及0项方法实际覆盖。两场28新MiniMax910658入19681出，36新观察/收费35单位，计量/源码/原件/旧现场与新pending保持。见[分派新鲜性报告](../../docs/zh/reports/S131-dispatch-freshness-20261117.md)。prepare/negative/positive均各跑一次并结束，勿再启动；新final-audit/closing/pause/redirect/mechanism审计已跑，不当新待办。
 
 ### 2026-11-17 用户授权代码卫生维护（已完成）
 
