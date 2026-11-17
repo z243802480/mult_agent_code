@@ -1,5 +1,7 @@
 # Slice — .asteria 审计日志防篡改(tamper-evident hash 链 · S77 P1)
 
+> 2026-11-17维护说明：本文实现/默认值描述是2026-07历史快照；当前开关以模板配置与研发总计划为准。当前append直接使用`_chain_head`一次取hash和seq；无人调用的`_last_chain_hash`私有包装已按[S131维护批](S131-dead-code-cleanup.md)删除，O(1)链头能力保留。以下历史验证不回填。
+
 用户直接授权(战略分叉 C:可审计深度)。目标:关掉 S77 护城河洞——审计 JSONL 纯追加、可事后重写而无人能辨。
 
 ## observed_pattern(行业已验证)

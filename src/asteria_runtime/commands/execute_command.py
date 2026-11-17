@@ -53,7 +53,6 @@ from asteria_runtime.core.run_control import (
     take_steer,
 )
 from asteria_runtime.core.agent_run_graph import AgentRunGraphBuilder
-from asteria_runtime.core.agent_harness import load_harness_observations, load_raw_tool_observations
 from asteria_runtime.core.agent_loop_run_summary import (
     build_agent_loop_run_summary,
     persist_agent_loop_run_summary,
@@ -474,15 +473,6 @@ class ExecuteCommand:
         agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
         return bool(agent_loop.get("task_plan_quality_gate_blocks", False))
 
-    def _agent_loop_max_rounds(self, policy: dict) -> int:
-        raw_agent_loop = policy.get("agent_loop")
-        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
-        try:
-            value = int(agent_loop.get("max_rounds_per_task") or 2)
-        except (TypeError, ValueError):
-            value = 2
-        return max(1, min(value, 8))
-
     def _model_turn_iteration_fuse(self, policy: dict) -> int:
         """Per-task turn fuse for the model-driven loop (ADR-0016): a runaway backstop, NOT a
         cognitive round ceiling.
@@ -562,12 +552,6 @@ class ExecuteCommand:
             value = 0
         return max(0, value)
 
-    def _loop_quality_guard_config(self, policy: dict) -> dict | None:
-        raw_agent_loop = policy.get("agent_loop")
-        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
-        guard = agent_loop.get("loop_quality_guard")
-        return guard if isinstance(guard, dict) else None
-
     def _record_agent_loop_run_summary(
         self,
         *,
@@ -641,23 +625,6 @@ class ExecuteCommand:
             ),
         }
         return (budget_state, context_pressure)
-
-    def _loop_continuation_requested(self, *, next_action: dict, attempt_status: str) -> bool:
-        expected = next_action.get("expected_observation")
-        expected_observation = expected if isinstance(expected, dict) else {}
-        requested = str(expected_observation.get("next_recommended_action") or "")
-        if requested in {"tool", "repair", "replan", "stop"}:
-            return True
-        if expected_observation.get("requires_follow_up_decision") is True:
-            return True
-        return (
-            attempt_status != "done" and expected_observation.get("auto_repair_on_failure") is True
-        )
-
-    def _mark_task_blocked(self, task_board: TaskBoard, task_id: str) -> None:
-        task = task_board.get_task(task_id)
-        if task.get("status") != "blocked":
-            task_board.update_status(task_id, "blocked")
 
     def _execute_task_with_worker_record(
         self,
@@ -2405,18 +2372,6 @@ class ExecuteCommand:
             )
             return self._blocked_task_summary(blocked)
 
-    def _refresh_harness_observations(
-        self,
-        runtime_context: dict,
-        context: RuntimeContext,
-    ) -> None:
-        observations = load_harness_observations(context.run_dir)
-        if observations:
-            runtime_context["harness_observations"] = observations
-        raw_observations = load_raw_tool_observations(context.run_dir)
-        if raw_observations:
-            runtime_context["tool_observations"] = raw_observations
-
     def _runtime_request_task_summary(
         self,
         result: RuntimeRequestPolicyResult,
@@ -2657,24 +2612,6 @@ class ExecuteCommand:
         permission = str(policy.get("permission_mode") or "").lower()
         return permission in {"reviewed_auto", "auto"}
 
-    def _model_tool_call_summary(
-        self,
-        tool_calls: list[dict],
-        verification: list[dict],
-    ) -> list[dict]:
-        summary = []
-        for call in [*tool_calls, *verification]:
-            if not isinstance(call, dict):
-                continue
-            summary.append(
-                {
-                    "tool_name": call.get("tool_name"),
-                    "model_tool_name": call.get("model_tool_name") or call.get("tool_name"),
-                    "tool_surface_adapter": call.get("tool_surface_adapter"),
-                }
-            )
-        return summary
-
     def _failure_evidence_refs(self, summary: TaskExecutionSummary) -> list[str]:
         if summary.status != "blocked" or summary.evidence_path is None:
             return []
@@ -2713,22 +2650,6 @@ class ExecuteCommand:
             "status": "within_budget",
             "warnings": [],
         }
-
-
-def _readonly_probe_read_path(task: dict) -> str:
-    for path in task.get("read_scope") or []:
-        text = str(path)
-        if text and not text.endswith(("/", "\\")):
-            return text
-    return "AGENTS.md"
-
-
-def _readonly_probe_list_path(task: dict) -> str:
-    for path in task.get("read_scope") or []:
-        text = str(path)
-        if text.endswith(("/", "\\")):
-            return text.rstrip("/\\") or "."
-    return "src"
 
 
 _VERIFICATION_TOOL_NAMES = frozenset({"run_command", "run_tests", "run_pytest"})

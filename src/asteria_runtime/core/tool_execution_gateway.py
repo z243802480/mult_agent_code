@@ -506,7 +506,7 @@ class ToolExecutionGateway:
         # non-field attribute via object.__setattr__ (the same harness_observation the loop reads).
         object.__setattr__(mcp_result, "harness_observation", observation)
         # Emit the same execution_chain observation event local tools emit (see the local-tool path
-        # above), so the MCP result survives the next-round _refresh_harness_observations reload.
+        # above), so the MCP result survives observation-ledger reloads in later turns.
         # Without this, the MCP response fed back only in-memory within the same attempt and was
         # dropped at the round boundary (load_harness_observations only reloads execution_chain
         # events carrying data.observation). Capability decision lives in the adapter's own
@@ -553,7 +553,7 @@ class ToolExecutionGateway:
         )
         object.__setattr__(skill_result, "harness_observation", observation)
         # Mirror the local-tool path: emit the execution_chain observation event so the loaded skill
-        # procedure survives the next-round _refresh_harness_observations reload instead of being
+        # procedure survives observation-ledger reloads in later turns instead of being
         # dropped at the round boundary. Capability decision is recorded in skill_invocations.jsonl
         # by the adapter; pass {} here rather than fabricate one.
         self._record_harness_observation(

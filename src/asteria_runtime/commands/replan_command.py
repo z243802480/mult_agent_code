@@ -346,11 +346,6 @@ class ReplanCommand:
                 count += 1
         return count
 
-    def _replan_count(self, task_board: TaskBoard, task_id: str) -> int:
-        return self._replan_lineage_count(
-            task_board, self._replan_lineage_root(task_board, task_id)
-        )
-
     def _needs_decision(self, evidence: dict) -> bool:
         return evidence["failure_type"] in {
             "policy_decision",

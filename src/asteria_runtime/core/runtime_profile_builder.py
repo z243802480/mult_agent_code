@@ -487,9 +487,6 @@ class RuntimeProfileBuilder:
             return False
         return parallel_safety(task) == "readonly" or kind in {"report", "research", "verification"}
 
-    def _capability_adjusted_tier(self, context: RuntimeContext, purpose: str, default: str) -> str:
-        return self._capability_adjustment(context, purpose, default)["selected_tier"]
-
     def _capability_adjustment(self, context: RuntimeContext, purpose: str, default: str) -> dict:
         guidance = CapabilityFeedbackAdvisor(self.validator).route_guidance(context.asteria_dir)
         hints = [

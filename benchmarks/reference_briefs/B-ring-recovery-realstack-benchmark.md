@@ -1,5 +1,7 @@
 # Brief · 自主环真栈 ring-recovery benchmark(S77 P1「真 benchmark 证明」)
 
+> 2026-11-17维护说明：本文为历史benchmark设计快照。下文`_loop_continuation_requested`旧辅助已无调用，按[S131维护批](S131-dead-code-cleanup.md)删除；当前执行归`model_driven_turn`与`_model_turn_iteration_fuse`等活路径，不按旧私有函数或历史行号恢复循环。原验证和未接repair独立台账的说明保留。
+
 - 日期：2026-07-14
 - 关联：S77 审计 P1「自主 repair/replan/resume 环 + 真 provider 真 benchmark 证明」· [[flywheel-first-ignition-proven]](绿地 happy-path 首过)· [[ring-realstack-validation-A]](一次性 throwaway smoke·抓过收敛 bug)· ADR-0016(认知归模型)· ADR-0027(soft-fuse 续跑环)
 - 授权：用户 2026-07-14「接自主环真 benchmark 证明」

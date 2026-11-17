@@ -98,10 +98,6 @@ def _chain_head(cpath: Path) -> tuple[str, int]:
     return head, count
 
 
-def _last_chain_hash(cpath: Path) -> str:
-    return _chain_head(cpath)[0]
-
-
 def append_chain_entry(path: Path, record_line: str) -> None:
     """Append one chain entry binding ``record_line`` (the exact JSONL text, no newline) to the head."""
     cpath = chain_path(path)
