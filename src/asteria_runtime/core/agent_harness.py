@@ -1098,6 +1098,9 @@ def _model_facing_payload(tool_name: str, data: dict[str, Any]) -> str:
         if isinstance(matches, list) and matches:
             return _clip("\n".join(str(m) for m in matches))
         return ""
+    if tool_name == "list_files" and isinstance(data.get("entries"), list):
+        return _clip(json.dumps({key: data[key] for key in ("entries", "path_exists") if key in data},
+                                ensure_ascii=False, separators=(",", ":")))
     if tool_name in {"find_files", "list_files", "glob"}:
         paths = data.get("paths")
         if isinstance(paths, list) and paths:
