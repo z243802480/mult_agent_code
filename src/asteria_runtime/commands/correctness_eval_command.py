@@ -116,7 +116,7 @@ class CorrectnessEvalCommand:
         (``run_tests``/``run_command``) call — in that case there is no evidence to derive a
         real correctness score, so a caller must keep its own status-derived value rather than
         override a non-verification task (docs/creative) with a fabricated fail. Reused by the
-        review pipeline to replace the 0.9/0.6/0.2 constant with the real signal.
+        review pipeline as execution evidence, not as a semantic review score.
 
         When ``self.rerun`` is set (opt-in), the signal is the INDEPENDENT one: the recorded
         verification commands are re-executed against the current workspace (guarded) and the grade

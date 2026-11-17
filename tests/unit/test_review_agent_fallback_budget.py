@@ -41,14 +41,14 @@ def _agent() -> ReviewAgent:
     )
 
 
-def test_overall_uses_real_correctness_score_over_constant() -> None:
+def test_overall_does_not_substitute_command_rate_for_model_score() -> None:
     agent = _agent()
     real = {"status": "partial", "score": 0.5, "reason": "2/4 verification passed"}
 
-    # Model responded with a status but NO score -> the fabricated constant is replaced by the
-    # real verification pass rate; the model's status is respected.
+    # Missing semantic score remains unknown; the actual command rate is separate.
     model_no_score = agent._overall({"status": "pass"}, "pass", real)
-    assert model_no_score["score"] == 0.5
+    assert model_no_score["score"] is None
+    assert model_no_score["score_source"] == "unassessed"
     assert model_no_score["status"] == "pass"
 
     # Model supplied an explicit score -> that real judgment is kept (A1 only removes the constant).
@@ -62,13 +62,11 @@ def test_overall_uses_real_correctness_score_over_constant() -> None:
     assert "unavailable" in deterministic["reason"]
     assert "do not establish artifact or requirement coverage" in deterministic["reason"]
 
-    # ADR-0016 §3: no executable verification AND no model score -> score is None ("unverified"),
-    # NOT a fabricated 0.9/0.6/0.2 constant. The status still reflects the deterministic verdict, and
-    # the reason flags that an explicit human accept is needed; the run lifecycle is unchanged.
+    # No numeric model score does not invent a new approval policy or runtime score.
     unverified_model = agent._overall({"status": "pass"}, "pass", None)
     assert unverified_model["score"] is None
     assert unverified_model["status"] == "pass"
-    assert "unverified" in unverified_model["reason"].lower()
+    assert "unassessed" in unverified_model["reason"].lower()
     unverified_deterministic = agent._overall(None, "partial", None)
     assert unverified_deterministic["score"] is None
     assert "unavailable" in unverified_deterministic["reason"].lower()

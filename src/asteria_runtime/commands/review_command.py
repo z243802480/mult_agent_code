@@ -408,8 +408,8 @@ class ReviewCommand:
         )
         status = eval_report["overall"]["status"]
         raw_score = eval_report["overall"]["score"]
-        # ADR-0016 §3: score is None for an unverified task (no executable verification, no model
-        # score) — surface it honestly as "未验证" instead of a fabricated number.
+        # A missing model score stays None even when commands passed. Surface the
+        # unassessed score instead of substituting an execution metric.
         score = float(raw_score) if raw_score is not None else None
         score_text = f"{score:.2f}" if score is not None else "未验证"
         reason = str(eval_report["overall"].get("reason", ""))

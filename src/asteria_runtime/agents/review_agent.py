@@ -392,33 +392,28 @@ class ReviewAgent:
     def _overall(
         self, value: object, default_status: str, correctness: dict | None = None
     ) -> dict:
-        # A valid judgment may use its own score or a labeled command pass rate.
+        # Execution rates remain outcome evidence, never a substitute review score.
         # Without semantic judgment, execution metrics cannot establish approval.
-        real_score = float(correctness["score"]) if isinstance(correctness, dict) else None
         if isinstance(value, dict) and str(value.get("status") or "").lower() in {"pass", "partial", "fail"}:
             status = str(value.get("status") or default_status).lower()
-            model_score = value.get("score")
-            score = model_score if model_score is not None else real_score  # may be None
+            score = value.get("score")
             reason = str(value.get("reason") or f"Model review returned {status}.")
-            if model_score is None and real_score is not None:
+            if score is None:
                 reason = (
-                    f"{reason} Score is the real verification pass rate ({real_score:.2f}). "
+                    f"{reason} Review score is unassessed; execution pass rates are reported separately. "
                     f"{VERIFICATION_SCOPE_NOTE}"
-                )
-            elif score is None:
-                reason = (
-                    f"{reason} Unverified: no executable verification ran and no model score "
-                    "was returned; needs an explicit human accept."
                 )
             return {
                 "status": status,
                 "score": float(score) if score is not None else None,
+                "score_source": "model_assessment" if score is not None else "unassessed",
                 "reason": reason,
             }
         verification_status = str(correctness.get("status")) if isinstance(correctness, dict) else "unavailable"
         return {
             "status": "fail" if "fail" in {default_status, verification_status} else "partial",
             "score": None,
+            "score_source": "unassessed",
             "reason": (
                 "Semantic review is unavailable; artifact coverage is unverified. "
                 f"Recorded completion: {default_status}; executable verification: {verification_status}. "
