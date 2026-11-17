@@ -31,7 +31,8 @@ def objects(text):
 
 @pytest.mark.parametrize("valid", [True, False])
 @pytest.mark.parametrize("generated", [True, False])
-def test_execute_reference_failure_revision_updated_index_required_check_review_and_accept(tmp_path, valid, generated):
+@pytest.mark.parametrize("refused", [True, False])
+def test_execute_reference_failure_revision_updated_index_required_check_review_and_accept(tmp_path, valid, generated, refused):
     InitCommand(tmp_path).run()
     if generated:
         (tmp_path / "AGENTS.md").write_text("Verification may create ordinary generated tool state. Do not delete data.\n")
@@ -42,7 +43,7 @@ def test_execute_reference_failure_revision_updated_index_required_check_review_
             if request.purpose == "goal_spec":
                 goal = json.loads(result.content)
                 goal["target_outputs"] = ["src/notes_tool.py"]
-                if generated:
+                if generated or refused:
                     goal["edit_boundary"] = {"mode": "restricted", "paths": ["src/notes_tool.py"]}
                 return replace(result, content=json.dumps(goal))
             return result
@@ -77,11 +78,18 @@ def test_execute_reference_failure_revision_updated_index_required_check_review_
                     notice = next(p["workspace_effect_observations"] for p in payloads if "workspace_effect_observations" in p)
                     assert notice["cleanup_permission"] == "not_granted_by_observation"
                     assert notice["authorization_assessment"] == "not_determined_by_path_observation"
+                if refused:
+                    return response([call("write_file", path="outside.txt", content="forbidden")])
+            if self.turn == 3 + int(refused):
+                if refused:
+                    receipt = next(p for p in payloads if p.get("dispatch_state") == "not_dispatched")
+                    assert receipt["tool_call_id"]
+                    assert "denied" in request.messages[-1].text()
                 return response([call("revise_verification", original_verification_ref=self.original_ref,
                     failed_tool_call_id=self.failed_id, passed_tool_call_id=self.passed_id,
                     reason="The registered method raises without checking the produced value",
                     coverage="Check the same value and retain the independently required project command")])
-            if self.turn == 4:
+            if self.turn == 4 + int(refused):
                 updated = [p["verification_methods"] for p in payloads if "verification_methods" in p][-1]
                 assert self.original_ref not in {m["verification_ref"] for m in updated}
                 required = next(m["verification_ref"] for m in updated if m["command"] == CHECK)
@@ -102,6 +110,11 @@ def test_execute_reference_failure_revision_updated_index_required_check_review_
         assert task[key] == before[key]
     observations = [json.loads(s) for s in (run / "tool_observations.jsonl").read_text(encoding="utf8").splitlines()]
     assert next(o for o in observations if o["tool_call_id"] == model.failed_id)["ok"] is False
+    assert not (tmp_path / "outside.txt").exists()
+    if refused:
+        denial = next(o for o in observations if o["tool_name"] == "write_file" and not o["ok"])
+        assert denial["observation"]["dispatch_state"] == "not_dispatched"
+        assert denial["observation"]["file_changes"] == []
     if generated:
         assert (tmp_path / "probe-state.bin").read_text() == "generated"
         assert not (run / "decisions.jsonl").exists()

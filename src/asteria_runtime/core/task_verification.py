@@ -56,6 +56,13 @@ def _readback_keys(obs: ToolObservation, root: Path | None) -> set[str]:
             if obs.data.get(key)}
 
 
+def _refused_before_dispatch(obs: ToolObservation) -> bool:
+    # Only an explicit gateway fact can exclude a possible write. Do not infer
+    # this from permission errors, denial status, zero cost, or tool-supplied data.
+    return (getattr(obs, "dispatch_state", "unknown") == "not_dispatched"
+            and not obs.ok and not obs.data.get("changed_files") and not obs.file_changes)
+
+
 def readbacks_needing_execution(
     task: dict, observations: list[ToolObservation], root: Path | None = None,
 ) -> list[str]:
@@ -64,7 +71,8 @@ def readbacks_needing_execution(
     for index, obs in enumerate(observations):
         for key in _readback_keys(obs, root):
             latest[key] = index
-        if obs.tool_name in VERIFICATION_TOOLS | _WRITE_TOOLS or obs.data.get("changed_files"):
+        if (not _refused_before_dispatch(obs)
+                and (obs.tool_name in VERIFICATION_TOOLS | _WRITE_TOOLS or obs.data.get("changed_files"))):
             last_mutation = index
     return [path for path in declared_readbacks(task)
             if _path_key(path, root) not in latest
@@ -85,7 +93,8 @@ def commands_needing_execution(task: dict, observations: list[ToolObservation]) 
         command = observation_command(obs)
         if name in VERIFICATION_TOOLS and command in commands:
             latest[command] = index
-        elif name in VERIFICATION_TOOLS | _WRITE_TOOLS or obs.data.get("changed_files"):
+        elif (not _refused_before_dispatch(obs)
+              and (name in VERIFICATION_TOOLS | _WRITE_TOOLS or obs.data.get("changed_files"))):
             # An arbitrary command can mutate files, even if it reports failure.
             last_mutation = index
     return [c for c in commands if latest.get(c, -1) < last_mutation or c not in latest]

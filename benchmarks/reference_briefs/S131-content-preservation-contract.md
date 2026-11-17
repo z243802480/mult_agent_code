@@ -1,4 +1,14 @@
 # S131 — 内容保留与验证判据契约审计
+### 2026-11-17 前置拒绝与验证新鲜性（本刀登记，未验收）
+
+基线0009712。只读核实上轮最新正向：网关在enforce_tool_permission_profile因编辑边界拒绝apply_patch，尚未进入registry.call；现有观察没有分派事实，task_verification仅按工具名将其当可能写入，导致随后revise_verification陈旧拒绝。零计费/status不足以单独证明未执行，旧记录不回填为新证据。
+
+最小通用机制：ToolObservation增加向后兼容的dispatch_state（unknown/not_dispatched/dispatched），仅网关依据本次控制流赋值；在登记表调用前完成批准context/实参准备，实际即将调用才标dispatched。成功、返回失败和异常都保留分派事实；工具返回data或模型参数不能覆盖顶层事实。新鲜性仅排除明确not_dispatched且失败的观察，旧/未知或已分派仍按原保守规则，changed_files非空仍视可能写。既有失败/要求/方法来源、替代零退出无观察变化、必跑检查及审批守卫不变。模型反馈只增加同一事实回执，不加语义提示、不猜shell、不自动修订/清理/批准。
+
+参考[Codex ToolRouter](https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/src/tools/router.rs)将工具调用构造与dispatch分界、调用身份独立保存的机制；只借鉴控制流事实归属，不复制代码，不声称该实现拥有本项目相同新鲜性规则。先真实工具回归原版红→修后绿，覆盖前置边界/许可/来源拒绝、已分派后失败/写入再PermissionError、旧记录、只读回读、必跑拒绝不可伪通过、返回数据伪造及方法修订/Review/Accept链。保存旧paused现场/db/decision哈希，不继续它。
+
+冻结源码后新登记各一次真实坏件标准Review与同原目标/指导/基线/v1/v2/13控/32轮900秒正向。不得提供缺陷/oracle/在途解答/清理批准，不无改重采；原生完成且独立合格才标准Review/新鲜Accept，暂停则据实NOT RUN。保存全部旧账本/DB/待批/4001预留，按实际结果更新计划与记忆，不将机制修复签为语义覆盖。
+
 
 ### 2026-11-17 用户授权代码卫生维护（已完成）
 

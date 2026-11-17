@@ -200,6 +200,9 @@ class ToolObservation:
     # model must actually SEE to make progress. Empty for tools whose output the model doesn't need
     # echoed back (e.g. write_file — you don't re-read what you just wrote). See ADR-0024.
     payload: str = ""
+    # Gateway-owned dispatch fact, separate from tool-returned data. Old/adapted
+    # observations remain unknown; a tool failure alone proves no absence of effects.
+    dispatch_state: str = "unknown"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -213,6 +216,7 @@ class ToolObservation:
             "telemetry": self.telemetry,
             "data": self.data,
             "payload": self.payload,
+            "dispatch_state": self.dispatch_state,
         }
 
     def model_summary(self) -> str:

@@ -159,6 +159,7 @@ class ToolExecutionGateway:
             )
             pre_file_changes = self._planned_file_changes(tool_name, args, context)
             registry_started = False
+            dispatch_state = "not_dispatched"
             observation_recorded = False
             result = None
             try:
@@ -194,6 +195,11 @@ class ToolExecutionGateway:
                         "tool_surface_adapter": tool_surface_adapter,
                     },
                 )
+                approved_context = self.permission_policy.context_with_approval(context, task, tool_name, args)
+                tool_args = self._tool_args(tool_name, requested_args)
+                # Hooks may have effects themselves. A failure after entering this
+                # boundary cannot certify a refused, effect-free local invocation.
+                dispatch_state = "unknown"
                 self._emit(
                     context,
                     "before_tool_call",
@@ -204,17 +210,13 @@ class ToolExecutionGateway:
                     data={"arg_keys": sorted(list(args.keys()))},
                 )
                 registry_started = True
+                dispatch_state = "dispatched"
                 result = self.registry.call(
                     tool_name,
-                    self.permission_policy.context_with_approval(
-                        context,
-                        task,
-                        tool_name,
-                        args,
-                    ),
+                    approved_context,
                     task_id=task["task_id"],
                     agent_id=self.agent_id,
-                    **self._tool_args(tool_name, requested_args),
+                    **tool_args,
                 )
                 receipt = execution_method_receipt(task, context, tool_name, getattr(result, "data", {}) or {})
                 if receipt:
@@ -242,7 +244,8 @@ class ToolExecutionGateway:
                     telemetry={"duration_ms": duration_ms},
                     file_changes=file_changes,
                 )
-                observation = replace(observation, data={**observation.data, "tool_call_id": tool_call_id})
+                observation = replace(observation, dispatch_state=dispatch_state,
+                                      data={**observation.data, "tool_call_id": tool_call_id})
                 if tool_name == "read_file" and isinstance(args.get("path"), str):
                     observation = replace(observation, data={
                         **observation.data, "path": observation.data.get("path", args["path"]),
@@ -350,6 +353,12 @@ class ToolExecutionGateway:
                 if result is not None and not result.ok:
                     returned = observation_from_tool_result(tool_name=tool_name, result=result)
                     observation = replace(returned, data={**returned.data, "error_type": exc.__class__.__name__})
+                observation = replace(observation, dispatch_state=dispatch_state,
+                                      data={**observation.data, "tool_call_id": tool_call_id},
+                                      # Preflight paths are planned changes, not observed effects.
+                                      file_changes=[] if dispatch_state == "not_dispatched" else observation.file_changes)
+                if tool_name in {"run_command", "run_tests", "run_pytest"} and isinstance(args.get("command"), str):
+                    observation = replace(observation, data={**observation.data, "requested_command": args["command"]})
                 if tool_name == "read_file" and isinstance(args.get("path"), str):
                     observation = replace(observation, data={
                         **observation.data, "path": args["path"], "requested_path": args["path"],
@@ -456,6 +465,9 @@ class ToolExecutionGateway:
                     tool_name=tool_name,
                     data={"error": str(exc), "error_type": exc.__class__.__name__},
                 )
+                # Preserve the same durable observation across the batch exception,
+                # rather than reconstructing an uncorrelated failure in the loop.
+                setattr(exc, "harness_observation", observation)
                 raise
         return results
 

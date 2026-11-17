@@ -418,7 +418,9 @@ def execute_tool_calls(
     except ToolBatchError as exc:
         observations = [project(result, call) for call, result in zip(calls, exc.results)]
         name = str(exc.failed_call.get("tool_name") or "tool")
-        failure = observation_from_exception(tool_name=name, exc=exc.cause)
+        failure = getattr(exc.cause, "harness_observation", None)
+        if not isinstance(failure, ToolObservation):
+            failure = observation_from_exception(tool_name=name, exc=exc.cause)
         args = exc.failed_call.get("args") or {}
         data = {**failure.data, "failed_call_index": len(exc.results),
                 "unexecuted_tools": [str(c.get("tool_name") or "tool") for c in exc.skipped_calls]}
@@ -433,6 +435,9 @@ def execute_tool_calls(
         observations.append(replace(failure, data=data, summary=failure.summary + suffix))
         return observations
     except Exception as exc:  # 工具网关自身异常同样只是 observation，绝不触发独立 repair 路径
+        observed = getattr(exc, "harness_observation", None)
+        if isinstance(observed, ToolObservation):
+            return [observed]
         tool_name = str(calls[0].get("tool_name") or "tool") if len(calls) == 1 else "tool_batch"
         return [observation_from_exception(tool_name=tool_name, exc=exc)]
     observations = []
@@ -531,6 +536,8 @@ def _observation_feedback(
         block = _clip_text(obs.model_summary(), _SUMMARY_MAX_CHARS)
         receipt = {key: obs.data[key] for key in ("tool_call_id", "verification_ref", "returncode", "verification_method")
                    if key in obs.data}
+        if obs.dispatch_state != "unknown":
+            receipt["dispatch_state"] = obs.dispatch_state
         if receipt:
             block += "\nExecution receipt: " + json.dumps(receipt, ensure_ascii=False, separators=(",", ":"))
         payload = getattr(obs, "payload", "")
