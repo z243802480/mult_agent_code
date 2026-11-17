@@ -11,6 +11,7 @@ from asteria_runtime.core.context_slimming import project_review_evidence
 from asteria_runtime.core.verification_guidance import VERIFICATION_SCOPE_NOTE
 from asteria_runtime.core.model_driven_turn import run_model_driven_turn
 from asteria_runtime.core.review_tools import REVIEW_TURN_CONTRACT, ReviewTools
+from asteria_runtime.core.worker_transport import extract_tool_calls
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
 
@@ -30,7 +31,7 @@ class ReviewAgent:
             return self._evaluate_with_tools(review_context, run_id)
         if self.model_client is None:
             report = self._normalize({}, review_context, run_id)
-            report["trajectory_eval"]["review_assessment"] = {"status": "unavailable", "reason": "client_unavailable"}
+            report["trajectory_eval"]["review_assessment"] = self._assessment(False, "client_unavailable")
             self.validator.validate("eval_report", report)
             return report
         parse_error: ReviewAgentError | None = None
@@ -94,9 +95,11 @@ class ReviewAgent:
             except ReviewAgentError as exc:
                 parse_error = exc
                 report = {}
-            if self._has_judgment(report):
+            if self._is_terminal_judgment(report, response):
                 break
-            error = str(parse_error) if parse_error else "Missing or invalid overall.status; expected pass, partial, or fail"
+            error = (str(parse_error) if parse_error else
+                     "Review response is nonterminal" if self._has_judgment(report) else
+                     "Missing or invalid overall.status; expected pass, partial, or fail")
             protocol_errors.append({
                 "attempt": attempt + 1, "error": error, "finish_reason": response.finish_reason,
                 "response_excerpt": response_content[:24000], "response_chars": len(response_content),
@@ -127,13 +130,13 @@ class ReviewAgent:
                 response_content, report, parse_error = None, {}, None
                 break
             response_content = response.content
-        assessed = self._has_judgment(report)
-        report = self._normalize(report, review_context, run_id)
-        report["trajectory_eval"]["review_assessment"] = {
-            "status": "assessed" if assessed else "unavailable",
-            "reason": "model_judgment" if assessed else "model_unavailable" if response_content is None
-            else "invalid_json" if parse_error else "missing_or_invalid_overall",
-        }
+        assessed = response_content is not None and self._is_terminal_judgment(report, response)
+        has_judgment = self._has_judgment(report)
+        report = self._normalize(report if assessed else {}, review_context, run_id)
+        report["trajectory_eval"]["review_assessment"] = self._assessment(assessed,
+            "model_judgment" if assessed else "model_unavailable" if response_content is None
+            else "invalid_json" if parse_error else "nonterminal_response" if has_judgment
+            else "missing_or_invalid_overall")
         if protocol_errors:
             report["trajectory_eval"]["review_protocol_errors"] = protocol_errors
             report["trajectory_eval"]["review_protocol_recovery"] = {
@@ -175,13 +178,11 @@ class ReviewAgent:
         call_errors = []
 
         def terminal(response) -> str | None:
-            if getattr(response, "finish_reason", None) == "length":
-                return None
             try:
                 value = self._parse_json(response.content)
             except ReviewAgentError:
                 return None
-            if not value.get("tool_calls") and self._has_judgment(value):
+            if self._is_terminal_judgment(value, response):
                 return response.content
             return None
 
@@ -217,10 +218,8 @@ class ReviewAgent:
         raw = self._parse_json(result.final_message) if result is not None and assessed else {}
         assessed = assessed and self._has_judgment(raw)
         report = self._normalize(raw, review_context, run_id)
-        report["trajectory_eval"]["review_assessment"] = {
-            "status": "assessed" if assessed else "unavailable",
-            "reason": "model_judgment" if assessed else evidence["stop_reason"],
-        }
+        report["trajectory_eval"]["review_assessment"] = self._assessment(
+            assessed, "model_judgment" if assessed else evidence["stop_reason"])
         report["trajectory_eval"]["review_validation"] = {
             "evidence_ref": str(tools.path), "artifact_evidence_id": tools.artifacts["evidence_id"],
             "tool_count": len(evidence["observations"]), "copy_created": evidence["copy_created"],
@@ -253,6 +252,21 @@ class ReviewAgent:
     def _has_judgment(report: dict) -> bool:
         value = report.get("overall")
         return isinstance(value, dict) and str(value.get("status") or "").lower() in {"pass", "partial", "fail"}
+
+    @classmethod
+    def _is_terminal_judgment(cls, report: dict, response) -> bool:
+        # This tests response finality, not the substance or coverage of a verdict.
+        # Legacy reports may omit done; explicit continuation/actions take priority.
+        calls = report.get("tool_calls", [])
+        return (cls._has_judgment(report) and report.get("done") is not False
+                and isinstance(calls, list) and not calls
+                and response.finish_reason not in {"length", "tool_calls", "function_call"}
+                and not extract_tool_calls(getattr(response, "raw_response", None) or {}))
+
+    @staticmethod
+    def _assessment(assessed: bool, reason: str) -> dict:
+        return {"status": "assessed" if assessed else "unavailable", "reason": reason,
+                "validation_scope": "response_protocol", "semantic_completeness": "unverified"}
 
     def _request(
         self,

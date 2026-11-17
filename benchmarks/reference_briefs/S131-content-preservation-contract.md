@@ -1,5 +1,14 @@
 # S131 — 内容保留与验证判据契约审计
 
+### 2026-11-17 Review终局协议与实质判断边界（新刀登记，未验收）
+
+基线b6fb950。先核实上一轮记录：短partial回复的streaming.finish_reason=stop、无工具执行；现存模型账本没有完整原始响应/工具载荷，不能宣称已证明原生调用被吞。现有_has_judgment只检查overall.status，故过程表述也能作为协议可结束结果；运行时没有语义判别能力，不能以措辞/模型/provider/格式黑名单解决。
+
+新增通用协议控制暴露两条可复现缺口：工具路径的自定义terminal忽略显式done=false；无工具路径会把闭合但finish_reason=length的报告视为完成（也不检查待调用工具/continuation）。统一两路径的终局资格：非截断、无JSON/原生待调用动作、未显式done=false且有既有合法overall.status；旧无done终局继续兼容，不新增必填JSON或语义阶段。无工具路径继续只允许既有一次有界协议纠正，二次仍无资格不能归一化成pass；保留原回复/拒绝证据，不授工具或猜参数。assessed仍用于旧协议消费，另记录validation_scope=response_protocol与semantic_completeness=unverified，明确有效终局不等于实质语义被独立验证。上述边界修复不解释先前stop回复的语义空洞，也不预签覆盖治愈。
+
+参考[Anthropic停止原因](https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons)的结束/工具/截断区别与[Codex Review结果解析](https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/src/tasks/review.rs)的可解析输出边界；只借协议事实，不复制实现/提示。生产语义提示/输出schema/共享指导、原授权/预算/副本/方法修订/shell均不变，不新建完成FSM或措辞规则。先做两路径显式continue/工具/截断、旧终局、实际失败检查及真实反馈闭环回归；再冻结各一次旧坏件Review与同原目标/指导/基线/v1/v2/13控/32轮900秒正向，只独立合格且原生完成才额外标准Review/新鲜Accept。终局是否有实质判断、检查范围覆盖哪些原条件均按实际结果另审计，不把协议标记/执行数量当语义证明。无oracle/中途解答/清理授权/无改重采，旧现场/DB/审批/4001预留不动，更新计划记忆。
+
+
 ### 2026-11-17 自然适用条件与评分来源（工程/真实路径已验；语义仍开）
 
 基线77bf6dc。只读审计保留原运行/DB/决定/所有失败：原请求1167字符相等、当前6验收条件仍在，上一轮显式模型评分.95不由运行时fallback产生；自然样式条件尚未被实际方法证明，不能从行为片段退出0或原字段未改推全覆盖。用原ReviewAgent零模型投射确认一处通用误投影：模型pass/partial但未给score时，correctness_signal的命令通过率1会被填为overall.score1，需求覆盖仍null/未认证，原reason虽有范围注释仍混用了总体评分字段。
