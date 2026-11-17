@@ -1,4 +1,14 @@
 # S131 — 内容保留与验证判据契约审计
+### 2026-11-17 Review当前方法索引、证据消费与原始要求（本刀登记，未验收）
+
+基线138eae4。先只读核实上轮标准Review实际快照/请求回执：原始目标/指导和当前产物存在，成功命令观察可查但positive未查即partial；不能从0工具数单独判错或推断内部理解。代码发现当前方法索引仅哈希/ref，缺少可辨认命令/最近观察；按command跨task合并后以任一活task标current却引用全组末条观察，可能将discarded/别task结论绑定当前任务；未执行的新声明方法则在current索引消失。该结构问题用跨任务反向控制证明，不预先宣称它导致上轮模型判断。
+
+通用最小修复：按当前非discarded任务+原命令字节提供有界可辨认索引、直接来源、各自最近唯一观察ID/工具/执行者/returncode/dispatch事实，未观察明确null。当前完整方法按task隔离引用，跨run/重复/歧义不建立观察绑定；历史整组仍保留按需查阅，未观察方法声明不冒充执行历史。保留8条首屏与现有64索引/section/snapshot容量、分页/截断和无工具兼容；首次不内联模型解释/任务done/成功率或历史输出全文，执行事实与当前工件绑定/原始要求覆盖继续分开且unassessed。真实raw观察及方法不改、不自动执行/选择/修订。原始请求/指导/当前文件差异和真实权限/预算保持。来源可发现性是数据接口修复，不新增语义提示、工具次数门禁、认知JSON、措辞或格式规则。
+
+参考[Anthropic按名称/描述检索再加载](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool)的可发现摘要+按需展开，以及[Codex独立Review](https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/src/tasks/review.rs)不继承initial_history；只参考机制，不引入子代理/新编排或复制实现。先旧现场/原要求覆盖与索引只读审计；新增来源归属/跨任务相反结果/未执行/歧义/容量、实际工具结果与有效等价/真实缺陷的模型循环回归，原版红→修后绿。不以被传入、被查阅、协议终局等同实质消费或语义正确。
+
+冻结代码后旧真实坏件标准Review一次、同原自然目标/指导/基线/v1/v2/13控/32轮900秒正向一次；不供oracle/缺陷提示/在途解答或清理批准。独立合格且原生完成才正式Review/新鲜Accept，失败/暂停据实，不无改重复采样。全部旧DB/审批/4001预留及上一场running/REVIEWED但已无进程状态保持，不自动cancel/续跑旧现场。按实际触发与缺口更新计划/记忆，不预签收官。
+
 ### 2026-11-17 shell语法、审批与零项控制（工程已验；正式Review仍开）
 
 基线5c46792。先只读核实上轮最新paused及其原命令/输出：RunCommandTool与审批共用ShellGuard，但redirect直接regex扫原文本；实际宿主为Windows cmd.exe/POSIX /bin/sh。单引号在cmd不保护元字符，POSIX保护；嵌套sh/cmd/PowerShell与命令替换不能因外层引号被豁免。现有0项检查stdout与payload完整，selected/attempted0并未被截断；无反馈丢失证据，不捏造覆盖解析器。

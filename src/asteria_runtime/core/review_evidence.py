@@ -49,6 +49,8 @@ def verification_origins(run_id: str | None, board: dict, observations: list[dic
             relation = "recorded_replaced_method"
         rows.append({"tool_call_id": row.get("tool_call_id"), "observation_id": row.get("observation_id"),
                      "task_id": row.get("task_id"), "recorded_executor": call.get("agent_id") or "unknown",
+                     "tool_name": row.get("tool_name"),
+                     "dispatch_state": (row.get("observation") or {}).get("dispatch_state", "unknown"),
                      "selection_origin": "not_recorded", "method_relation": relation,
                      "task_discarded": task.get("status") == "discarded", "ok": row.get("ok"),
                      "returncode": data.get("returncode") if type(data.get("returncode")) is int else None,
@@ -82,7 +84,7 @@ class ReviewEvidence:
                 for origin in self.origins["records"]:
                     if origin["tool_call_id"] == row["tool_call_id"]:
                         origin["evidence_ref"] = ref
-        methods = self._methods(observations)
+        methods = self._methods(observations, board)
         self.view = deepcopy(review_context)
         deferred_paths = []
 
@@ -156,7 +158,7 @@ class ReviewEvidence:
                                   "content_sha256": hashlib.sha256(content.encode("utf8")).hexdigest()}
         return ref
 
-    def _methods(self, observations: list[dict]) -> dict:
+    def _methods(self, observations: list[dict], board: dict) -> dict:
         """Link exact recorded commands to observations; membership is not coverage."""
         by_call = {row["tool_call_id"]: row for row in observations[-MAX_INDEX_ROWS:]
                    if row.get("run_id") == self.context.run_id}
@@ -183,9 +185,64 @@ class ReviewEvidence:
                 if origin.get("evidence_ref") and origin["command_sha256"] == key:
                     origin["method_ref"] = ref
         index_ref = self._freeze("verification_methods", entries) if entries else None
-        current_methods = [entry for entry in entries if entry["current_declared_method"]]
-        return {"current": current_methods[-MAX_CURRENT_METHODS:], "omitted_current": max(0, len(current_methods) - MAX_CURRENT_METHODS),
+        current_methods, omitted, ambiguous = self._current_methods(board, grouped)
+        current_ref = self._freeze("current_verification_methods", {
+            "methods": current_methods, "omitted_methods": omitted, "ambiguous_tasks": ambiguous,
+        }) if current_methods or omitted or ambiguous else None
+        return {"current": current_methods[:MAX_CURRENT_METHODS],
+                "omitted_current": omitted + max(0, len(current_methods) - MAX_CURRENT_METHODS),
+                "all_current_methods_ref": current_ref, "ambiguous_tasks": ambiguous,
                 "all_methods_ref": index_ref, "method_count": len(entries), "requirement_coverage": "unassessed"}
+
+    def _current_methods(self, board: dict, historical: dict) -> tuple[list[dict], int, int]:
+        """Index declarations independently of execution; bind only this task's observations.
+
+        A shared command hash does not make another task's later success applicable.
+        These are source facts, never task completion or current-artifact verdicts.
+        """
+        tasks = board.get("tasks", [])
+        counts = Counter(t.get("task_id") for t in tasks)
+        entries: list[dict] = []
+        omitted = ambiguous = 0
+        for index, task in enumerate(tasks):
+            task_id = task.get("task_id")
+            if task.get("status") == "discarded" or not isinstance(task_id, str):
+                continue
+            if counts[task_id] != 1:
+                ambiguous += 1
+                continue
+            seen = set()
+            for position, command in enumerate(task.get("validation_commands", [])):
+                if not isinstance(command, str) or not command.strip() or command in seen:
+                    continue
+                seen.add(command)
+                if len(entries) >= MAX_INDEX_ROWS:
+                    omitted += 1
+                    continue
+                key = hashlib.sha256(command.encode("utf8")).hexdigest()
+                records = [r for r in historical.get(key, {}).get("observations", []) if r["task_id"] == task_id]
+                source = f"task_plan.tasks[{index}].validation_commands[{position}]"
+                namespace = hashlib.sha256(task_id.encode("utf8")).hexdigest()
+                reference = self._freeze(f"method/{namespace}/{key}", {
+                    "task_id": task_id, "source_ref": source, "command": command, "command_sha256": key,
+                    "observations": records, "temporal_scope": "declared_method_and_recorded_observations",
+                    "requirement_coverage": "unassessed",
+                })
+                latest = records[-1] if records else None
+                entries.append({
+                    "task_id": task_id, "source_ref": source, "command_sha256": key,
+                    "command_excerpt": command[:240], "command_truncated": len(command) > 240,
+                    "method_ref": reference, "method_truncated": self.sections[reference]["truncated"],
+                    "current_declared_method": True,
+                    "observation_availability": "linked" if latest else "no_unambiguous_observation_in_bounded_snapshot",
+                    "observation_ref": latest["evidence_ref"] if latest else None,
+                    "latest_observation": {k: latest[k] for k in (
+                        "tool_call_id", "observation_id", "evidence_ref", "tool_name", "recorded_executor",
+                        "ok", "returncode", "dispatch_state", "artifact_binding",
+                    )} if latest else None,
+                    "requirement_coverage": "unassessed",
+                })
+        return entries, omitted, ambiguous
 
     def catalog(self) -> list[dict]:
         return [{k: v for k, v in s.items() if k != "content"} for s in self.sections.values()
