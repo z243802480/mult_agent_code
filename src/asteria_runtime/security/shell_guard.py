@@ -3,6 +3,9 @@ from __future__ import annotations
 import fnmatch
 import re
 import shlex
+import sys
+
+from asteria_runtime.security.shell_redirects import ShellSyntaxUnknown, output_redirect_targets
 
 
 class ShellPolicyError(PermissionError):
@@ -130,6 +133,7 @@ class ShellGuard:
     # Default secret/protected file globs used when the caller does not supply the workspace
     # policy's protected_paths (e.g. the execution-approval preflight in runtime_policy).
     DEFAULT_SECRET_PATTERNS = (
+        ".git/",
         ".env",
         ".env.*",
         "secrets/",
@@ -171,9 +175,11 @@ class ShellGuard:
         "-ep",
     }
 
-    def __init__(self, permissions: dict, protected_paths: list[str] | None = None) -> None:
+    def __init__(self, permissions: dict, protected_paths: list[str] | None = None,
+                 *, shell_dialect: str | None = None) -> None:
         self.permissions = permissions
         self.protected_paths = list(protected_paths) if protected_paths else list(self.DEFAULT_SECRET_PATTERNS)
+        self.shell_dialect = shell_dialect or ("cmd" if sys.platform == "win32" else "posix")
 
     def validate(self, command: str) -> None:
         if not self.permissions.get("allow_shell", False):
@@ -182,6 +188,7 @@ class ShellGuard:
         # cmd.exe treats ^ as an escape char and strips it before executing (so `type .en^v`
         # opens .env, `de^l x` runs del). Fold carets out first so obfuscated spellings can't
         # slip past the scans below.
+        original_command = command
         command = command.replace("^", "")
 
         normalized = self._normalize(command)
@@ -215,7 +222,7 @@ class ShellGuard:
         if not self.permissions.get("allow_shell_operators", False):
             # Output redirects (>, >>) can clobber files outside the workspace or overwrite secrets, so
             # their targets are still validated. Pipes/&&/;/| are allowed (decomposed + scanned above).
-            self._validate_output_redirects(command)
+            self._validate_output_redirects(original_command)
 
         # Protected/secret files must not be reachable via the shell tool. Previously only the
         # file tools' PathGuard enforced this, so `cat .env` / `type secrets/key.pem` leaked
@@ -262,8 +269,11 @@ class ShellGuard:
                     raise ShellPolicyError(f"Global/system package install denied: {pattern}")
 
     def _validate_output_redirects(self, command: str) -> None:
-        for match in re.finditer(r'(?:^|\s)(>>|>)\s*("?)([^"\s;|&<>]+)\2', command):
-            target = match.group(3)
+        try:
+            targets = output_redirect_targets(command, self.shell_dialect)
+        except ShellSyntaxUnknown as exc:
+            raise ShellPolicyError(str(exc)) from exc
+        for target in targets:
             if not self._safe_redirect_target(target):
                 raise ShellPolicyError(f"Shell output redirect denied: {target}")
 
@@ -272,6 +282,10 @@ class ShellGuard:
         if not cleaned or ".." in cleaned:
             return False
         if cleaned.startswith(("/", "\\", "$", "%", "~")):
+            return False
+        if re.match(r"^[A-Za-z]:", cleaned):
+            return False
+        if any(char in cleaned for char in "$%!"):
             return False
         if any(char in cleaned for char in "|;&<>()"):
             return False

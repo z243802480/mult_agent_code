@@ -1,4 +1,16 @@
 # S131 — 内容保留与验证判据契约审计
+### 2026-11-17 shell语法、审批回执与零项验证（本刀开工，未验收）
+
+基线5c46792。先只读核实上轮最新paused及其原命令/输出：RunCommandTool与审批共用ShellGuard，但redirect直接regex扫原文本；实际宿主为Windows cmd.exe/POSIX /bin/sh。单引号在cmd不保护元字符，POSIX保护；嵌套sh/cmd/PowerShell与命令替换不能因外层引号被豁免。现有0项检查stdout与payload完整，selected/attempted0并未被截断；无反馈丢失证据，不捏造覆盖解析器。
+
+最小通用修复：有界、按宿主方言识别引号/转义/真实输出重定向与描述符，嵌套shell脚本/命令替换递归检查；不确定语法保守拒绝，危险目标/网络/破坏/外部副作用原guard保持。仅识别，不执行/重写/规范化模型命令；预检与执行同源。审批保持精确工具+参数fingerprint，增加原命令/实际shell/未分派事实供用户审阅，拒绝结果继续反馈，未知/陈旧引用不生成授权，不自动批准/降级安全档。
+
+参考[Microsoft cmd](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmd)的引号/转义与/c脚本边界、[PowerShell重定向](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_redirection)、Python shlex仅POSIX语法范围；只参考词法/调用事实，不复制实现。先做跨方言安全引号/转义、无空格redirect/FD/带空格目标、嵌套shell/替换、路径/secret/网络/破坏反向守卫，以及预检/实际执行/精确批准-拒绝-参数变化-引用关系的真实闭环。旧不明/动态语法保持保守，不用模型/程序语言/目标格式白名单。
+
+零项覆盖：现有receipt与Review已将运行退出与需求覆盖分开，不能从任意程序的exit0自动认证内部检查数量。先新登记有限域、空集合方法与合法非空替代的真模型Review控制，正常工具真实提供原始观察，外部expected不进模型；每例8轮120秒单次，不写交付/不Accept。若找到通用证据消费断点再修，不堆提示或按selected/doctest/文档词汇解析结果，不把控制器观察冒充模型自发发现。
+
+冻结后旧坏件标准Review一次，同原自然目标/指导/基线/v1/v2/13控/32轮900秒正向一次；独立合格且原生完成才正式Review/新鲜Accept，暂停/失败按实保留、不无改重采。所有旧DB/审批/账本/4001预留及最新shell pending原样保持，不执行或续跑它。结果/实际触发/未闭语义缺口更新总计划与本机记忆。
+
 ### 2026-11-17 前置拒绝与验证新鲜性（工程已验；真实整链仍开）
 
 基线0009712。只读核实上轮最新正向：网关在enforce_tool_permission_profile因编辑边界拒绝apply_patch，尚未进入registry.call；现有观察没有分派事实，task_verification仅按工具名将其当可能写入，导致随后revise_verification陈旧拒绝。零计费/status不足以单独证明未执行，旧记录不回填为新证据。

@@ -5,6 +5,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from asteria_runtime.core.edit_boundary import edit_boundary_allows
+from asteria_runtime.core.execution_environment import command_execution_context
 from asteria_runtime.core.execution_permission_request import requested_execution
 from asteria_runtime.core.verification_references import resolve_verification_args
 from asteria_runtime.core.agent_tool_surface import MODEL_TO_RUNTIME_TOOL_ALIASES
@@ -71,8 +72,7 @@ class ToolPermissionPolicy:
     ) -> None:
         if context is not None and tool_name in {"run_command", "run_tests"}:
             decision = self.execution_decision(context, task, tool_name, args)
-            if (decision and (decision.get("metadata") or {}).get("explicit_request")
-                    and decision["status"] in {"resolved", "defaulted"}
+            if (decision and decision["status"] in {"resolved", "defaulted"}
                     and decision.get("selected_option_id") != "approve_once"):
                 raise PermissionError("The requested exact execution was declined; choose another authorized method")
         write_tools = {"write_file", "apply_patch", "restore_backup"}
@@ -144,8 +144,7 @@ class ToolPermissionPolicy:
             if not command:
                 continue
             prior = self.execution_decision(context, task, tool_name, args)
-            if (prior and (prior.get("metadata") or {}).get("explicit_request")
-                    and prior["status"] in {"resolved", "defaulted"}
+            if (prior and prior["status"] in {"resolved", "defaulted"}
                     and prior.get("selected_option_id") != "approve_once"):
                 continue  # The gateway returns a denial, not another identical prompt.
             denial = self.shell_denial(context.policy, command)
@@ -289,7 +288,7 @@ class ToolPermissionPolicy:
             "question": (
                 f"Approve one-time execution for task {task['task_id']}? "
                 + (f"Agent requested `{tool_name}` because: {denial}. Command: {args.get('command', '')}" if explicit_request
-                   else f"Policy blocked `{tool_name}` because: {denial}")
+                   else f"Policy blocked `{tool_name}` because: {denial}. Command: {args.get('command', '')}")
             ),
             "recommended_option_id": "skip",
             "options": [
@@ -317,6 +316,11 @@ class ToolPermissionPolicy:
                 "tool_name": tool_name,
                 "args_fingerprint": self.args_fingerprint(args),
                 "denial": denial,
+                "execution_request": {
+                    "tool_name": tool_name, "args": deepcopy(args),
+                    "shell": command_execution_context()["run_command_shell"],
+                    "dispatch_state": "not_dispatched",
+                },
                 "permission_mode": self.permission_profile(context).get("mode"),
                 "ask_options": self.permission_profile(context).get("ask_options", []),
             },
