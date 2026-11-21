@@ -1,4 +1,12 @@
 # S131 — 内容保留与验证判据契约审计
+### 2026-11-21 方法实现锚点与literal here-document（本刀登记，未验收）
+
+基线df8179d。先只读比较上一坏件Review选择方法对当前交付、仅修真实缺陷的有效替代和独立坏行为副本的结果；原始要求不改，不以当前字节锚点/exit0代表语义覆盖。诊断仅在新隔离副本运行原命令，真实账本/原件/待批不动，不向在途模型泄露oracle。
+
+确认shell词法器将quoted here-doc stdin正文当作shell文本，正文里语言自身引号/比较触发Unfinished quote。仅支持可有界确认的POSIX单命令quoted literal delimiter和<<-制表缩进；正文由输入消费者解释，不作为宿主shell语法；原shell_guard仍对完整原命令执行secret/破坏/网络/远端等既有扫描。多here-doc、动态/未引用delimiter、复合header、shell/eval输入消费者、未闭合/复杂语法继续保守拒绝；Windows不当POSIX解释。不按Python/文档白名单、不执行/修复/改写命令、不授权限。正文之后真正redirect/命令仍检查；所有旧pending不执行/代批/续跑。
+
+参考POSIX/dash here-doc quoted delimiter不进行正文扩展、<<-仅剥tab的词法机制。先原版红/新绿回归：正文任意引号/比较、精确delimiter/续命令/危险目标/动态扩展/嵌套shell/多重与跨平台保守，WSL真实工具原字节执行与审批一致；不放宽授权。再冻结源各一次旧坏件标准Review和同原目标/指导/基线/v1/v2/13控/32轮900秒自然正向，原生完成且独立合格才Review/新鲜Accept；不无改重采，不给在途解答/清理批准。工程/语义/未触发路径分开记，更新计划/记忆。
+
 ### 2026-11-17 Review当前方法索引与归属（工程已验；真实整链/语义仍开）
 
 基线138eae4。先只读核实上轮标准Review实际快照/请求回执：原始目标/指导和当前产物存在，成功命令观察可查但positive未查即partial；不能从0工具数单独判错或推断内部理解。代码发现当前方法索引仅哈希/ref，缺少可辨认命令/最近观察；按command跨task合并后以任一活task标current却引用全组末条观察，可能将discarded/别task结论绑定当前任务；未执行的新声明方法则在current索引消失。该结构问题用跨任务反向控制证明，不预先宣称它导致上轮模型判断。

@@ -270,12 +270,17 @@ class ShellGuard:
 
     def _validate_output_redirects(self, command: str) -> None:
         try:
-            targets = output_redirect_targets(command, self.shell_dialect)
+            continuations: list[str] = []
+            targets = output_redirect_targets(command, self.shell_dialect, continuations=continuations)
         except ShellSyntaxUnknown as exc:
             raise ShellPolicyError(str(exc)) from exc
         for target in targets:
             if not self._safe_redirect_target(target):
                 raise ShellPolicyError(f"Shell output redirect denied: {target}")
+        for continuation in continuations:
+            # Literal stdin cannot hide the next command's network/destructive
+            # leader from the pre-existing raw command scanner's quote state.
+            self.validate(continuation)
 
     def _safe_redirect_target(self, target: str) -> bool:
         cleaned = target.strip().strip('"').strip("'")
@@ -357,8 +362,9 @@ class ShellGuard:
                 out.append(f" {pair} ")
                 index += 2
                 continue
-            if char in (";", "|"):
-                out.append(f" {char} ")
+            if char in (";", "|", "\n", "\r"):
+                separator = ";" if char in ("\n", "\r") else char
+                out.append(f" {separator} ")
                 index += 1
                 continue
             out.append(char)

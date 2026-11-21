@@ -22,14 +22,11 @@ _SHELLS = {"sh": "posix", "bash": "posix", "dash": "posix", "zsh": "posix",
            "ksh": "posix", "cmd": "cmd", "powershell": "powershell", "pwsh": "powershell"}
 
 
-def output_redirect_targets(command: str, dialect: str, *, _depth: int = 0) -> list[str]:
+def output_redirect_targets(command: str, dialect: str, *, _depth: int = 0,
+                            continuations: list[str] | None = None) -> list[str]:
     if dialect not in _DIALECTS or _depth > 8 or len(command) > 131_072:
         raise ShellSyntaxUnknown("Shell syntax inspection limit or unsupported dialect")
-    tokens, nested = _tokens(command, dialect)
-    if any(t.operator and t.value == "<<" for t in tokens) and ">" in command:
-        # Do not let a here-document body change the quote state of commands
-        # after its delimiter. Full here-document expansion is outside this lexer.
-        raise ShellSyntaxUnknown("Here-document with output syntax needs explicit approval")
+    tokens, nested = _tokens(command, dialect, continuations=continuations)
     targets: list[str] = []
     for index, token in enumerate(tokens):
         if token.operator and token.value.startswith(">"):
@@ -99,12 +96,14 @@ def _nested_targets(segment: list[_Token], depth: int, dialect: str) -> list[str
     return []  # A shell script file is not an inline script; no content is inferred.
 
 
-def _tokens(command: str, dialect: str) -> tuple[list[_Token], list[str]]:
+def _tokens(command: str, dialect: str, *, continuations: list[str] | None = None) -> tuple[list[_Token], list[str]]:
     tokens: list[_Token] = []
     nested: list[str] = []
     word: list[str] = []
     active = False
     quote: str | None = None
+    here_document: tuple[str, bool] | None = None
+    here_header_end = 0
     i = 0
 
     def flush() -> None:
@@ -165,11 +164,44 @@ def _tokens(command: str, dialect: str) -> tuple[list[_Token], list[str]]:
         elif ch.isspace():
             flush()
             if ch == "\n":
+                if here_document is not None:
+                    delimiter, strip_tabs = here_document
+                    # A pipeline, compound header or shell stdin consumer would
+                    # interpret the body again. Leave that outside this bounded
+                    # literal-input path rather than assuming it is inert data.
+                    header = tokens[here_header_end:]
+                    if any(t.operator for t in header) or any(
+                        t.operator and t.value in {";", "&", "|", "&&", "||", "(", ")"} for t in tokens
+                    ):
+                        raise ShellSyntaxUnknown("Compound here-document header needs explicit approval")
+                    words = [t.value for t in tokens if not t.operator]
+                    for value in words:
+                        name = value.replace("\\", "/").rsplit("/", 1)[-1].lower().removesuffix(".exe")
+                        if name in {*_SHELLS, "eval", ".", "source"}:
+                            raise ShellSyntaxUnknown("Shell here-document consumer needs explicit approval")
+                    i = _literal_body_end(command, i + 1, delimiter, strip_tabs)
+                    if continuations is not None and command[i:].strip():
+                        continuations.append(command[i:])
+                    here_document = None
+                    tokens.append(_Token(";", True))
+                    continue
                 tokens.append(_Token(";", True))
             i += 1
         elif ch in "><;|&()":
             flush()
             pair = command[i:i + 2]
+            if pair == "<<" and dialect == "posix":
+                if here_document is not None or any(t.value == "<<" for t in tokens):
+                    raise ShellSyntaxUnknown("Multiple here-documents need explicit approval")
+                match = re.match(r'''<<(-?)[ \t]*(?:'([A-Za-z0-9_]+)'|"([A-Za-z0-9_]+)")(?=[\s;|&<>]|$)''', command[i:])
+                if match is None:
+                    raise ShellSyntaxUnknown("Only a quoted literal here-document delimiter is inspectable")
+                delimiter = match.group(2) or match.group(3)
+                here_document = (delimiter, bool(match.group(1)))
+                tokens.extend([_Token("<<", True), _Token(delimiter)])
+                here_header_end = len(tokens)
+                i += match.end()
+                continue
             if pair in {"<(", ">("}:
                 raise ShellSyntaxUnknown("Process substitution needs explicit approval")
             op = pair if pair in {">>", ">&", ">|", "<<", "&&", "||"} else ch
@@ -181,8 +213,24 @@ def _tokens(command: str, dialect: str) -> tuple[list[_Token], list[str]]:
             i += 1
     if quote:
         raise ShellSyntaxUnknown("Unfinished shell quote")
+    if here_document is not None:
+        raise ShellSyntaxUnknown("Here-document body is missing")
     flush()
     return tokens, nested
+
+
+def _literal_body_end(command: str, start: int, delimiter: str, strip_tabs: bool) -> int:
+    # Body quotes/backticks/operators are stdin bytes, not host-shell syntax.
+    # The caller still runs all other guards against the full original command.
+    while start < len(command):
+        end = command.find("\n", start)
+        if end < 0:
+            end = len(command)
+        line = command[start:end]
+        if (line.lstrip("\t") if strip_tabs else line) == delimiter:
+            return min(end + 1, len(command))
+        start = end + 1
+    raise ShellSyntaxUnknown("Here-document literal delimiter was not closed")
 
 
 def _substitution_end(command: str, start: int) -> int:
