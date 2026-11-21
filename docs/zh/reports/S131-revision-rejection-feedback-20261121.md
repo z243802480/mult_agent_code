@@ -33,7 +33,7 @@ Windows相关106过62.79秒，WSL相关106过64.57秒；含原权限/来源/副�
 
 坏件快照31判据和627字符当前差异均存在，无section截断；两个自选真检查后仍总结样式与所有要求已满足。局部方法继续绑定当前28字符锚点，没有验证它是否符合原始适用条件。requirement_coverage仍null/unassessed，不把登记来源/exit0/模型pass当运行时全面覆盖认证，也不按工具数判错。
 
-正向实际只执行2条shell检查，末条自拟here-document方法报StopIteration，stdout/stderr留在payload；另有empty_patch、diff_workspace缺少必需参数等工具失败。最后task.notes与失败调用指向provider write timeout，一条task_execution记录input/output为null。不能把850秒全部归因于模型不收敛，也不把传输失败归为本刀反馈机制失败。0次revise_verification/verification_ref执行/权限请求，未触发新增拒绝事实；不能据本场证明反馈的实际消费或治愈。
+正向的项目测试由任务结束后的独立控制器执行通过；模型没有执行原必需项目命令，不能将此外部绿灯当模型自验或任务验证完成。模型实际只执行2条shell诊断，末条自拟here-document方法报StopIteration，stdout/stderr留在payload；另有empty_patch、diff_workspace缺少必需参数等工具失败。最后task.notes与失败调用指向provider write timeout，一条task_execution记录input/output为null。不能把850秒全部归因于模型不收敛，也不把传输失败归为本刀反馈机制失败。0次revise_verification/verification_ref执行/权限请求，未触发新增拒绝事实；不能据本场证明反馈的实际消费或治愈。
 
 ## 独立真模型反馈控制
 
