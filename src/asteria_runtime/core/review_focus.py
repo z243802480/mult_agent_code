@@ -105,7 +105,7 @@ def collect_review_focus(context: RuntimeContext, artifacts: dict, goal: dict,
                          board: dict, observations: list[dict]) -> dict:
     tasks = [(i, t) for i, t in enumerate(board.get("tasks", [])) if t.get("status") != "discarded"]
     active = {t["task_id"] for _, t in tasks if "task_id" in t}
-    task_counts = Counter(t.get("task_id") for _, t in tasks)
+    task_counts = Counter(t.get("task_id") for t in board.get("tasks", []))
     scoped = scoped_observations(context.run_id, observations)
     identities = {(r["tool_call_id"], r["observation_id"]) for r in scoped
                   if task_counts[r.get("task_id")] == 1}

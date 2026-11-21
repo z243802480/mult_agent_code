@@ -73,3 +73,12 @@ def test_evidence_snapshot_rejects_duplicated_observation_identity_even_with_uni
     assert not any("/observation/" in ref for ref in evidence.sections)
     assert all("evidence_ref" not in o for o in evidence.origins["records"])
     tools.finish("completed")
+
+
+def test_discarded_duplicate_cannot_supply_an_unambiguous_active_task_owner(tmp_path):
+    ctx = context(tmp_path)
+    board = {"tasks": [{"task_id": "active", "status": "done"},
+                       {"task_id": "active", "status": "discarded"}]}
+    focus = review_focus.collect_review_focus(ctx, {"files": []}, {}, board,
+                                            [row(ctx.run_id, "call-a", "obs-a")])
+    assert focus["task_evidence"] == [] and focus["omitted_tasks"] == 1
