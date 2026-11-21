@@ -7,6 +7,7 @@ from asteria_runtime.core.verification_references import (
 )
 from asteria_runtime.core.task_verification import observation_command
 from asteria_runtime.core.agent_harness import ToolObservation
+from asteria_runtime.core.verification_evidence import VerificationEvidenceError
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.tools.base import ToolResult
@@ -16,6 +17,24 @@ class ReviseVerificationTool:
     name = "revise_verification"
 
     def run(
+        self, context: RuntimeContext, original_command: str | None = None,
+        replacement_command: str | None = None, reason: str = "", coverage: str = "", *,
+        original_verification_ref: str | None = None,
+        failed_tool_call_id: str | None = None, passed_tool_call_id: str | None = None,
+    ) -> ToolResult:
+        try:
+            return self._revise(
+                context, original_command, replacement_command, reason, coverage,
+                original_verification_ref=original_verification_ref,
+                failed_tool_call_id=failed_tool_call_id, passed_tool_call_id=passed_tool_call_id,
+            )
+        except VerificationEvidenceError as exc:
+            return ToolResult(
+                ok=False, status="denied", summary="revise_verification denied by policy",
+                error=str(exc), data={"verification_rejection": exc.evidence},
+            )
+
+    def _revise(
         self, context: RuntimeContext, original_command: str | None = None,
         replacement_command: str | None = None, reason: str = "", coverage: str = "", *,
         original_verification_ref: str | None = None,

@@ -84,7 +84,7 @@ def observation_command(observation: Any) -> str:
     return str(data.get("requested_command") or data.get("command") or "").strip()
 
 
-def commands_needing_execution(task: dict, observations: list[ToolObservation]) -> list[str]:
+def command_execution_indices(task: dict, observations: list[ToolObservation]) -> tuple[dict[str, int], int]:
     commands = declared_commands(task)
     latest: dict[str, int] = {}
     last_mutation = -1
@@ -97,7 +97,12 @@ def commands_needing_execution(task: dict, observations: list[ToolObservation]) 
               and (name in VERIFICATION_TOOLS | _WRITE_TOOLS or obs.data.get("changed_files"))):
             # An arbitrary command can mutate files, even if it reports failure.
             last_mutation = index
-    return [c for c in commands if latest.get(c, -1) < last_mutation or c not in latest]
+    return latest, last_mutation
+
+
+def commands_needing_execution(task: dict, observations: list[ToolObservation]) -> list[str]:
+    latest, last_mutation = command_execution_indices(task, observations)
+    return [c for c in declared_commands(task) if latest.get(c, -1) < last_mutation or c not in latest]
 
 
 def declared_observations(

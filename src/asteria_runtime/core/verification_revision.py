@@ -7,8 +7,9 @@ from pathlib import Path
 
 from asteria_runtime.core.agent_harness import ToolObservation
 from asteria_runtime.core.task_verification import (
-    VERIFICATION_TOOLS, commands_needing_execution, declared_commands, observation_command,
+    VERIFICATION_TOOLS, command_execution_indices, declared_commands, observation_command,
 )
+from asteria_runtime.core.verification_evidence import VerificationEvidenceError, execution_receipt
 from asteria_runtime.utils.time import now_iso
 
 
@@ -156,8 +157,14 @@ def revise_method(
     revised["validation_commands"] = [replacement if c == original else c for c in commands]
     updated_policy = revised["verification_policy"]
     updated_policy["commands"] = list(revised["validation_commands"])
-    if replacement in commands_needing_execution(revised, observations):
-        raise PermissionError("Replacement evidence is stale after a possible write")
+    _, last_mutation = command_execution_indices(revised, observations)
+    if passed[0] < last_mutation:
+        raise VerificationEvidenceError("Replacement evidence is stale after a possible write", {
+            "reason_code": "replacement_evidence_stale",
+            "failed_execution": execution_receipt(own[failed[0]]),
+            "passed_execution": execution_receipt(own[passed[0]]),
+            "invalidating_execution": execution_receipt(own[last_mutation]),
+        })
     candidates = [
         replacement if c == original else c for c in source["revisable_commands"]
     ]

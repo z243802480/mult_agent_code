@@ -9,6 +9,7 @@ import json
 
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.task_verification import VERIFICATION_TOOLS, declared_commands
+from asteria_runtime.core.verification_evidence import VerificationEvidenceError, available_executions
 from asteria_runtime.storage.json_store import JsonStore
 
 
@@ -93,7 +94,11 @@ def resolve_verification_args(context: RuntimeContext, task: dict, tool_name: st
 def referenced_observation(records: list[dict], call_id: str, context: RuntimeContext, task: dict) -> dict:
     matches = [row for row in records if row["tool_call_id"] == call_id]
     if not isinstance(call_id, str) or len(matches) != 1:
-        raise PermissionError("Execution reference is missing or ambiguous")
+        raise VerificationEvidenceError("Execution reference is missing or ambiguous", {
+            "reason_code": "execution_reference_unresolved",
+            "resolution": "missing" if not matches else "ambiguous",
+            "available_executions": available_executions(records, context.run_id, task["task_id"]),
+        })
     row = matches[0]
     observation = row["observation"]
     if (row["run_id"] != context.run_id or row["task_id"] != task["task_id"]
