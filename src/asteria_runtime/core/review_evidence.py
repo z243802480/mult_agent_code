@@ -7,6 +7,7 @@ import hashlib
 import json
 
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.review_focus import scoped_observations
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.tools.base import ToolResult
 
@@ -77,14 +78,13 @@ class ReviewEvidence:
         self.sections: dict[str, dict] = {}
         self.remaining = MAX_SNAPSHOT_CHARS
         self.origins = verification_origins(context.run_id, board, observations, calls)
-        counts = Counter(r.get("tool_call_id") for r in observations if r.get("run_id") == context.run_id)
-        for row in observations[-MAX_INDEX_ROWS:]:
-            if row.get("run_id") == context.run_id and counts[row.get("tool_call_id")] == 1:
-                ref = self._freeze("observation/" + str(row["tool_call_id"]), row)
-                for origin in self.origins["records"]:
-                    if origin["tool_call_id"] == row["tool_call_id"]:
-                        origin["evidence_ref"] = ref
-        methods = self._methods(observations, board)
+        scoped = scoped_observations(context.run_id, observations)
+        for row in scoped[-MAX_INDEX_ROWS:]:
+            ref = self._freeze("observation/" + str(row["tool_call_id"]), row)
+            for origin in self.origins["records"]:
+                if origin["tool_call_id"] == row["tool_call_id"]:
+                    origin["evidence_ref"] = ref
+        methods = self._methods(scoped, board)
         self.view = deepcopy(review_context)
         deferred_paths = []
 

@@ -6,6 +6,7 @@ import difflib
 import hashlib
 import json
 import re
+from collections import Counter
 from pathlib import Path
 
 from asteria_runtime.core.content_preservation import PROTECTED
@@ -21,6 +22,19 @@ MAX_CRITERION_CHARS = 2048
 MAX_CRITERIA_CHARS = 16_384
 MAX_TASKS = 16
 MAX_OBSERVATIONS_PER_TASK = 32
+
+
+def scoped_observations(run_id: str | None, observations: list[dict]) -> list[dict]:
+    """Select uniquely attributable receipts, without selecting a winner on conflict."""
+    if not run_id:
+        return []
+    own = [row for row in observations if row.get("run_id") == run_id]
+    calls = Counter(row.get("tool_call_id") for row in own)
+    identities = Counter(row.get("observation_id") for row in own)
+    return [row for row in own
+            if isinstance(row.get("tool_call_id"), str) and row["tool_call_id"]
+            and isinstance(row.get("observation_id"), str) and row["observation_id"]
+            and calls[row["tool_call_id"]] == identities[row["observation_id"]] == 1]
 
 
 def _data(row: dict) -> dict:
@@ -43,7 +57,8 @@ def _read_internal(path: Path, workspace: Path, limit: int) -> bytes:
     return data
 
 
-def _baseline(context: RuntimeContext, path: str, writes: list[dict], cache: dict) -> tuple[str, dict]:
+def _baseline(context: RuntimeContext, path: str, writes: list[dict], cache: dict,
+              identities: set[tuple[str, str]]) -> tuple[str, dict]:
     guard = PathGuard(context.root, [*PROTECTED, *context.policy.get("protected_paths", [])])
     relative = guard.resolve_for_read(path).relative_to(context.root.resolve()).as_posix()
     if not re.fullmatch(r"[A-Za-z0-9_-]+", context.run_id or ""):
@@ -64,6 +79,8 @@ def _baseline(context: RuntimeContext, path: str, writes: list[dict], cache: dic
         item = next((f for f in manifest["files"] if f["path"] == relative), None)
         if item is None:
             continue
+        if (row.get("tool_call_id"), row.get("observation_id")) not in identities:
+            raise ValueError("Earliest matching backup has ambiguous observation identity")
         data = b""
         if item["existed"]:
             expected = "files/" + hashlib.sha256(relative.encode("utf8")).hexdigest()[:16] + ".bak"
@@ -88,9 +105,12 @@ def collect_review_focus(context: RuntimeContext, artifacts: dict, goal: dict,
                          board: dict, observations: list[dict]) -> dict:
     tasks = [(i, t) for i, t in enumerate(board.get("tasks", [])) if t.get("status") != "discarded"]
     active = {t["task_id"] for _, t in tasks if "task_id" in t}
+    task_counts = Counter(t.get("task_id") for _, t in tasks)
+    scoped = scoped_observations(context.run_id, observations)
+    identities = {(r["tool_call_id"], r["observation_id"]) for r in scoped
+                  if task_counts[r.get("task_id")] == 1}
     writes = [r for r in observations if r.get("run_id") == context.run_id
               and r.get("task_id") in active and r.get("ok") is True
-              and isinstance(r.get("tool_call_id"), str) and isinstance(r.get("observation_id"), str)
               and r.get("tool_name") in {"write_file", "apply_patch"}
               and isinstance(_data(r).get("backup_id"), str)]
     selected = writes[:MAX_BACKUPS]
@@ -103,7 +123,7 @@ def collect_review_focus(context: RuntimeContext, artifacts: dict, goal: dict,
                "reason": "Current content is missing or partial"}
         if file["status"] == "complete":
             try:
-                before, baseline = _baseline(context, file["path"], selected, cache)
+                before, baseline = _baseline(context, file["path"], selected, cache, identities)
                 # This is a text-line view, not a byte preservation or authorization verdict.
                 diff = "\n".join(difflib.unified_diff(before.splitlines(), file["content"].splitlines(),
                     fromfile="before/" + file["path"], tofile="current/" + file["path"], lineterm=""))
@@ -146,7 +166,9 @@ def collect_review_focus(context: RuntimeContext, artifacts: dict, goal: dict,
         for j, text in enumerate(task.get("acceptance", [])):
             add(text, f"task_plan.tasks[{i}].acceptance[{j}]", "task_contract", task.get("task_id"))
     for _, task in tasks[:MAX_TASKS]:
-        related = [r["observation_id"] for r in observations
+        if not isinstance(task.get("task_id"), str) or task_counts[task["task_id"]] != 1:
+            continue
+        related = [r["observation_id"] for r in scoped
                    if r.get("task_id") == task.get("task_id") and r.get("observation_id")]
         task_evidence.append({"task_id": task.get("task_id"),
                               "observation_ids": related[-MAX_OBSERVATIONS_PER_TASK:],
@@ -154,7 +176,7 @@ def collect_review_focus(context: RuntimeContext, artifacts: dict, goal: dict,
                               "relation": "same_task_only_not_criterion_coverage"})
     return {
         "changes": changes, "criteria": criteria, "task_evidence": task_evidence,
-        "omitted_criteria": omitted_criteria, "omitted_tasks": max(0, len(tasks) - MAX_TASKS),
+        "omitted_criteria": omitted_criteria, "omitted_tasks": len(tasks) - len(task_evidence),
         "omitted_write_observations": max(0, len(writes) - MAX_BACKUPS),
         "semantic_coverage": "unassessed", "original_request_ref": "review_basis.original_request",
         "baseline_scope": "Earliest available recorded pre-tool backup for active tasks, not necessarily goal start. "
