@@ -1,5 +1,5 @@
 # S131 — 内容保留与验证判据契约审计
-### 2026-11-22 Review 消费口径与产品整链（核实/修复待验）
+### 2026-11-22 Review 消费口径与产品整链（工程与真实链路已验；旧语义仍开）
 
 基线c1d8e56。沿真实报告追踪CLI/最终报告、Studio及Accept：数值评分未知与语义结论分开，执行检查率与原要求覆盖分开；不因未评分强制改pass/partial/fail或放宽Accept。已核实ReviewResult没有传出reason/覆盖口径、最终报告摘要只存review_status；Studio的执行检查pass在runVerificationHint中先返回，可能压掉未评审/不通过信息。先新增反例复现实际消费，再做共享的只读报告投影与局部呈现修复，不以提示/额外模型认知JSON解决展示丢失。
 
@@ -8,6 +8,8 @@
 工程：CLI/报告三个状态的缺评分生命周期原版3红；Studio原6消费反例全红。新增共享只读review_summary，投影理由/评分来源/需求覆盖/执行率，最终摘要可选review字段双schema同步；CLI与最终Markdown带出同一明细。Studio读取本run原生eval_report优先于旧摘要，补评审理由/未评定/模型覆盖来源说明，原徽标限定为执行检查通过。Accept与ReviewAgent/提示/权限/shell源码未改。12新Python实例/10新Studio实例，相关Win138过42.26秒/WSL138过58秒、Studio279过/类型/构建/Ruff/mypy60known18gone0new过，ESLint0错误11警告（10既有未改行/1配置忽略）。真实浏览器1过4.4秒，首次仅afterAll清理EBUSY失败，等待本测试服务close并有界重试后过；新测试初UTF8读取/jsonschema依赖假设纠正，不安装新包。完整Python已启动待收尾，冻结后新自然整链待验。
 
 先确定性红绿覆盖pass但无分数、partial但项目检查全绿、覆盖未知/模型声明与执行率分离、CLI/报告/Studio消费、Accept放行/拦截；生产变更按影响跑相关双平台/完整回归及Studio检查。冻结后新隔离自然Goal一次（32轮/600秒）→独立行为/范围检查→正式Review→fresh Accept→Studio实际呈现，若失败如实停在真实状态，不为通过改题或追加样本。未评分路径以确定性生命周期另验，不强迫真模型输出缺分数、不冒充自然触发。本轮独立自然任务只证明本次整链，不外推长任务可靠率或关闭旧语义。保护旧93根+上轮8工作区/audit/runtime共103根，旧DB/审批/未知预留不动；结果后更新计划记忆。
+
+结果：冻结600c51d新Goal149.70秒10模型1任务done，17 API/人工README/严格范围过，仅clock.py和README.md改，无新增authored。正式Review11.81秒2模型4工具pass1→默认freshAccept.40秒true/0新模型，CLI文本带原理由/覆盖未评定；Studio新会话映射同CLI原生progress，API及截图核实同报告/理由/未知覆盖实显，不称Studio发起Goal。总12真MiniMax-M2.7、232801入7912出、25观察23收费11单位/0seed；9trace83引用25源ID合格，103旧根/冻结源保持、0新决定。两前置拒绝command+ref和checks目录越权未收费未放宽。首Review控制脚本错给--json，派发前0模型拒绝后支持文本入口一次正式Review，不重跑Goal；旧8场与score99零模型重放原件/状态理由保持。完整Win2473过9skip42排除2warnings641.38秒，相关双平台138/Studio279/浏览器1/类型静态构建过。自然score1/coverageNone，缺评分由控制证明，未强迫模型缺分。下一核实工件/目标变动后Review新鲜性及两种接受口径，不把fresh命令当版本绑定，不预签旧语义关闭。见[报告](../../docs/zh/reports/S131-review-consumption-delivery-20261122.md)。
 
 ### 2026-11-22 历史声明与实际暴露对照（八控已验；投影与实际内联分开）
 
