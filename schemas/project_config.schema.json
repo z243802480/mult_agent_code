@@ -44,6 +44,19 @@
         "format": { "type": ["string", "null"] }
       }
     },
+    "command_sources": {
+      "type": "object",
+      "properties": {
+        "install": {"type":"object","required":["path","selector","content_sha256","basis"],"properties":{"path":{"type":"string"},"selector":{"type":"string"},"content_sha256":{"type":"string"},"basis":{"type":"string","enum":["tool_configuration","package_script","package_manifest"]}},"additionalProperties":false},
+        "run": {"type":"object","required":["path","selector","content_sha256","basis"],"properties":{"path":{"type":"string"},"selector":{"type":"string"},"content_sha256":{"type":"string"},"basis":{"type":"string","enum":["tool_configuration","package_script","package_manifest"]}},"additionalProperties":false},
+        "test": {"type":"object","required":["path","selector","content_sha256","basis"],"properties":{"path":{"type":"string"},"selector":{"type":"string"},"content_sha256":{"type":"string"},"basis":{"type":"string","enum":["tool_configuration","package_script","package_manifest"]}},"additionalProperties":false},
+        "lint": {"type":"object","required":["path","selector","content_sha256","basis"],"properties":{"path":{"type":"string"},"selector":{"type":"string"},"content_sha256":{"type":"string"},"basis":{"type":"string","enum":["tool_configuration","package_script","package_manifest"]}},"additionalProperties":false},
+        "typecheck": {"type":"object","required":["path","selector","content_sha256","basis"],"properties":{"path":{"type":"string"},"selector":{"type":"string"},"content_sha256":{"type":"string"},"basis":{"type":"string","enum":["tool_configuration","package_script","package_manifest"]}},"additionalProperties":false},
+        "build": {"type":"object","required":["path","selector","content_sha256","basis"],"properties":{"path":{"type":"string"},"selector":{"type":"string"},"content_sha256":{"type":"string"},"basis":{"type":"string","enum":["tool_configuration","package_script","package_manifest"]}},"additionalProperties":false},
+        "format": {"type":"object","required":["path","selector","content_sha256","basis"],"properties":{"path":{"type":"string"},"selector":{"type":"string"},"content_sha256":{"type":"string"},"basis":{"type":"string","enum":["tool_configuration","package_script","package_manifest"]}},"additionalProperties":false}
+      },
+      "additionalProperties": false
+    },
     "important_paths": { "type": "array", "items": { "type": "string" } },
     "protected_paths": { "type": "array", "items": { "type": "string" } },
     "root_guidance_path": { "type": "string" },

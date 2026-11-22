@@ -8,6 +8,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from asteria_runtime.core.north_star import NorthStarStore
+from asteria_runtime.core.project_commands import discover_project_commands
 from asteria_runtime.core.workspace_registry import WorkspaceRegistry
 from asteria_runtime.resources import schema_dir, template_path
 from asteria_runtime.storage.json_store import JsonStore
@@ -180,7 +181,7 @@ class InitCommand:
     def _build_project_config(self) -> dict:
         now = self._now()
         workspace_type = self._detect_workspace_type()
-        commands = self._detect_commands()
+        commands, command_sources = discover_project_commands(self.root)
         important_paths = self._detect_important_paths()
         languages = self._detect_languages()
 
@@ -195,6 +196,7 @@ class InitCommand:
             "frameworks": [],
             "package_managers": self._detect_package_managers(),
             "commands": commands,
+            "command_sources": command_sources,
             "important_paths": important_paths,
             "protected_paths": [
                 ".env",
@@ -317,28 +319,6 @@ class InitCommand:
         if ".md" in suffixes:
             languages.append("markdown")
         return languages or ["unknown"]
-
-    def _detect_commands(self) -> dict[str, str | None]:
-        commands: dict[str, str | None] = {
-            "install": None,
-            "run": None,
-            "test": None,
-            "lint": None,
-            "typecheck": None,
-            "build": None,
-            "format": None,
-        }
-        if (self.root / "pyproject.toml").exists():
-            commands["test"] = "pytest"
-            commands["lint"] = "ruff check ."
-            commands["typecheck"] = "mypy src"
-            commands["format"] = "ruff format ."
-        if (self.root / "package.json").exists():
-            commands["install"] = "npm install"
-            commands["test"] = commands["test"] or "npm test"
-            commands["run"] = "npm run dev"
-            commands["build"] = "npm run build"
-        return commands
 
     def _detect_important_paths(self) -> list[str]:
         candidates = ["src/", "tests/", "docs/", "docs/zh/", "schemas/", "templates/"]

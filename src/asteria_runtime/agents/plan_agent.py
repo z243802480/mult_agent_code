@@ -242,7 +242,7 @@ You must:
 Execution profile: {execution_profile}
 Execution environment: {json.dumps(environment, ensure_ascii=False)}
 Configured project commands (preserve applicable checks):
-{json.dumps(runtime_context.get("project_commands", {}), ensure_ascii=False)}
+{json.dumps({"commands": runtime_context.get("project_commands", {}), "discovered_sources_at_init": runtime_context.get("project_command_sources", {})}, ensure_ascii=False)}
 Existing workspace files:
 {chr(10).join(workspace_files) if workspace_files else "(empty workspace)"}
 

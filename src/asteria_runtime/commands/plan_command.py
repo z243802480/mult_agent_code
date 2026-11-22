@@ -240,6 +240,7 @@ class PlanCommand:
         )
         runtime_context = ContextLoader(self.root, self.validator).load(run_id=run["run_id"])
         runtime_context["project_commands"] = project_config["commands"]
+        runtime_context["project_command_sources"] = project_config.get("command_sources", {})
         research_report = load_research_report(run_dir, self.validator)
         research_report_path = run_dir / "research_report.json"
         if research_report:
