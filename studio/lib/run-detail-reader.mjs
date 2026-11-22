@@ -853,6 +853,7 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) {
       agent_loop_run_summary: "agent_loop_run_summary.json",
       run_loop_summary: "run_loop_summary.json",
       final_report_summary: "final_report_summary.json",
+      eval_report: "eval_report.json",
       model_route_timeline: "model_route_timeline.json",
       // The model's OWN todo list (todo_write). task_plan is what the planner laid out up front;
       // this is how the model actually organized the work as it went — and it was written but never

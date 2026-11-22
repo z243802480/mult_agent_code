@@ -32,6 +32,7 @@ from asteria_runtime.core.workspace_writer_lock import workspace_writer_lock
 from asteria_runtime.core.permission_policy import autonomy_rings_default_on
 from asteria_runtime.core.run_config import load_run_config
 from asteria_runtime.core.run_recap import author_run_recap
+from asteria_runtime.core.review_summary import load_review_summary, review_detail_lines
 from asteria_runtime.core.task_board import TaskBoard, TaskStateError
 from asteria_runtime.models.factory import create_recap_client
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
@@ -794,6 +795,7 @@ class RunCommand:
             "run_id": run_id,
             "status": status,
             "review_status": review_status,
+            "review": load_review_summary(run_dir, self.validator),
             "final_report_path": final_report_path.relative_to(self.root).as_posix(),
             "workspace_envelope": workspace_envelope,
             "output_locations": self._output_locations(workspace_envelope),
@@ -2229,6 +2231,7 @@ class RunCommand:
             f"- Goal: {goal_spec['normalized_goal']}",
             f"- Completion: {displayed_completion}",
             f"- Review status: {review_status}",
+            *[f"- {line}" for line in review_detail_lines(load_review_summary(run_dir, self.validator))],
             f"- Task plan quality: {self._task_plan_quality_summary(task_plan_eval)}",
             f"- Tasks done: {done}/{len(task_plan['tasks'])}",
             f"- Blocked tasks: {len(blocked_tasks)}",

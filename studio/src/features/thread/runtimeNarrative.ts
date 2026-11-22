@@ -159,39 +159,49 @@ export function runVerificationHint(
   runDetail: RunDetailPayload | null,
   steps: { events: StudioEvent[] }[] = [],
 ): string {
-  const finalSummary = asRecord(runDetail?.final_report_summary);
-  if (!Object.keys(finalSummary).length) return "";
+  const candidateSummary = asRecord(runDetail?.final_report_summary);
+  if (!runDetail?.ok) return "";
+  const finalSummary =
+    candidateSummary.run_id && candidateSummary.run_id !== runDetail.run_id ? {} : candidateSummary;
   const run = asRecord(runDetail?.run);
   const runStatus = String(run.status ?? finalSummary.run_status ?? "").toLowerCase();
-  if (runStatus && /fail|block|error|running|paused/.test(runStatus)) return "";
-  // The /run loop now emits a real executable-verification verdict (run_tests/run_command exit
-  // codes) as a `verification` progress event. When it passed, the work IS verified — don't nag the
-  // user to run Review. When it explicitly failed, say so. Only fall through to the review-status
-  // heuristic when no executable verdict was recorded (nothing runnable ran).
-  //
-  // Read the verdict TURN-scoped, exactly like the green "验证通过" badge (ConversationTurn): a resumed
-  // turn that did no verification of its own must not inherit an earlier turn's run-global pass and
-  // thereby suppress this note — otherwise such a turn shows neither the badge nor the nag and reads
-  // as "done and verified" with zero verification evidence. Fall through to the heuristic when this
-  // turn recorded no verdict.
+  if (/running|paused/.test(runStatus)) return "";
+  // Current native review takes precedence over an earlier delivery summary. Bind it to
+  // this session, and never substitute the executable verdict for a requirement judgment.
+  const report = asRecord(runDetail.eval_report);
+  const ownReport = report.run_id === runDetail.run_id ? report : {};
+  const stored = asRecord(finalSummary.review);
+  const ownStored = stored.run_id === runDetail.run_id ? stored : {};
+  const review = Object.keys(ownReport).length ? asRecord(ownReport.overall) : ownStored;
+  const goal = Object.keys(ownReport).length ? asRecord(ownReport.goal_eval) : ownStored;
+  const reviewStatus = String(review.status ?? finalSummary.review_status ?? "").toLowerCase();
   const verdict = turnCorrectnessVerdict(steps);
-  if (verdict === "pass") return "";
+  if (["pass", "partial", "fail"].includes(reviewStatus)) {
+    const fraction = (value: unknown): value is number =>
+      typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+    const score = fraction(review.score) ? `评分 ${review.score.toFixed(2)}` : "评分未评定";
+    const coverage = fraction(goal.requirement_coverage)
+      ? `模型评估覆盖率 ${Math.round(goal.requirement_coverage * 100)}%（非运行时独立核实）`
+      : "原要求覆盖率未评定；执行检查结果不代表全面覆盖";
+    return (
+      [
+        reviewStatus === "pass" ? "评审通过" : "评审未通过",
+        score,
+        coverage,
+        String(review.reason ?? "").trim(),
+        verdict === "fail" ? "本轮执行检查未通过，请核对检查范围" : "",
+      ]
+        .filter(Boolean)
+        .join("。") + "。"
+    );
+  }
   if (verdict === "fail") {
-    return "验证未通过——记录的测试/检查失败了。接受前请先查看。";
+    return "执行检查未通过——记录的测试/检查失败了。接受前请先查看。";
   }
-  const reviewStatus = String(finalSummary.review_status ?? "").toLowerCase();
-  const completion = String(
-    finalSummary.completion ?? finalSummary.completion_state ?? "",
-  ).toLowerCase();
-  if (reviewStatus === "pass" || /verified|accepted/.test(completion)) return "";
-  if (
-    reviewStatus === "unknown" ||
-    reviewStatus === "" ||
-    /needs_review|unverified|implemented/.test(completion)
-  ) {
-    return "改动已完成,但还没验证。运行查看来核对。";
-  }
-  return "";
+  if (!Object.keys(finalSummary).length && !Object.keys(ownReport).length) return "";
+  return verdict === "pass"
+    ? "执行检查已通过，尚未评审原始要求的覆盖情况。"
+    : "尚未评审原始要求；执行检查结果也需核对。";
 }
 
 export function latestActiveEvent(events: StudioEvent[]): StudioEvent | null {

@@ -21,6 +21,23 @@
     "run_id": { "type": "string" },
     "status": { "type": "string" },
     "review_status": { "type": "string" },
+    "review": {
+      "type": "object",
+      "properties": {
+        "run_id": { "type": ["string", "null"] },
+        "status": { "type": "string" },
+        "reason": { "type": "string" },
+        "score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "score_source": { "type": "string" },
+        "requirement_coverage": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "requirement_coverage_source": { "type": "string" },
+        "requirement_coverage_runtime_verified": { "type": "boolean" },
+        "verification_pass_rate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "verification_scope": { "const": "recorded_execution_checks_only" },
+        "source": { "const": "eval_report.json" }
+      },
+      "additionalProperties": false
+    },
     "final_report_path": { "type": "string" },
     "workspace_envelope": { "type": "object" },
     "output_locations": { "type": "object" },

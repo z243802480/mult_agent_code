@@ -16,6 +16,7 @@ from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.budget import BudgetController, budget_evidence
 from asteria_runtime.core.review_artifacts import collect_review_artifacts, constrain_review_approval, review_basis
 from asteria_runtime.core.review_focus import collect_review_focus
+from asteria_runtime.core.review_summary import review_detail_lines, summarize_review
 from asteria_runtime.core.review_tools import ReviewTools
 from asteria_runtime.core.edit_boundary import observed_outside_edit_boundary
 from asteria_runtime.core.runtime_context import RuntimeContext
@@ -66,6 +67,7 @@ class ReviewResult:
     next_actions: list[str] | None = None
     recommended_next_command: str | None = None
     failure_classification: dict | None = None
+    review: dict | None = None
 
     @property
     def primary_blocker(self) -> str | None:
@@ -88,13 +90,14 @@ class ReviewResult:
             "next_actions": self.next_actions or [],
             "recommended_next_command": self.recommended_next_command,
             "failure_classification": self.failure_classification or {},
+            "review": self.review or {},
         }
 
     def to_text(self) -> str:
         lines = [
             f"Reviewed run: {self.run_id}",
             f"Status: {self.status}",
-            f"Score: {self.score:.2f}" if self.score is not None else "Score: unverified",
+            *review_detail_lines(self.review or {"score": self.score}),
             f"Eval report: {self.eval_report_path}",
             f"Review report: {self.review_report_path}",
             f"Cost report: {self.cost_report_path}",
@@ -411,7 +414,7 @@ class ReviewCommand:
         # A missing model score stays None even when commands passed. Surface the
         # unassessed score instead of substituting an execution metric.
         score = float(raw_score) if raw_score is not None else None
-        score_text = f"{score:.2f}" if score is not None else "未验证"
+        score_text = f"{score:.2f}" if score is not None else "未评定"
         reason = str(eval_report["overall"].get("reason", ""))
         progress.validation_event(
             run_id=run_id,
@@ -508,6 +511,7 @@ class ReviewCommand:
                 failure_classification,
             ),
             failure_classification=failure_classification,
+            review=summarize_review(eval_report),
         )
 
     def _result_blockers(

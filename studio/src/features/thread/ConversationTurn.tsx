@@ -717,7 +717,7 @@ export function ConversationTurn({
       {verifiedPass && (
         <div className="turnVerifiedBadge" role="note" title="记录的测试/检查均已跑绿">
           <Check size={12} />
-          <span>已验证</span>
+          <span>执行检查通过</span>
         </div>
       )}
       {responseStep && isLast && onSuggestedAction && !suppressSuggested && (
