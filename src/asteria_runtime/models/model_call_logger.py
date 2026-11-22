@@ -6,6 +6,7 @@ from contextlib import nullcontext
 from typing import ContextManager
 
 from asteria_runtime.core.context_budget import estimate_request_context
+from asteria_runtime.core.model_input_evidence import persisted_input_evidence
 from asteria_runtime.models.base import ChatRequest, ChatResponse, StreamingTelemetry
 from asteria_runtime.models.model_progress_sink import ModelProgressSink, use_model_progress_sink
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -130,6 +131,9 @@ class ModelCallLogger:
             if isinstance(request.metadata.get(name), str):
                 record[name] = request.metadata[name]
         record["context_estimate"] = estimate.to_dict()
+        input_evidence = persisted_input_evidence(request)
+        if input_evidence is not None:
+            record["input_evidence"] = input_evidence
         if role_contract is not None:
             record["agent_role_contract"] = role_contract
             record["agent_role"] = role_contract.get("role")

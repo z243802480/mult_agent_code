@@ -174,6 +174,117 @@
         null
       ]
     },
+    "input_evidence": {
+      "type": "object",
+      "required": [
+        "scope",
+        "status",
+        "messages_sha256",
+        "assembly_messages_sha256",
+        "observations"
+      ],
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": [
+            "request_assembly_only"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "matched",
+            "messages_changed",
+            "invalid"
+          ]
+        },
+        "messages_sha256": {
+          "type": "string"
+        },
+        "assembly_messages_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "tool_call_id",
+              "tool_name",
+              "message_index",
+              "feedback_sha256",
+              "payload_sha256",
+              "receipt_sha256",
+              "payload_included",
+              "dispatch_state"
+            ],
+            "properties": {
+              "tool_call_id": {
+                "type": "string"
+              },
+              "tool_name": {
+                "type": "string"
+              },
+              "message_index": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              },
+              "feedback_sha256": {
+                "type": "string"
+              },
+              "payload_sha256": {
+                "type": "string"
+              },
+              "receipt_sha256": {
+                "type": "string"
+              },
+              "payload_included": {
+                "type": "boolean"
+              },
+              "dispatch_state": {
+                "type": "string",
+                "enum": [
+                  "unknown",
+                  "dispatched",
+                  "not_dispatched"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "matched_feedback_messages": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "unmatched_feedback_messages": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "observation_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "unidentified_observations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "omitted_observations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        }
+      },
+      "additionalProperties": false
+    },
     "purpose": {
       "type": "string"
     },

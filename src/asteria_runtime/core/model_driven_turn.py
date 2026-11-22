@@ -34,6 +34,7 @@ from asteria_runtime.core.agent_harness import (
 )
 from asteria_runtime.core.worker_transport import extract_tool_calls, tool_definitions_for
 from asteria_runtime.core.observation_receipt import observation_receipt
+from asteria_runtime.core.model_input_evidence import build_input_evidence
 from asteria_runtime.core.tool_batch_result import ToolBatchError
 from asteria_runtime.models.base import ChatMessage, ChatRequest
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
@@ -231,6 +232,12 @@ def run_model_driven_turn(
                 task=task,
                 iteration=iteration,
                 call_attribution=call_attribution,
+            ),
+        )
+        request.metadata["input_evidence"] = build_input_evidence(
+            request.messages, observation_feedback_index,
+            lambda observed, payloads: _observation_feedback(
+                observed, transport, include_payloads=payloads, json_turn_contract=json_turn_contract,
             ),
         )
         response = model_client.chat(request)

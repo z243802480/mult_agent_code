@@ -20,6 +20,7 @@ from asteria_runtime.core.agent_tool_surface import model_tool_surface_for_task
 from asteria_runtime.core.content_preservation import PROTECTED
 from asteria_runtime.core.review_artifacts import collect_review_artifacts
 from asteria_runtime.core.review_evidence import ReviewEvidence
+from asteria_runtime.core.model_input_evidence import messages_sha256
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.runtime_policy import ToolPermissionPolicy
 from asteria_runtime.core.tool_execution_gateway import ToolExecutionGateway
@@ -150,8 +151,7 @@ class ReviewTools:
                 "payload_sha256": hashlib.sha256(observed.payload.encode("utf8")).hexdigest(),
                 **{k: data[k] for k in ("evidence_ref", "offset", "next_offset", "stored_characters", "truncated") if k in data}})
         return {"request_number": self.model_calls, "status": "pending", "scope": "request_assembly_only",
-                "messages_sha256": hashlib.sha256(json.dumps([m.to_payload() for m in request.messages],
-                    ensure_ascii=False, sort_keys=True).encode("utf8")).hexdigest(), "observations": included}
+                "messages_sha256": messages_sha256(request.messages), "observations": included}
 
     def _prepare(self) -> RuntimeContext:
         if self.copy_context is not None:
