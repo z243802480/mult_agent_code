@@ -54,3 +54,5 @@ ask_everything 四场的完整声明都在初始 user 上下文中，逐场与�
 计划、brief 和本机记忆按这一边界更新。提交、远端 ref 和 CI 状态在推送后单独核对；Verify 若仍禁用，保持 NOT RUN，不启用 workflow 或配置 key。
 
 最终文档控制 23 passed / 1.40 秒，退出 0；启动时 requests 依赖版本警告单列，不作为检查失败或项目修复。结果使用 6 文档精确清单，完整暂存内容、保护路径和凭据模式扫描后提交；私有现场、过程协议和记忆不暂存。评估源是此前 4 文件的独立提交，生产 `src` 与基线一致。
+
+评估 `3308dfc` 与结果 `f3491e8d5a6ea6370c9bf3b4641b4a2ac4bd499f` 已推送 origin/main。公开 API 核对结果 SHA 与远端 main 一致，checks=0、workflow runs=0；Verify `267575628` 仍为 `disabled_manually`，远端 CI **NOT RUN**，未启用 workflow 或配置 key。此状态另以报告单文件提交；最终 ref 再核对并存本机审计，不把本地测试当远端绿灯。
