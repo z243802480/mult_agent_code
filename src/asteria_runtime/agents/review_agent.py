@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import time
 from dataclasses import dataclass, replace
 from hashlib import sha256
@@ -410,7 +411,13 @@ class ReviewAgent:
         # Without semantic judgment, execution metrics cannot establish approval.
         if isinstance(value, dict) and str(value.get("status") or "").lower() in {"pass", "partial", "fail"}:
             status = str(value.get("status") or default_status).lower()
-            score = value.get("score")
+            raw_score = value.get("score")
+            try:
+                score = None if raw_score is None or isinstance(raw_score, bool) else float(raw_score)
+            except (TypeError, ValueError, OverflowError):
+                score = None
+            if score is not None and (not math.isfinite(score) or not 0 <= score <= 1):
+                score = None
             reason = str(value.get("reason") or f"Model review returned {status}.")
             if score is None:
                 reason = (
@@ -419,7 +426,7 @@ class ReviewAgent:
                 )
             return {
                 "status": status,
-                "score": float(score) if score is not None else None,
+                "score": score,
                 "score_source": "model_assessment" if score is not None else "unassessed",
                 "reason": reason,
             }

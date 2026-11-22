@@ -39,3 +39,48 @@ def test_green_execution_without_judgment_or_numeric_coverage_remains_unassessed
     assert report["overall"]["status"] == "partial"
     assert report["overall"]["score"] is None
     assert report["overall"]["score_source"] == "unassessed"
+
+
+@pytest.mark.parametrize("status", ["pass", "partial", "fail"])
+@pytest.mark.parametrize("invalid", [
+    pytest.param(99, id="percent-scale"), pytest.param(-0.1, id="negative"),
+    pytest.param(1.01, id="above-one"), pytest.param(float("nan"), id="nan"),
+    pytest.param(float("inf"), id="infinity"), pytest.param(float("-inf"), id="negative-infinity"),
+    pytest.param(True, id="bool-true"), pytest.param(False, id="bool-false"),
+    pytest.param("not-a-score", id="text"), pytest.param({}, id="object"),
+    pytest.param([], id="array"), pytest.param(10**400, id="overflow-integer"),
+])
+def test_invalid_model_score_is_unassessed_without_replacing_the_judgment(status, invalid):
+    agent = ReviewAgent(None, SchemaValidator(Path("schemas")))
+    original = {"status": status, "score": invalid, "reason": "Artifact judgment remains independent"}
+    report = agent._normalize({"overall": original}, {
+        "deterministic_checks": {"task_completion_rate": 1, "verification_pass_rate": 1},
+    }, "run-score")
+    assert report["overall"]["score"] is None
+    assert report["overall"]["score_source"] == "unassessed"
+    assert report["overall"]["status"] == status
+    assert original["reason"] in report["overall"]["reason"]
+    assert "unassessed" in report["overall"]["reason"]
+    assert original["score"] is invalid
+    agent.validator.validate("eval_report", report)
+
+
+@pytest.mark.parametrize("score,expected", [(0, 0.0), (1, 1.0), (0.99, 0.99), ("0.99", 0.99), ("1", 1.0), ("0", 0.0)])
+def test_valid_scores_and_legacy_numeric_strings_keep_their_scale(score, expected):
+    agent = ReviewAgent(None, SchemaValidator(Path("schemas")))
+    result = agent._normalize({"overall": {"status": "pass", "score": score, "reason": "supported"}}, {}, "run-score")
+    assert result["overall"]["score"] == expected
+    assert result["overall"]["score_source"] == "model_assessment"
+
+
+def test_old_persisted_out_of_range_reports_remain_readable_without_rewriting(tmp_path):
+    from asteria_runtime.storage.json_store import JsonStore
+    validator = SchemaValidator(Path("schemas"))
+    report = ReviewAgent(None, validator)._normalize({"overall": {"status": "pass", "score": 0.99}}, {}, "run-old")
+    report["overall"]["score"] = 99
+    store = JsonStore(validator)
+    path = tmp_path / "eval_report.json"
+    store.write(path, report, "eval_report")
+    before = path.read_bytes()
+    assert store.read(path, "eval_report")["overall"]["score"] == 99
+    assert path.read_bytes() == before
