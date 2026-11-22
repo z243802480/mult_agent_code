@@ -97,6 +97,7 @@ class MiniMaxOpenAICompatibleClient:
             default_stream_idle_timeout_seconds=self.settings.stream_idle_timeout_seconds,
         )
         timeout = deadline.provider_call_seconds
+        attempt_id = self.logger.record_prepared(request, self.provider, self.settings.model_name)
         last_error: Exception | None = None
         call_started = time.monotonic()
 
@@ -114,7 +115,7 @@ class MiniMaxOpenAICompatibleClient:
                     )
                 if self.budget:
                     self._update_budget_tokens(response)
-                self.logger.record_success(request, response)
+                self.logger.record_success(request, response, request_attempt_id=attempt_id)
                 return response
             except Exception as exc:  # noqa: BLE001 - provider boundary normalizes all failures
                 last_error = exc
@@ -132,6 +133,7 @@ class MiniMaxOpenAICompatibleClient:
             model_name=self.settings.model_name,
             model_tier=request.model_tier,
             error=error_text,
+            request_attempt_id=attempt_id,
             streaming=StreamingTelemetry(
                 requested=self.settings.streaming_enabled,
                 supported=False,

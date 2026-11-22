@@ -211,9 +211,11 @@ def test_prepared_saves_current_assembly_receipt_without_claiming_history_absenc
     assert "PRIVATE_TOOL_BODY" not in (run / "model_request_attempts.jsonl").read_text()
 
 
-def test_http_retry_is_one_logical_preparation_and_does_not_send_the_identity(tmp_path, monkeypatch):
+@pytest.mark.parametrize("backend", ["openai_compatible", "minimax"])
+def test_http_retry_is_one_logical_preparation_and_does_not_send_the_identity(tmp_path, monkeypatch, backend):
     from asteria_runtime.models.http_transport import HttpResponse, HttpTransportError
     from asteria_runtime.models.openai_compatible import OpenAICompatibleClient, OpenAICompatibleSettings
+    from asteria_runtime.models.minimax import MiniMaxOpenAICompatibleClient, MiniMaxSettings
     validator, policy, run, budget, logger = setup(tmp_path)
     calls = []
 
@@ -228,9 +230,11 @@ def test_http_retry_is_one_logical_preparation_and_does_not_send_the_identity(tm
             return HttpResponse(200, {"model": "server-echo", "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
                                       "usage": {"prompt_tokens": 10, "completion_tokens": 5}})
 
-    monkeypatch.setattr("asteria_runtime.models.openai_compatible.time.sleep", lambda _: None)
-    client = OpenAICompatibleClient(OpenAICompatibleSettings(api_key="fake", base_url="https://example.invalid", model_name="configured",
-                                     max_retries=1, streaming_enabled=False), Transport(), logger, budget)
+    monkeypatch.setattr("asteria_runtime.models." + backend + ".time.sleep", lambda _: None)
+    client_class, settings_class = ((OpenAICompatibleClient, OpenAICompatibleSettings) if backend == "openai_compatible" else
+                                    (MiniMaxOpenAICompatibleClient, MiniMaxSettings))
+    client = client_class(settings_class(api_key="fake", base_url="https://example.invalid", model_name="configured",
+                                         max_retries=1, streaming_enabled=False), Transport(), logger, budget)
     client.chat(request())
     assert len(calls) == 2
     report = BudgetController.from_run(policy, run, validator).cost_report()
