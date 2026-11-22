@@ -37,6 +37,7 @@ class MeteredModelClient:
             )
             raise
 
+        attempt_id = self.logger.record_prepared(request, self.provider, self.model_name)
         try:
             response = self.delegate.chat(request)
         except Exception as exc:
@@ -46,6 +47,7 @@ class MeteredModelClient:
                 model_name=self.model_name,
                 model_tier=request.model_tier,
                 error=str(exc),
+                request_attempt_id=attempt_id,
             )
             raise
 
@@ -60,5 +62,5 @@ class MeteredModelClient:
             model_name=self.model_name,
             provider=self.provider,
         )
-        self.logger.record_success(request, response)
+        self.logger.record_success(request, response, request_attempt_id=attempt_id)
         return response

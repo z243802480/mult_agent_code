@@ -62,6 +62,22 @@
         "unknown_usage_records": {
           "type": "integer",
           "minimum": 0
+        },
+        "unresolved_model_requests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "orphan_model_terminals": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "known_input_tokens_lower_bound": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "known_output_tokens_lower_bound": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "additionalProperties": false

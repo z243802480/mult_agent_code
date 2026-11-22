@@ -4,9 +4,10 @@ from pathlib import Path
 from threading import RLock
 from contextlib import nullcontext
 from typing import ContextManager
+from uuid import uuid4
 
 from asteria_runtime.core.context_budget import estimate_request_context
-from asteria_runtime.core.model_input_evidence import persisted_input_evidence
+from asteria_runtime.core.model_input_evidence import messages_sha256, persisted_input_evidence
 from asteria_runtime.models.base import ChatRequest, ChatResponse, StreamingTelemetry
 from asteria_runtime.models.model_progress_sink import ModelProgressSink, use_model_progress_sink
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -28,8 +29,35 @@ class ModelCallLogger:
             return nullcontext()
         return use_model_progress_sink(ModelProgressSink(self.run_dir, self.validator, request))
 
-    def record_success(self, request: ChatRequest, response: ChatResponse) -> dict | None:
-        return self._record(request, response, status="success", summary="model call succeeded")
+    def record_prepared(self, request: ChatRequest, provider: str, model_name: str) -> str | None:
+        """Durable local preparation, once per logical call, before entering the backend.
+
+        This is neither a wire receipt nor a provider idempotency key. A missing terminal
+        leaves dispatch/outcome unknown; internal HTTP retries share this local identity.
+        """
+        if self.run_dir is None:
+            return None
+        attempt_id = str(uuid4())
+        record = {
+            "schema_version": "0.1.0", "request_attempt_id": attempt_id,
+            "run_id": request.metadata.get("run_id"), "task_id": request.metadata.get("task_id"),
+            "purpose": request.purpose, "model_provider": provider, "model_name": model_name,
+            "model_tier": request.model_tier, "created_at": now_iso(),
+            "status": "prepared", "scope": "logical_provider_call", "dispatch_state": "unobserved",
+            "messages_sha256": messages_sha256(request.messages),
+        }
+        evidence = persisted_input_evidence(request)
+        if evidence is not None:
+            record["input_evidence"] = evidence
+        with _MODEL_CALL_LOGGER_LOCK:
+            self.store.append(self.run_dir / "model_request_attempts.jsonl", record, "model_request_attempt")
+        return attempt_id
+
+    def record_success(
+        self, request: ChatRequest, response: ChatResponse, *, request_attempt_id: str | None = None,
+    ) -> dict | None:
+        return self._record(request, response, status="success", summary="model call succeeded",
+                            request_attempt_id=request_attempt_id)
 
     def record_failure(
         self,
@@ -39,9 +67,13 @@ class ModelCallLogger:
         model_tier: str,
         error: str,
         streaming: StreamingTelemetry | None = None,
+        *,
+        request_attempt_id: str | None = None,
     ) -> dict | None:
         with _MODEL_CALL_LOGGER_LOCK:
             record = self._base_record(request, provider, model_name, model_tier)
+            if request_attempt_id is not None:
+                record["request_attempt_id"] = request_attempt_id
             record.update(
                 {
                     "input_tokens": None,
@@ -63,6 +95,7 @@ class ModelCallLogger:
         response: ChatResponse,
         status: str,
         summary: str,
+        request_attempt_id: str | None = None,
     ) -> dict | None:
         with _MODEL_CALL_LOGGER_LOCK:
             record = self._base_record(
@@ -71,6 +104,8 @@ class ModelCallLogger:
                 response.model_name,
                 request.model_tier,
             )
+            if request_attempt_id is not None:
+                record["request_attempt_id"] = request_attempt_id
             record.update(
                 {
                     "input_tokens": response.usage.input_tokens,

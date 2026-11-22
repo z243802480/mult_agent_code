@@ -393,6 +393,10 @@
     },
     "review_artifacts_evidence_ref": {
       "type": "string"
+    },
+    "request_attempt_id": {
+      "type": "string",
+      "description": "Local logical-call preparation identity; not a wire receipt or idempotency key."
     }
   }
 }

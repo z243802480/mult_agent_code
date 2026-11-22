@@ -44,7 +44,9 @@ class FakeModelClient:
                 )
             raise
 
+        attempt_id = None
         if self.logger:
+            attempt_id = self.logger.record_prepared(request, "fake", "fake-offline")
             progress_context = self.logger.progress_context(request)
         else:
             progress_context = None
@@ -91,7 +93,7 @@ class FakeModelClient:
             raw_response={"purpose": request.purpose},
         )
         if self.logger:
-            self.logger.record_success(request, response)
+            self.logger.record_success(request, response, request_attempt_id=attempt_id)
         return response
 
     def _payload(self, request: ChatRequest) -> dict:

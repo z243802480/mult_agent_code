@@ -182,7 +182,12 @@ def test_abrupt_worker_exit_resume_keeps_budget_reservation_and_ledger_prefix(tm
     assert after["model_calls"] > saved["model_calls"]
     assert after["model_calls"] == len(calls) + 1
     assert after["accounting_recovery"]["unrecorded_model_attempts"] == 1
-    assert after["estimated_input_tokens"] == sum(r.get("input_tokens", 0) or 0 for r in calls)
+    assert after["accounting_recovery"]["unresolved_model_requests"] == 1
+    assert after["estimated_input_tokens"] is after["estimated_output_tokens"] is None
+    # This snapshot is a known lower bound at recovery, not a total for the lost response.
+    assert 0 < after["accounting_recovery"]["known_input_tokens_lower_bound"] <= sum(
+        r.get("input_tokens", 0) or 0 for r in calls
+    )
     assert all((run / name).read_bytes().startswith(data) for name, data in prefix.items())
     tools = [json.loads(line) for line in (run / "tool_calls.jsonl").read_text(encoding="utf8").splitlines()]
     assert sum(r["tool_name"] == "write_file" for r in tools) == 1
