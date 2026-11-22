@@ -48,4 +48,6 @@ controller通过普通写文件/测试网关准备坏、好、等价三场，每
 
 旧45现场及上一轮6新工作区和审计目录，共52个旧根全量hash复核保持；旧DB/审批/1未知在途/4001、v1/v2原结果均不续跑/改写。私有新证据位于~/.cache/asteria-evaluations/s131-project-entry-20261122；生产源码独立冻结，不将路由、现场或本机记忆放入Git。最初诊断脚本误用provider/model字段得到None分类，原输出保留；后续按实际schema的model_provider/model_name独立detail-audit确认20条均真模型，未改账本或数据回填。
 
-新控制表明本任务可识别条件反例并接受有效替代，不证明是Init修复造成语义提升，也不保证其他任务稳定正确。S131保持开放；后续以新暂停反例审计可修的工程闭环，不把固定样本无改重采当研发。CI状态待本刀推送后只读核实；禁用时保持NOT RUN，不启workflow或配置key。
+新控制表明本任务可识别条件反例并接受有效替代，不证明是Init修复造成语义提升，也不保证其他任务稳定正确。S131保持开放；后续以新暂停反例审计可修的工程闭环，不把固定样本无改重采当研发。
+
+源码06dfe7a与结果8716e3e已推origin/main，公开GitHub ref API确认远端8716e3e6ba60d5a7f8d9aaa266a28b6f02e06521与本机一致；该SHA检查0/运行0，Verify267575628仍disabled_manually，CI为NOT RUN。未启workflow或配置key。推送前仅精确9源码/登记文件与6结果文档经完整内容及protected路径扫描，私有现场/本机记忆未暂存。
