@@ -33,6 +33,7 @@ from asteria_runtime.core.agent_harness import (
     observation_from_tool_result,
 )
 from asteria_runtime.core.worker_transport import extract_tool_calls, tool_definitions_for
+from asteria_runtime.core.observation_receipt import observation_receipt
 from asteria_runtime.core.tool_batch_result import ToolBatchError
 from asteria_runtime.models.base import ChatMessage, ChatRequest
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
@@ -534,10 +535,7 @@ def _observation_feedback(
     blocks: list[str] = []
     for obs in observations:
         block = _clip_text(obs.model_summary(), _SUMMARY_MAX_CHARS)
-        receipt = {key: obs.data[key] for key in ("tool_call_id", "verification_ref", "returncode", "verification_method")
-                   if key in obs.data}
-        if obs.dispatch_state != "unknown":
-            receipt["dispatch_state"] = obs.dispatch_state
+        receipt = observation_receipt(obs)
         if receipt:
             block += "\nExecution receipt: " + json.dumps(receipt, ensure_ascii=False, separators=(",", ":"))
         payload = getattr(obs, "payload", "")
