@@ -2142,11 +2142,8 @@ class RunCommand:
         return execution_evidence[-1] if execution_evidence else {}
 
     def _latest_review_status(self, run_id: str) -> str:
-        path = self.root / ".asteria" / "runs" / run_id / "eval_report.json"
-        if not path.exists():
-            return "unknown"
-        report = self.store.read(path, "eval_report")
-        return report["overall"]["status"]
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        return str(load_review_summary(run_dir, self.validator).get("effective_status", "unknown"))
 
     def _write_final_report(
         self,

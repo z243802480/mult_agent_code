@@ -175,6 +175,11 @@ export function runVerificationHint(
   const review = Object.keys(ownReport).length ? asRecord(ownReport.overall) : ownStored;
   const goal = Object.keys(ownReport).length ? asRecord(ownReport.goal_eval) : ownStored;
   const reviewStatus = String(review.status ?? finalSummary.review_status ?? "").toLowerCase();
+  const freshness = asRecord(runDetail.review_freshness);
+  if (freshness.status && freshness.status !== "current") {
+    const history = reviewStatus === "pass" ? "历史评审通过" : "历史评审结论已保留";
+    return `${history}，当前${freshness.status === "changed" ? "输入已变化，评审已过期" : "评审新鲜性无法核实"}。请重新评审当前输入；执行检查结果不代替当前评审。`;
+  }
   const verdict = turnCorrectnessVerdict(steps);
   if (["pass", "partial", "fail"].includes(reviewStatus)) {
     const fraction = (value: unknown): value is number =>
@@ -202,6 +207,14 @@ export function runVerificationHint(
   return verdict === "pass"
     ? "执行检查已通过，尚未评审原始要求的覆盖情况。"
     : "尚未评审原始要求；执行检查结果也需核对。";
+}
+
+export function reviewNeedsRefresh(runDetail: RunDetailPayload | null): boolean {
+  return Boolean(
+    asRecord(runDetail?.eval_report).overall &&
+    asRecord(runDetail?.review_freshness).status &&
+    asRecord(runDetail?.review_freshness).status !== "current",
+  );
 }
 
 export function latestActiveEvent(events: StudioEvent[]): StudioEvent | null {

@@ -145,13 +145,13 @@ class AcceptCommand:
 
         review_status = self._latest_review_status(run_dir)
         if not self.skip_review and review_status != "pass":
-            review = ReviewCommand(self.root, run_id=run_id).run()
+            review = ReviewCommand(self.root, run_id=run_id, model_client=self.model_client).run()
             review_status = review.status
 
         blockers: list[str] = []
         promoted_files: list[str] = []
         pending = self._pending_promotions(run_dir)
-        if pending and self.promote_all:
+        if pending and self.promote_all and review_status == "pass":
             progress.record(
                 run_id=run_id,
                 channel="progress",
@@ -190,6 +190,15 @@ class AcceptCommand:
                 "without --no-promote or use `asteria promotions approve`."
             )
 
+        # Promotion can replace the very artifact that was reviewed. Reuse only a
+        # still-current verdict; --skip-review never waives the freshness check.
+        current_review_status = self._latest_review_status(run_dir)
+        if review_status == "pass" and current_review_status != "pass" and not self.skip_review:
+            review_status = ReviewCommand(self.root, run_id=run_id, model_client=self.model_client).run().status
+        else:
+            review_status = current_review_status
+        if review_status == "pass":
+            review_status = self._latest_review_status(run_dir)
         if review_status != "pass":
             blockers.append(
                 f"review status is {review_status}; run `asteria review` or repair follow-ups."

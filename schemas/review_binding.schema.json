@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReviewBinding",
+  "type": "object",
+  "required": ["schema_version", "run_id", "artifact_evidence_id", "scope", "complete", "files", "problems"],
+  "properties": {
+    "schema_version": {"enum": ["0.1.0"]},
+    "run_id": {"type": "string"},
+    "artifact_evidence_id": {"type": "string"},
+    "scope": {"enum": ["bound_goal_tasks_artifacts_guidance_and_observed_dependencies"]},
+    "complete": {"type": "boolean"},
+    "files": {"type": "array", "items": {
+      "type": "object", "required": ["root", "path", "exists", "bytes", "sha256"],
+      "properties": {
+        "root": {"enum": ["run", "workspace"]}, "path": {"type": "string"},
+        "exists": {"type": "boolean"}, "bytes": {"type": "integer", "minimum": 0},
+        "sha256": {"type": ["string", "null"]}
+      }, "additionalProperties": false
+    }},
+    "problems": {"type": "array", "items": {"type": "string"}}
+  }, "additionalProperties": false
+}

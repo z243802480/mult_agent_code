@@ -63,6 +63,16 @@ describe("runtimeSnapshotActionable honesty gates", () => {
 });
 
 describe("sessionWorkflowState", () => {
+  it("does not retain accepted/accept affordances for a changed Review input", () => {
+    const detail = runDetailWith({
+      run_loop_summary: { workflow_state: "accepted" },
+      eval_report: { overall: { status: "pass" } },
+      review_freshness: { status: "changed" },
+      main_action: { next_command: "accept" },
+    });
+    expect(sessionWorkflowState(detail)).toBe("ready_for_review");
+    expect(runtimeSnapshotActionable(acceptingOverview, detail, noEvents, false)).toBe(true);
+  });
   it("reads the session's own run_loop_summary, falling back to final_report_summary", () => {
     expect(
       sessionWorkflowState(runDetailWith({ run_loop_summary: { workflow_state: "Accepted" } })),

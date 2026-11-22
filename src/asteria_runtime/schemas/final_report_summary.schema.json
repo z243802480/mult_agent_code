@@ -26,6 +26,14 @@
       "properties": {
         "run_id": { "type": ["string", "null"] },
         "status": { "type": "string" },
+        "effective_status": { "enum": ["pass", "partial", "fail", "unknown"] },
+        "freshness": { "type": "object", "required": ["status", "reason", "changed_inputs", "scope"],
+          "properties": {
+            "status": { "enum": ["current", "changed", "unbound", "unavailable"] },
+            "reason": { "type": "string" }, "changed_inputs": { "type": "array", "items": { "type": "string" } },
+            "scope": { "const": "bound_inputs_only_not_full_workspace_or_semantic_coverage" }
+          }, "additionalProperties": false
+        },
         "reason": { "type": "string" },
         "score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
         "score_source": { "type": "string" },

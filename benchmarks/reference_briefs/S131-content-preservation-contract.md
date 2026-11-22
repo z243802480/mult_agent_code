@@ -1,4 +1,16 @@
 # S131 — 内容保留与验证判据契约审计
+### 2026-11-22 Review 新鲜性消费（核实后修复待验）
+
+基线843ccae。Accept/SessionResultService直接用旧overall.status，缺少当前目标/任务/工件比对；Studio也直接信原报告。已有ReviewTools只在评审结束检查复制源，没有覆盖后续消费。先以新隔离确定性场复现“评审后改工件/目标仍能接受”，再用内容绑定修通用责任链，不改模型提示/认知JSON或语义规则。
+
+运行时在Review开始捕获有界输入绑定：同run/snapshot、goal_spec与task_plan、声明工件和根指导的内容hash；可用时复用ReviewTools现有源manifest补充被检查依赖，不全盘扫描或声称全仓语义覆盖。消费时只读核对，无法绑定的历史报告可读但不可自动当当前批准，旧原件不回写。变化/无法核实不继承旧pass，内容未变和仅mtime变应仍可用；新Review形成新绑定才能重新批准，运行中变化也不得签当前pass。跳过Review不能跳过新鲜性，promotion前后核实，必要时沿既有默认Review有界复核，不发明新权限或shell改写。
+
+CLI/最终报告/状态/Studio区分历史模型结论和当前有效性，未绑定/已过期不显示为当前评审通过，执行auto-accept仍仅是既有执行完成口径。新增绑定/检查schema及双端消费控制，不让模型填运行时绑定。先红绿覆盖工件/目标/任务/指导/依赖变化、缺失/伪造/异run/路径拒绝、内容不变/mtime/历史可读、缺分数兼容与promotion后变化；再按影响做双平台、完整回归、Studio及真实有界新场验收。保护旧103根+上一轮workspace/audit/runtime共106根，旧DB/待批/未知预算不动，不重采或改写旧场；更新计划记忆，旧语义误判仍开。
+
+工程预检：原版5红1绿（四种评审后变化仍被接受、评审中变化仍pass；mtime不变绿）。25新Python/12新Studio实例，最终相关Win74过1skip45.19秒/WSL75过47.17秒，Studio291/类型/构建/浏览器1过5.2秒/Ruff/mypy60known18gone0new通过；定向ESLint0错3既有组件导出警告。扩大RunCommand组先116过1skip，最终完整回归待验。新合成fixture显式增加控制器绑定，不把无绑定旧记录伪装成当前批准；旧续作报告仍逐字归档可读但有效性unknown。补捕获窗口消失、相同大小/mtime替换、绝对目标路径规范化及安全路径边界；未知不签批准。浏览器首失败因旧展示fixture没有task_plan，补测试元数据后原生current→changed展示通过，不放宽校验。
+
+真场预登记：冻结后新normalize_tag自然Goal一次32轮/外部600秒，独立API/README/范围过才正式Review和默认Accept；再由控制器在进程退出后明确标记地替换本场工件为真实错误实现，验证CLI/状态/Studio不沿用旧pass，skip-review/no-promote不得绕过。恢复该工件的原字节后验证内容绑定可重新使用同一结论，不冒充模型自主修复或新语义评审；目标字段变化也做同样有界拒绝/恢复控制。0旧场续作，控制器扰动与模型写入分账，不以未变代码复采旧语义题，不增加模型调用凑时长。
+
 ### 2026-11-22 Review 消费口径与产品整链（工程与真实链路已验；旧语义仍开）
 
 基线c1d8e56。沿真实报告追踪CLI/最终报告、Studio及Accept：数值评分未知与语义结论分开，执行检查率与原要求覆盖分开；不因未评分强制改pass/partial/fail或放宽Accept。已核实ReviewResult没有传出reason/覆盖口径、最终报告摘要只存review_status；Studio的执行检查pass在runVerificationHint中先返回，可能压掉未评审/不通过信息。先新增反例复现实际消费，再做共享的只读报告投影与局部呈现修复，不以提示/额外模型认知JSON解决展示丢失。

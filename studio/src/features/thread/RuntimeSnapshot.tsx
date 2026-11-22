@@ -8,7 +8,12 @@ import type {
   StudioEvent,
 } from "../../types";
 import { asArray, asRecord, firstText, stripBackendWording, textOrFallback } from "./threadUtils";
-import { actionLabel, latestActiveEvent, runtimeProgress } from "./runtimeNarrative";
+import {
+  actionLabel,
+  latestActiveEvent,
+  runtimeProgress,
+  reviewNeedsRefresh,
+} from "./runtimeNarrative";
 import {
   decisionHint,
   preferredDecisionOptionId,
@@ -173,6 +178,7 @@ function DecisionCard({
  * on whatever run is latest in the workspace and may belong to another session entirely.
  */
 export function sessionWorkflowState(runDetail: RunDetailPayload | null): string {
+  if (reviewNeedsRefresh(runDetail)) return "ready_for_review";
   const loopSummary = asRecord(runDetail?.run_loop_summary);
   const finalSummary = asRecord(runDetail?.final_report_summary);
   return String(loopSummary.workflow_state ?? finalSummary.workflow_state ?? "")
@@ -224,16 +230,16 @@ export function runtimeSnapshotActionable(
   if (sessionWorkflowState(runDetail) === "accepted") return false;
 
   const workflow = asRecord(overview?.workflow);
-  const canReview = Boolean(workflow.can_review);
-  const canAccept = Boolean(workflow.can_accept);
+  const needsReview = reviewNeedsRefresh(runDetail);
+  const canReview = needsReview || Boolean(workflow.can_review);
+  const canAccept = !needsReview && Boolean(workflow.can_accept);
   const progress = runtimeProgress(runDetail);
   if (!Object.keys(progress).length && !canReview && !canAccept) return false;
   const loop = asRecord(progress.loop);
   const mainAction = asRecord(runDetail?.main_action);
-  const nextActionValue = firstText(
-    String(mainAction.next_command ?? ""),
-    String(progress.next_command ?? ""),
-  );
+  const nextActionValue = needsReview
+    ? "review"
+    : firstText(String(mainAction.next_command ?? ""), String(progress.next_command ?? ""));
   if (!nextActionValue && !noteworthyExitReason(loop.exit_reason) && !canReview && !canAccept)
     return false;
   return true;
@@ -272,18 +278,18 @@ export function RuntimeSnapshot({
   // review/accept flags must not paint completion chrome (see gates 1–3 on runtimeSnapshotActionable).
   const trustWorkflowFlags = !isRunning && Boolean(runDetail?.ok);
   const workflow = asRecord(overview?.workflow);
-  const canReview = trustWorkflowFlags && Boolean(workflow.can_review);
-  const canAccept = trustWorkflowFlags && Boolean(workflow.can_accept);
+  const needsReview = reviewNeedsRefresh(runDetail);
+  const canReview = trustWorkflowFlags && (needsReview || Boolean(workflow.can_review));
+  const canAccept = trustWorkflowFlags && !needsReview && Boolean(workflow.can_accept);
   const progress = runtimeProgress(runDetail);
   const activeEvent = latestActiveEvent(events);
   const loop = asRecord(progress.loop);
   const decisions = (runDetail?.decision_requests ?? []) as AnyRecord[];
   const mainAction = asRecord(runDetail?.main_action);
   const runId = String(runDetail?.run_id ?? "");
-  const nextActionValue = firstText(
-    String(mainAction.next_command ?? ""),
-    String(progress.next_command ?? ""),
-  );
+  const nextActionValue = needsReview
+    ? "review"
+    : firstText(String(mainAction.next_command ?? ""), String(progress.next_command ?? ""));
   const mainActionKind = String(mainAction.kind ?? "");
   const pendingPermission =
     activeEvent?.type === "permission_request" &&

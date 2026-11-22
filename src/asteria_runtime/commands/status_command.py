@@ -315,6 +315,8 @@ class StatusResult:
         if self.plugin_control.get("ok") is False:
             return False
         phase = self._current_phase()
+        if recommended == "review":
+            return True
         if phase in {"REVIEW", "REVIEWED", "ACCEPT", "ACCEPTED"}:
             return False
         task_summary = self.current_context.get("task_summary") or {}
@@ -343,7 +345,7 @@ class StatusResult:
     ) -> str:
         if not self.initialized:
             return "needs_init"
-        if self._current_phase() == "ACCEPTED":
+        if self._current_phase() == "ACCEPTED" and not can_review:
             return "accepted"
         if can_accept:
             return "ready_for_accept"

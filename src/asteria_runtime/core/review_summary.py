@@ -7,6 +7,7 @@ from pathlib import Path
 
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.core.review_freshness import review_freshness
 
 
 def _fraction(value: object) -> float | None:
@@ -47,7 +48,13 @@ def summarize_review(report: dict) -> dict:
 
 def load_review_summary(run_dir: Path, validator: SchemaValidator) -> dict:
     path = run_dir / "eval_report.json"
-    return summarize_review(JsonStore(validator).read(path, "eval_report")) if path.exists() else {}
+    if not path.exists():
+        return {}
+    report = JsonStore(validator).read(path, "eval_report")
+    summary = summarize_review(report)
+    summary["freshness"] = review_freshness(run_dir.parents[2], run_dir, report, validator)
+    summary["effective_status"] = summary["status"] if summary["freshness"]["status"] == "current" else "unknown"
+    return summary
 
 
 def review_detail_lines(review: dict) -> list[str]:
@@ -57,6 +64,7 @@ def review_detail_lines(review: dict) -> list[str]:
 
     return [
         f"Score: {value('score')}",
+        *([f"Current review validity: {review['freshness']['status']} — {review['freshness']['reason']}"] if review.get("freshness") else []),
         f"Reason: {review.get('reason') or 'No review reason recorded.'}",
         f"Score source: {review.get('score_source', 'unassessed')}",
         f"Requirement coverage: {value('requirement_coverage')} "

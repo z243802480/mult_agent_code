@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { controlledBinding } from "./review-binding-fixture.mjs";
 import {
   RUN_ID,
   createFixtureWorkspace,
@@ -49,11 +50,14 @@ test.afterAll(async () => {
 test("native Review remains visible beside passing execution checks and preserves an unscored pass", async ({
   page,
 }) => {
+  await fs.writeFile(path.join(runDir, "task_plan.json"), JSON.stringify({ tasks: [] }));
+  const artifactEval = await controlledBinding(workspace, runDir, RUN_ID);
   const writeReview = (status) =>
     fs.writeFile(
       path.join(runDir, "eval_report.json"),
       JSON.stringify({
         run_id: RUN_ID,
+        artifact_eval: artifactEval,
         overall: { status, score: null, reason: "A source condition needs independent assessment" },
         goal_eval: { requirement_coverage: null },
         outcome_eval: { verification_pass_rate: 1 },
@@ -70,4 +74,11 @@ test("native Review remains visible beside passing execution checks and preserve
   await expect(note).toContainText("评审通过", { timeout: 15000 });
   await expect(note).toContainText("评分未评定");
   await expect(note).toContainText("覆盖率未评定");
+  const goalFile = path.join(runDir, "goal_spec.json");
+  const originalGoal = await fs.readFile(goalFile, "utf8");
+  await fs.writeFile(goalFile, originalGoal + "\n");
+  await page.reload();
+  await expect(note).toContainText("评审已过期", { timeout: 15000 });
+  await expect(note).toContainText("请重新评审");
+  await expect(page.locator(".runtimeActionButton").filter({ hasText: "标记完成" })).toHaveCount(0);
 });

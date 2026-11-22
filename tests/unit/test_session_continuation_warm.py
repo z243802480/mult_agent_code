@@ -189,14 +189,18 @@ def test_follow_up_archives_previous_review_without_claiming_new_work_passed(tmp
     store.write(run_dir / "eval_report.json", report, "eval_report")
     old = (run_dir / "eval_report.json").read_bytes()
     service = SessionResultService(tmp_path, validator)
-    assert service.latest_review_status(run_id) == "pass"
+    # This historical synthetic report has no input binding. It remains readable,
+    # but cannot authorize the current workspace even before the follow-up.
+    assert service.latest_review_status(run_id) == "unknown"
+    assert store.read(run_dir / "eval_report.json", "eval_report")["overall"]["status"] == "pass"
     prepare_session_follow_up(tmp_path, run_id, "Add new behavior and tests.", validator=validator)
     assert service.latest_review_status(run_id) == "unknown"
     task_id = store.read(run_dir / "task_plan.json", "task_board")["tasks"][-1]["task_id"]
     assert (run_dir / "continuations" / task_id / "eval_report.json").read_bytes() == old
     report["overall"] = {"status": "partial", "score": 0.5, "reason": "new goal"}
     store.write(run_dir / "eval_report.json", report, "eval_report")
-    assert service.latest_review_status(run_id) == "partial"
+    assert service.latest_review_status(run_id) == "unknown"
+    assert store.read(run_dir / "eval_report.json", "eval_report")["overall"]["status"] == "partial"
 
 
 def test_follow_up_supports_observed_flat_package_without_granting_system_directories(tmp_path):

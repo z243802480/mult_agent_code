@@ -17,7 +17,8 @@ def test_accept_command_promotes_pending_candidate_and_finalizes_run(tmp_path: P
     root, run_dir, candidate = _workspace_ready_for_accept(tmp_path)
     (candidate.root / "tool.py").write_text("VALUE = 2\n", encoding="utf-8")
 
-    result = AcceptCommand(root, skip_review=True).run()
+    from tests.integration.test_review_consumption import UnscoredReviewer
+    result = AcceptCommand(root, model_client=UnscoredReviewer("pass")).run()
 
     assert result.accepted is True
     assert result.status == "completed"
@@ -63,7 +64,8 @@ def test_accept_command_links_run_to_north_star_milestone(tmp_path: Path) -> Non
     (candidate.root / "tool.py").write_text("VALUE = 2\n", encoding="utf-8")
     NorthStarStore(root).create_default(title="Accept link", statement="Link accepted runs")
 
-    result = AcceptCommand(root, skip_review=True).run()
+    from tests.integration.test_review_consumption import UnscoredReviewer
+    result = AcceptCommand(root, model_client=UnscoredReviewer("pass")).run()
 
     assert result.accepted is True
     north_star = NorthStarStore(root).read()
@@ -265,4 +267,6 @@ def _workspace_ready_for_accept(
         },
         "validation_result",
     )
+    from tests.helpers.review_binding import bind_fixture_review
+    bind_fixture_review(root, run_dir, validator)
     return root, run_dir, candidate

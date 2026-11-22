@@ -31,6 +31,12 @@ function detail(status: string, score: number | null = null): RunDetailPayload {
 }
 
 describe("Review consumption keeps execution evidence and requirement judgments separate", () => {
+  it("does not present a historical pass as current after content changes", () => {
+    const d = detail("pass", 1);
+    d.review_freshness = { status: "changed" };
+    expect(runVerificationHint(d, checked)).toContain("评审已过期");
+    expect(runVerificationHint(d, checked)).toContain("请重新评审");
+  });
   it.each(["partial", "fail"])("does not hide %s review behind passing checks", (status) => {
     const text = runVerificationHint(detail(status), checked);
     expect(text).toContain("评审未通过");

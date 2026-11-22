@@ -14,13 +14,9 @@ class SessionResultService:
         self.validator = validator or SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
 
     def latest_review_status(self, run_id: str) -> str:
-        from asteria_runtime.storage.json_store import JsonStore
-
-        path = self.root / ".asteria" / "runs" / run_id / "eval_report.json"
-        if not path.exists():
-            return "unknown"
-        report = JsonStore(self.validator).read(path, "eval_report")
-        return str(report["overall"]["status"])
+        from asteria_runtime.core.review_summary import load_review_summary
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        return str(load_review_summary(run_dir, self.validator).get("effective_status", "unknown"))
 
     def write_final_report(self, run_id: str, review_status: str, steps: list[Any]) -> Path:
         return self._report_backend()._write_final_report(run_id, review_status, steps)

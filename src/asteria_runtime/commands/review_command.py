@@ -16,7 +16,8 @@ from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.budget import BudgetController, budget_evidence
 from asteria_runtime.core.review_artifacts import collect_review_artifacts, constrain_review_approval, review_basis
 from asteria_runtime.core.review_focus import collect_review_focus
-from asteria_runtime.core.review_summary import review_detail_lines, summarize_review
+from asteria_runtime.core.review_summary import review_detail_lines, load_review_summary
+from asteria_runtime.core.review_freshness import capture_review_binding, add_review_dependencies, review_freshness
 from asteria_runtime.core.review_tools import ReviewTools
 from asteria_runtime.core.edit_boundary import observed_outside_edit_boundary
 from asteria_runtime.core.runtime_context import RuntimeContext
@@ -325,6 +326,7 @@ class ReviewCommand:
         )
         artifact_path = run_dir / (artifacts["evidence_id"] + ".json")
         self.store.write(artifact_path, artifacts, "review_artifacts")
+        binding = capture_review_binding(self.root, run_dir, artifacts, policy.get("protected_paths", []), goal=review_context["goal_spec"], board=review_context["task_plan"])
         review_context["current_artifacts"] = artifacts
         review_context["current_artifacts_ref"] = str(artifact_path)
         review_context["prompt_envelope"] = prompt_envelope.context_ref()
@@ -379,7 +381,15 @@ class ReviewCommand:
             "evidence_ref": str(artifact_path), "evidence_id": artifacts["evidence_id"],
             "complete": artifacts["complete"],
         }
+        add_review_dependencies(binding, tools.manifest if tools is not None else [])
+        self.validator.validate("review_binding", binding)
+        eval_report["artifact_eval"]["review_binding"] = binding
         constrain_review_approval(eval_report, artifacts)
+        freshness = review_freshness(self.root, run_dir, eval_report, self.validator)
+        if eval_report["overall"]["status"] == "pass" and freshness["status"] != "current":
+            eval_report["trajectory_eval"]["model_overall_before_freshness_check"] = dict(eval_report["overall"])
+            eval_report["goal_eval"]["requirement_coverage"] = None
+            eval_report["overall"] = {"status": "partial", "score": None, "reason": freshness["reason"]}
         assessment = eval_report["trajectory_eval"].get("review_assessment", {})
         eval_report["trajectory_eval"]["review_tier"] = {
             "mode": "model" if assessment.get("status") == "assessed" else "unavailable",
@@ -511,7 +521,7 @@ class ReviewCommand:
                 failure_classification,
             ),
             failure_classification=failure_classification,
-            review=summarize_review(eval_report),
+            review=load_review_summary(run_dir, self.validator),
         )
 
     def _result_blockers(

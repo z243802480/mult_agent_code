@@ -837,7 +837,7 @@ class SessionsCommand:
     ) -> str:
         phase = str(run_status.get("current_phase") or "").upper()
         status = str(run_status.get("status") or "").lower()
-        if phase == "ACCEPTED":
+        if phase == "ACCEPTED" and recommended_next_command != "review":
             return "accepted"
         if recommended_next_command == "accept":
             return "ready_for_accept"
@@ -881,6 +881,10 @@ class SessionsCommand:
         status = str(run_status.get("status") or "")
         phase = str(run_status.get("current_phase") or "")
         remaining = int(task_summary.get("remaining", 0) or 0)
+        from asteria_runtime.core.review_summary import load_review_summary
+        review = load_review_summary(run_dir, self.validator)
+        if review and review.get("freshness", {}).get("status") != "current":
+            return "review"
         if phase == "ACCEPTED":
             return None
         latest_review = self._latest_review_report(run_dir)

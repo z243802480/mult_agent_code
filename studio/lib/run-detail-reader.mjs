@@ -12,6 +12,7 @@ import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { redact, firstRuntimeText } from "./text-utils.mjs";
 import { readJson, readJsonlTail } from "./run-io.mjs";
+import { reviewFreshness } from "./review-freshness.mjs";
 import { isSafeId, isSafeWorkspacePath, isPreviewableFile } from "./workspace-paths.mjs";
 import { buildOrchestrationWorkflowMonitor } from "./orchestration-workflow-monitor.mjs";
 import {
@@ -701,6 +702,11 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) {
         evidence_refs: ["decisions.jsonl"],
       };
     }
+    if (payload.eval_report?.overall && payload.review_freshness?.status !== "current") {
+      return { kind: "review", label: "Review current inputs", next_command: "review",
+        requires_permission: false, status: "ready", decision_count: 0,
+        source: "review_freshness", evidence_refs: ["eval_report.json"] };
+    }
     const finalSummary = payload.final_report_summary || {};
     const loopSummary = payload.run_loop_summary || {};
     const progress = payload.runtime_progress || {};
@@ -864,6 +870,7 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) {
     for (const [key, file] of Object.entries(jsonFiles)) {
       payload[key] = redact(await readJson(path.join(runDir, file)));
     }
+    payload.review_freshness = await reviewFreshness(getWorkspace(), runDir, runId, payload.eval_report);
     payload.runtime_progress = redact(
       payload.final_report_summary?.runtime_progress ||
         payload.run_loop_summary?.runtime_progress ||

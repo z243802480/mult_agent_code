@@ -272,6 +272,7 @@ export type RunDetailPayload = {
   promotion_preview?: AnyRecord;
   final_report_summary?: AnyRecord;
   eval_report?: AnyRecord;
+  review_freshness?: AnyRecord;
   model_route_timeline?: AnyRecord;
   model_calls?: AnyRecord[];
   task_execution_evidence?: AnyRecord[];
