@@ -52,3 +52,5 @@ Goal 原生 auto-accept 以执行检查结束，这是已授权的既有行为�
 下一先核实 Review→Accept 的新鲜性消费：当前工件或目标在评审后改变时，旧 pass 是否被继续使用；同时区分执行后的 auto-accept 与正式语义评审。这里的 fresh Accept 仅指新命令实例复用未变交付，不能代签变化后的版本绑定。先有界复现，再按通用机制修复；不无改复采旧题、堆提示或加模型/措辞/格式补丁，不放宽授权、不自动改写 shell。旧语义失败保持开放。
 
 最终文档控制 23 passed / 1.31 秒。源码冻结以 17 文件精确清单扫描，结果以 6 文档精确清单扫描；完整暂存内容、保护路径和凭据模式检查，私有现场、记忆、截图及过程协议不暂存。Git/远端状态待推送后核对，Verify 若禁用则 CI 保持 NOT RUN，不启 workflow 或配置 key。
+
+修复 `600c51d` 与结果 `2f4049305ae54c7f753e357c782d767c10c8625c` 已推送 origin/main。公开 API 核对结果 SHA 与远端 main 一致，checks=0、workflow runs=0；Verify `267575628` 仍 `disabled_manually`，CI **NOT RUN**，未启用 workflow 或配置 key。此状态另以报告单文件提交，最终 ref 复核存本机审计/记忆，不把本地全套或自然验收当远端绿灯。
