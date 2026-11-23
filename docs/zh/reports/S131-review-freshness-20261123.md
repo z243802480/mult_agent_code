@@ -53,4 +53,4 @@ Accept 的 skip-review 不能跳过新鲜性。候选晋升前后及最终接受
 
 本刀不关闭旧 RST 标题 29 / 线 28 的语义漏判。新的真实摩擦：方法已修订且当前检查通过，最终验证汇总仍累计历史失败而显示 22/23 failed；过期 Accept 的推荐命令仍为通用 debug，Status/Studio 则指向 Review。下一先核实这两条消费责任，区分历史失败与当前检查、正确给出重新评审入口，按证据修复；不删旧失败，不把方法通过等同原要求全面覆盖，不扩大扫描/授权或加提示/专用补丁。
 
-源码与结果提交/远端状态收尾后核对；Verify 禁用时 CI 保持 NOT RUN，不启 workflow 或配置 key。
+主修 `9d99223`、fixture 修订 `a61bb41` 与结果 `0978f51aa32a8e9c8554868d5b528f174bf59a94` 已推送 origin/main。公开 API 核对结果 SHA 与远端 main 一致，checks=0、workflow runs=0；Verify `267575628` 仍为 `disabled_manually`，CI **NOT RUN**，未启 workflow 或配置 key。远端记录以报告单文件提交，最终 ref 复核留本机 protocol/记忆，不把本地测试和自然验收当远端绿灯。
