@@ -8,6 +8,7 @@ import pytest
 from asteria_runtime.commands.accept_command import AcceptCommand
 from asteria_runtime.core.goal_queue import GoalQueueStore
 from asteria_runtime.core.north_star import NorthStarStore
+from tests.integration.test_review_consumption import UnscoredReviewer
 from tests.unit.test_accept_command import _workspace_ready_for_accept
 
 pytestmark = pytest.mark.workflow
@@ -38,7 +39,7 @@ def test_accept_seeds_queue_and_suggests_continue(tmp_path: Path) -> None:
         milestone_titles=["Slice A", "Slice B", "Slice C"],
     )
 
-    result = AcceptCommand(root, skip_review=True).run()
+    result = AcceptCommand(root, model_client=UnscoredReviewer("pass")).run()
 
     assert result.accepted is True
     queue = GoalQueueStore(root).read()

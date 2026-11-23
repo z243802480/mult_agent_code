@@ -1,5 +1,7 @@
 # S131：Review 结论在交付链路中的消费
 
+2026-11-23 证明边界更正：只读复核私有展示脚本发现，userProgressToStudioEvent所需参数顺序为event/sessionId/runId，该脚本传成event/runId/sessionId。当时API相等和截图文字是实测结果，但不能据此认证严格的Studio会话/run归属。上述展示链路主张应按此收窄；CLI自然Goal、正式Review/Accept与原始报告结果不受此脚本错误影响。旧私有现场、日志和截图原件保持，不改写；后续新场须正确映射并核对每条归属及实际页面run请求。
+
 日期：2026-11-22。基线 `c1d8e56`，修复冻结 `600c51ded3b0b1619bd0d11c5b260eba9d515de1`。修复了评审明细丢失、执行检查通过掩盖评审状态的通用消费问题；没有改模型提示、ReviewAgent、Accept 判定、授权、shell 或编排。旧真实坏件的语义误判仍开放。
 
 ## 核实与修复

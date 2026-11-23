@@ -41,6 +41,23 @@ def test_prepare_accept_ready_run_creates_run(tmp_path: Path) -> None:
     assert (run_dir / "eval_report.json").exists()
 
 
+def test_offline_band_binding_cannot_approve_changed_artifact(tmp_path: Path) -> None:
+    from asteria_runtime.commands.accept_command import AcceptCommand
+    from asteria_runtime.core.review_summary import load_review_summary
+
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    run_id = prepare_accept_ready_run(tmp_path, validator, "band goal")
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    summary = load_review_summary(run_dir, validator)
+    assert summary["effective_status"] == "pass"
+    assert "Synthetic offline band fixture" in summary["reason"]
+    (tmp_path / "tool.py").write_text("VALUE = 99\n", encoding="utf-8")
+    result = AcceptCommand(tmp_path, run_id=run_id, skip_review=True, promote_all=False).run()
+    assert result.accepted is False
+    assert load_review_summary(run_dir, validator)["freshness"]["status"] == "changed"
+
+
 def test_supervised_loop_releases_queue_item_when_accept_blocked(tmp_path: Path) -> None:
     validator = SchemaValidator(Path.cwd() / "schemas")
     InitCommand(tmp_path).run()

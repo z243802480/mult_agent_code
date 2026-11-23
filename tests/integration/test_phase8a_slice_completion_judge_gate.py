@@ -9,6 +9,15 @@ from asteria_runtime.commands.accept_command import AcceptCommand
 from asteria_runtime.core.north_star import NorthStarStore
 from asteria_runtime.models.fake import FakeModelClient
 from tests.unit.test_accept_command import _workspace_ready_for_accept
+from tests.integration.test_review_consumption import UnscoredReviewer
+
+
+class ReviewAndJudgeFixture(FakeModelClient):
+    def chat(self, request):
+        if request.purpose == "run_review":
+            return UnscoredReviewer("pass").chat(request)
+        return super().chat(request)
+
 
 pytestmark = pytest.mark.workflow
 
@@ -43,8 +52,7 @@ def test_accept_with_model_judge_persists_model_judge_field(tmp_path: Path) -> N
 
     result = AcceptCommand(
         root,
-        skip_review=True,
-        model_client=FakeModelClient(),
+        model_client=ReviewAndJudgeFixture(),
     ).run()
 
     assert result.accepted is True

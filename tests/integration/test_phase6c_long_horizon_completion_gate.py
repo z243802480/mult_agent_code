@@ -10,6 +10,7 @@ from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.status_command import StatusCommand
 from asteria_runtime.core.long_horizon_completion import SLICE_COMPLETION_EVAL_FILENAME
 from asteria_runtime.core.north_star import NorthStarStore
+from tests.integration.test_review_consumption import UnscoredReviewer
 from tests.unit.test_accept_command import _workspace_ready_for_accept
 
 pytestmark = pytest.mark.workflow
@@ -39,7 +40,7 @@ def test_accept_writes_slice_completion_eval_and_user_progress(tmp_path: Path) -
     (candidate.root / "tool.py").write_text("VALUE = 2\n", encoding="utf-8")
     NorthStarStore(root).create_default(title="Completion contract", statement="Evaluate slices")
 
-    result = AcceptCommand(root, skip_review=True).run()
+    result = AcceptCommand(root, model_client=UnscoredReviewer("pass")).run()
 
     assert result.accepted is True
     eval_path = run_dir / SLICE_COMPLETION_EVAL_FILENAME
@@ -61,7 +62,7 @@ def test_status_long_horizon_includes_last_slice_completion(tmp_path: Path) -> N
     (candidate.root / "tool.py").write_text("VALUE = 2\n", encoding="utf-8")
     InitCommand(root).run()
     NorthStarStore(root).create_default(title="Status projection", statement="Project completion")
-    AcceptCommand(root, skip_review=True).run()
+    AcceptCommand(root, model_client=UnscoredReviewer("pass")).run()
 
     long_horizon = StatusCommand(root).run().to_dict()["long_horizon"]
     last = long_horizon.get("last_slice_completion")

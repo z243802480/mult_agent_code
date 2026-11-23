@@ -245,7 +245,11 @@ def prepare_accept_ready_run(
     validator: SchemaValidator,
     goal_text: str,
 ) -> str:
-    """Band/test helper: create a minimal run that AcceptCommand(skip_review=True) can finalize."""
+    """Seed a labelled simulation with a binding to its unchanged synthetic artifact.
+
+    Only the existing offline bands use this helper. Its report is fixture data,
+    never evidence of a real model reviewing or repairing a user goal.
+    """
     from asteria_runtime.core.candidate_workspace import CandidateWorkspace
     from asteria_runtime.storage.jsonl_store import JsonlStore
     from asteria_runtime.storage.run_store import RunStore
@@ -257,7 +261,7 @@ def prepare_accept_ready_run(
     run_store.set_current_session(run["run_id"], "session")
     run_dir = run_store.run_dir(run["run_id"])
     tool_path = root / "tool.py"
-    tool_path.write_text("VALUE = 1\n", encoding="utf-8")
+    tool_path.write_text("VALUE = 2\n", encoding="utf-8")
     store.write(
         run_dir / "goal_spec.json",
         {
@@ -365,6 +369,35 @@ def prepare_accept_ready_run(
         "candidate_promotion",
     )
     (candidate.root / "tool.py").write_text("VALUE = 2\n", encoding="utf-8")
+    from asteria_runtime.core.review_artifacts import collect_review_artifacts
+    from asteria_runtime.core.review_freshness import capture_review_binding
+    from asteria_runtime.core.runtime_context import RuntimeContext
+
+    policy = load_policy_config(agent_dir, validator)
+    goal = store.read(run_dir / "goal_spec.json", "goal_spec")
+    board = store.read(run_dir / "task_plan.json", "task_board")
+    artifacts = collect_review_artifacts(
+        RuntimeContext(root, run["run_id"], policy, validator), goal, board
+    )
+    store.write(run_dir / (artifacts["evidence_id"] + ".json"), artifacts, "review_artifacts")
+    report = store.read(run_dir / "eval_report.json", "eval_report")
+    report["overall"]["reason"] = "Synthetic offline band fixture; not a real model review."
+    report["trajectory_eval"]["review_assessment"] = {
+        "status": "fixture",
+        "semantic_completeness": "unverified",
+    }
+    binding = capture_review_binding(
+        root, run_dir, artifacts, policy.get("protected_paths", []), goal=goal, board=board
+    )
+    validator.validate("review_binding", binding)
+    report["artifact_eval"].update(
+        review_binding=binding,
+        current_artifacts_evidence={
+            "evidence_id": artifacts["evidence_id"],
+            "complete": artifacts["complete"],
+        },
+    )
+    store.write(run_dir / "eval_report.json", report, "eval_report")
     return run["run_id"]
 
 
