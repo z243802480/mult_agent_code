@@ -39,4 +39,4 @@ Accept在最后一次只读Review投影中同时使用有效状态和失效原�
 
 新发现的范围消费边界需继续核实：RunRecap._build_context目前只传Verification status，没有转发新scope/history/未评定范围。这是源码事实，不能据此断言本刀出现了模型虚构结论；本轮未重新调用收尾模型。下一先核实收尾上下文对这些事实的消费，再回独立Review对原始适用条件与反证的实质判断。不扩大日志/汇总面，不靠提示堆叠、强工具数或模型/措辞/格式专补，不删历史失败，不无改复采旧坏件。旧RST29标题/28线语义漏判未关闭。
 
-提交推送及远端状态收尾后核对；Verify禁用时CI为NOT RUN，不启workflow或配置key。
+末文档控制23过/1.19秒。主修bb75bac、最终工程ce6995e与结果`250c2865cd48df71896cd2087abec5f4c788e4a1`已推origin/main；公开API核对main与该结果SHA一致、checks=0、workflow runs=0。Verify `267575628`仍为`disabled_manually`，CI **NOT RUN**，未启workflow或配置key。此远端记录单独提交，最终ref复核留本机protocol/记忆，不把本地回归和零模型重放当远端绿灯。
