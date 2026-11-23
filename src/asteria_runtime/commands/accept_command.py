@@ -10,6 +10,7 @@ from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.policy_config import load_policy_config, merge_policy_defaults
 from asteria_runtime.core.run_config import effective_policy_for_run
 from asteria_runtime.core.session_result_service import SessionResultService
+from asteria_runtime.core.review_summary import load_review_summary
 from asteria_runtime.core.goal_queue import GoalQueueStore
 from asteria_runtime.core.long_horizon_completion import (
     evaluate_and_persist_slice_completion,
@@ -189,6 +190,7 @@ class AcceptCommand:
                 f"{len(pending)} pending promotion(s) require approval; run `asteria accept` "
                 "without --no-promote or use `asteria promotions approve`."
             )
+        promotion_blocked = bool(blockers)
 
         # Promotion can replace the very artifact that was reviewed. Reuse only a
         # still-current verdict; --skip-review never waives the freshness check.
@@ -197,8 +199,11 @@ class AcceptCommand:
             review_status = ReviewCommand(self.root, run_id=run_id, model_client=self.model_client).run().status
         else:
             review_status = current_review_status
-        if review_status == "pass":
-            review_status = self._latest_review_status(run_dir)
+        review_view = load_review_summary(run_dir, self.validator)
+        review_status = str(review_view.get("effective_status", "unknown"))
+        review_recovery = (
+            "review" if review_view.get("freshness", {}).get("status") != "current" else "debug"
+        )
         if review_status != "pass":
             blockers.append(
                 f"review status is {review_status}; run `asteria review` or repair follow-ups."
@@ -207,6 +212,7 @@ class AcceptCommand:
         pending_after = self._pending_promotions(run_dir)
         if pending_after:
             blockers.append(f"{len(pending_after)} promotion(s) still block acceptance.")
+            promotion_blocked = True
 
         accepted = not blockers
         run = run_store.load_run(run_id)
@@ -246,13 +252,15 @@ class AcceptCommand:
         final_report_path = self._write_final_report(run_id, review_status)
         next_actions = self._next_actions(
             accepted,
-            blockers,
+            review_recovery=review_recovery if review_status != "pass" else None,
+            promotion_blocked=promotion_blocked,
             slice_completion_eval=slice_completion_eval,
             goal_queue_continue=goal_queue_continue,
         )
         recommended_next_command = self._recommended_next_command(
             accepted,
-            blockers,
+            review_recovery=review_recovery if review_status != "pass" else None,
+            promotion_blocked=promotion_blocked,
             goal_queue_continue=goal_queue_continue,
         )
         final_report_summary_path = self._write_final_report_summary(
@@ -449,8 +457,9 @@ class AcceptCommand:
     def _next_actions(
         self,
         accepted: bool,
-        blockers: list[str],
         *,
+        review_recovery: str | None = None,
+        promotion_blocked: bool = False,
         slice_completion_eval: dict | None = None,
         goal_queue_continue: dict | None = None,
     ) -> list[str]:
@@ -465,9 +474,11 @@ class AcceptCommand:
                 )
             return actions
         actions = ["Inspect blockers above before release or handoff."]
-        if any("review status" in blocker for blocker in blockers):
+        if review_recovery == "review":
+            actions.append("Run `asteria review` on the current inputs before accepting.")
+        elif review_recovery:
             actions.append("Run `asteria debug` or `asteria replan`, then `asteria review`.")
-        if any("promotion" in blocker for blocker in blockers):
+        if promotion_blocked:
             actions.append(
                 "Run `asteria promotions list` and approve, reject, retry, or discard blockers."
             )
@@ -476,17 +487,18 @@ class AcceptCommand:
     def _recommended_next_command(
         self,
         accepted: bool,
-        blockers: list[str],
         *,
+        review_recovery: str | None = None,
+        promotion_blocked: bool = False,
         goal_queue_continue: dict | None = None,
     ) -> str | None:
         if accepted:
             if goal_queue_continue and goal_queue_continue.get("command"):
                 return str(goal_queue_continue["command"])
             return None
-        if any("review status" in blocker for blocker in blockers):
-            return "debug"
-        if any("promotion" in blocker for blocker in blockers):
+        if review_recovery:
+            return review_recovery
+        if promotion_blocked:
             return "promotions list"
         return "status"
 

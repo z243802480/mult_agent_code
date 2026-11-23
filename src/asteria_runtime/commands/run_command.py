@@ -1236,44 +1236,9 @@ class RunCommand:
         )
 
     def _validation_conclusion(self, run_dir: Path) -> dict[str, Any]:
-        validation_path = run_dir / "validation_results.jsonl"
-        validations = (
-            self.jsonl.read_all(validation_path, "validation_result")
-            if validation_path.exists()
-            else []
-        )
-        verification_calls = self._verification_evidence(run_dir)
-        passed_validations = [item for item in validations if item.get("status") == "passed"]
-        failed_validations = [item for item in validations if item.get("status") == "failed"]
-        passed_commands = [item for item in verification_calls if item.get("status") == "success"]
-        failed_commands = [item for item in verification_calls if item.get("status") != "success"]
-        total = len(validations) + len(verification_calls)
-        passed = len(passed_validations) + len(passed_commands)
-        failed = len(failed_validations) + len(failed_commands)
-        if total == 0:
-            status = "not_recorded"
-            summary = "No validation or verification command has been recorded yet."
-        elif failed:
-            status = "failed"
-            summary = f"Validation has failures: {passed}/{total} check(s) passed."
-        else:
-            status = "passed"
-            summary = f"Validation passed: {passed}/{total} check(s) passed."
-        refs: list[str] = []
-        if validations:
-            refs.append(validation_path.relative_to(self.root).as_posix())
-        if verification_calls:
-            refs.append((run_dir / "tool_calls.jsonl").relative_to(self.root).as_posix())
-        return {
-            "status": status,
-            "summary": summary,
-            "total": total,
-            "passed": passed,
-            "failed": failed,
-            "validation_result_count": len(validations),
-            "verification_command_count": len(verification_calls),
-            "evidence_refs": refs,
-        }
+        from asteria_runtime.core.validation_summary import load_validation_conclusion
+
+        return load_validation_conclusion(self.root, run_dir, self.validator)
 
     def _execute_until_no_ready(
         self,
