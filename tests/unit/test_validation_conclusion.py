@@ -57,7 +57,7 @@ def row(
     }
 
 
-def conclude(root, tasks, observations, *, validations=None):
+def conclude(root, tasks, observations, *, validations=None, call_statuses=None):
     run = root / ".asteria/runs/run-control"
     validator = SchemaValidator(Path("schemas"))
     store, jsonl = JsonStore(validator), JsonlStore(validator)
@@ -77,7 +77,11 @@ def conclude(root, tasks, observations, *, validations=None):
                     "status",
                 )
             }
-            | {"input_summary": "Scripted", "output_summary": "Scripted"},
+            | {
+                "input_summary": "Scripted",
+                "output_summary": "Scripted",
+                "status": (call_statuses or {}).get(item["tool_call_id"], item["status"]),
+            },
             "tool_call",
         )
     for item in validations or []:
@@ -226,3 +230,22 @@ def test_real_gateway_revision_does_not_waive_the_separate_required_check(tmp_pa
     assert result["total"] == 2 and result["passed"] == result["failed"] == 1
     assert result["history"]["failed"] == 1
     assert (run / "tool_observations.jsonl").read_bytes() == before
+
+
+@pytest.mark.parametrize("call_status", ["denied", "timeout", "failure"])
+def test_non_success_call_labels_do_not_erase_valid_observation_identity(tmp_path, call_status):
+    denied_read = row(1, "", False, name="read_file")
+    result = conclude(
+        tmp_path,
+        [task(["check current"])],
+        [denied_read, row(2)],
+        call_statuses={"call-1": call_status},
+    )
+    assert result["status"] == "passed" and result["passed"] == 1
+
+
+def test_conflicting_call_success_fact_still_disqualifies_the_task(tmp_path):
+    result = conclude(
+        tmp_path, [task(["check current"])], [row(1)], call_statuses={"call-1": "denied"}
+    )
+    assert result["status"] == "not_recorded"

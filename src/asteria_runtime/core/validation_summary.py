@@ -112,7 +112,10 @@ def load_validation_conclusion(root: Path, run_dir: Path, validator: SchemaValid
             body = record["observation"]
             if (
                 call_ids[record["tool_call_id"]] != 1
-                or any(call.get(k) != record.get(k) for k in ("task_id", "tool_name", "status"))
+                or any(call.get(k) != record.get(k) for k in ("task_id", "tool_name"))
+                # Call outcomes distinguish denied/timeout; observations use failure.
+                # Compare success facts, never require identical phase-specific labels.
+                or (call.get("status") == "success") != record.get("ok")
                 or any(body.get(k) != record.get(k) for k in ("tool_name", "ok", "status"))
                 or not isinstance(body.get("data", {}), dict)
             ):
