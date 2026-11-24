@@ -19,6 +19,7 @@ run lifecycle never depends on the recap succeeding.
 from __future__ import annotations
 
 import re
+import json
 from typing import Any
 
 from asteria_runtime.core.agent_role_policy import role_contract_for
@@ -178,6 +179,26 @@ def _build_context(
     validation = validation or {}
     v_status = str(validation.get("status") or "not_recorded")
     lines.append(f"Verification status: {v_status}")
+    # These are runtime evidence facts, not test-case counts or a model verdict.
+    # Unknown legacy fields must not silently turn an execution pass into coverage.
+    history = validation.get("history")
+    history = history if isinstance(history, dict) else {}
+    scope = validation.get("scope")
+    historical_status = history.get("status")
+    contracts = validation.get("unassessed_task_ids")
+    facts = {
+        "scope": scope if isinstance(scope, str) and scope in {
+            "current_declared_methods_at_recorded_task_execution", "historical_records_only"
+        } else "unassessed",
+        "artifact_freshness": "unassessed",
+        "requirement_coverage": "unassessed",
+        "historical_execution_status": historical_status
+        if isinstance(historical_status, str) and historical_status in {"passed", "failed", "not_recorded"}
+        else "unassessed",
+        "unassessed_task_contracts": ("present" if contracts else "none_recorded")
+        if isinstance(contracts, list) else "unassessed",
+    }
+    lines.append("Verification evidence scope: " + json.dumps(facts, ensure_ascii=False))
 
     changed = [str(item.get("path") or "") for item in (file_changes or []) if item.get("path")]
     if changed:
