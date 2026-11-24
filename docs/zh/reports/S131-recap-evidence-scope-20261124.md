@@ -12,4 +12,4 @@ system提示、模型输出协议、角色约束、温度/超时及既有计数/
 
 这证明客户端装配边界保留了事实，不证明provider wire、模型内部理解、新自主完成或语义验收。旧RST标题29/线28漏判仍开放。下一回到独立Review对原始适用条件与反证的实质消费，先只读核实已有证据；无新的输入/执行边界缺口不扩大日志面、堆提示或无改付费重采。
 
-计划、brief、索引与本机记忆同步；远端状态推送后核对，Verify禁用时CI保持NOT RUN，不启workflow或配置key。
+计划、brief、索引与本机记忆同步。工程aa4832b与结果3a3fd9a2fa45b2f2d914557ac3b24cf6d4f1d9e8已推origin/main；公开API核对main一致、checks0/runs0，Verify267575628仍disabled_manually，CI **NOT RUN**，未启workflow或配置key。初查询的单项TLS失败保留后重查成功；最终ref复核留本机protocol/记忆。
